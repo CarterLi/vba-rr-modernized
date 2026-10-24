@@ -160,11 +160,7 @@ protected:
 	afx_msg BOOL OnEraseBkgnd(CDC*pDC);
 	afx_msg void OnDropFiles(HDROP hDropInfo);
 	afx_msg void OnActivate(UINT nState, CWnd*pWndOther, BOOL bMinimized);
-#if _MSC_VER <= 1200
-	afx_msg void OnActivateApp(BOOL bActive, HTASK hTask);
-#else
 	afx_msg void OnActivateApp(BOOL bActive, DWORD hTask);
-#endif
 
 	afx_msg void OnUpdateOptionsJoypadAutofire(CCmdUI *pCmdUI);
 	afx_msg BOOL OnOptionsJoypadAutofire(UINT nID);

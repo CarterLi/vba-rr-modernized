@@ -2,7 +2,6 @@
 //
 
 #include "stdafx.h"
-#include <winsock.h>
 
 #include "resource.h"
 #include "MainWnd.h"
@@ -1752,11 +1751,7 @@ void MainWnd::OnActivate(UINT nState, CWnd *pWndOther, BOOL bMinimized)
 	}
 }
 
-#if _MSC_VER <= 1200
-void MainWnd::OnActivateApp(BOOL bActive, HTASK hTask)
-#else
 void MainWnd::OnActivateApp(BOOL bActive, DWORD hTask)
-#endif
 {
 	CWnd::OnActivateApp(bActive, hTask);
 }
