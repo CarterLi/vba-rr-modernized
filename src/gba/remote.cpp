@@ -18,7 +18,7 @@
 #else // WIN32
 // Note: this used to include "../win32/stdafx.h" (the MFC precompiled header),
 // which tied the whole GBA debug stub to the MFC frontend. It only needs
-// winsock 1.1 and io.h, so including the system headers directly is enough.
+// winsock and io.h, so including the system headers directly is enough.
 # ifndef WIN32_LEAN_AND_MEAN
 #  define WIN32_LEAN_AND_MEAN
 # endif
@@ -26,7 +26,7 @@
 #  define NOMINMAX
 # endif
 # include <windows.h>
-# include <winsock.h>
+# include <winsock2.h>
 # include <io.h>
 # define socklen_t int
 # define close closesocket
@@ -84,7 +84,7 @@ bool remoteTcpInit()
 	{
 #ifdef WIN32
 		WSADATA wsaData;
-		int		error = WSAStartup(MAKEWORD(1, 1), &wsaData);
+		int		error = WSAStartup(MAKEWORD(2, 2), &wsaData);
 #endif // WIN32
 		SOCKET s = socket(PF_INET, SOCK_STREAM, 0);
 

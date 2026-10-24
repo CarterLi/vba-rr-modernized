@@ -27,7 +27,7 @@ GDBPortDlg::GDBPortDlg(CWnd*pParent /*=NULL*/)
 	{
 		WSADATA wsaData;
 
-		int error = WSAStartup(MAKEWORD(1, 1), &wsaData);
+		int error = WSAStartup(MAKEWORD(2, 2), &wsaData);
 
 		initialized = true;
 	}
