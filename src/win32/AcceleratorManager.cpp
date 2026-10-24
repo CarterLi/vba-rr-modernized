@@ -474,58 +474,64 @@ void CAcceleratorManager::UpdateMenu(HMENU menu)
 	}
 	else
 	{
-		MENUITEMINFO info = {0};
-		info.cbSize = sizeof(info);
-		info.fMask  = MIIM_ID | MIIM_SUBMENU;
 		for (int i = 0; i < count; i++)
 		{
-			GetMenuItemInfo(menu, i, TRUE, &info);
+			// By position, and filled in on every turn: a failed call used to
+			// leave the previous item's submenu in hSubMenu, which sent the
+			// walk into that popup a second time.
+			MENUITEMINFO info = {0};
+			info.cbSize = sizeof(info);
+			info.fMask  = MIIM_ID | MIIM_SUBMENU;
+			if (!GetMenuItemInfo(menu, i, TRUE, &info))
+				continue;
 
 			if (info.hSubMenu != NULL)
 			{
 				UpdateMenu(info.hSubMenu);
+				continue;
 			}
-			else
+
+			if (info.wID == (WORD)-1)
+				continue;
+
+			wchar_t      ss[256] = L"";
+			MENUITEMINFOW info2  = {0};
+			info2.cbSize     = sizeof(info2);
+			info2.fMask      = MIIM_STRING;
+			info2.dwTypeData = ss;
+			info2.cch        = _countof(ss) - 1;
+			if (!GetMenuItemInfoW(menu, i, TRUE, &info2))
+				continue;
+
+			CString current = ss;		// the item as the menu has it now
+			CString text    = current;
+
+			// Everything from the first tab on is the accelerator column, so
+			// it is dropped before the one this call knows about is put back.
+			// Exactly one tab may follow the text: what comes after the last
+			// tab is the column, so a tab of its own at the end makes Windows
+			// 11 read an empty column and draw none at all, while the classic
+			// menu of Windows 7 draws the leftovers as stray glyphs.
+			int tab = text.Find(_T('\t'));
+			if (tab >= 0)
+				text = text.Left(tab);
+
+			WORD         command = LOWORD(info.wID);
+			CCmdAccelOb *o;
+			if (m_mapAccelTable.Lookup(command, o) && o->m_Accels.GetCount() != 0)
 			{
-				if (info.wID != (WORD)-1)
+				CString accel;
+				o->m_Accels.GetHead()->GetString(accel);
+
+				if (!accel.IsEmpty())
 				{
-					wchar_t ss[128];
-					wchar_t str[512];
-					MENUITEMINFOW info2 = {0};
-					info2.cbSize     = sizeof(info2);
-					info2.fMask      = MIIM_STRING;
-					info2.dwTypeData = ss;
-					info2.cch        = 128;
-					GetMenuItemInfoW(menu, i, MF_BYPOSITION, &info2);
-
-					wcscpy(str, ss);
-
-					wchar_t *p = wcschr(str, '\t');
-					if (p)
-						*p = 0;
-
-					CCmdAccelOb *o;
-					WORD         command = info.wID;
-					if (m_mapAccelTable.Lookup(command, o))
-					{
-						if (o->m_Accels.GetCount())
-						{
-							POSITION pos = o->m_Accels.GetHeadPosition();
-
-							CAccelsOb *accel = o->m_Accels.GetNext(pos);
-
-							CString s;
-							accel->GetString(s);
-
-							wcscat(str, L"\t");
-							wcscat(str, s);
-							wcscat(str, L"\t");
-						}
-					}
-					if (wcscmp(str, ss))
-						ModifyMenuW(menu, i, MF_BYPOSITION | MF_STRING, info.wID, str);
+					text += _T('\t');
+					text += accel;
 				}
 			}
+
+			if (text != current)
+				ModifyMenuW(menu, i, MF_BYPOSITION | MF_STRING, info.wID, text);
 		}
 	}
 }
