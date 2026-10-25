@@ -3,24 +3,28 @@
 
 #pragma once
 
-#include <vfw.h>
+#include "VideoWriter.h"
 
-class AVIWrite {
+// The legacy writer: Video for Windows, with the codec picked in the
+// AVISaveOptions dialog when the file is opened.  Behaviour is unchanged;
+// the recording settings dialog uses MFVideoWriter instead, and this one is
+// only reachable from the "Legacy AVI Recording" submenu.
+class AVIWrite : public IVideoWriter {
  public:
   AVIWrite();
   virtual ~AVIWrite();
 
-  bool Open(LPCTSTR filename);
+  virtual bool Open(LPCTSTR filename);
   virtual bool AddFrame(const u8 *bmp);
-  void SetVideoFormat(BITMAPINFOHEADER *);
-  bool IsSoundAdded();
-  void SetSoundFormat(WAVEFORMATEX *);
-  bool AddSound(const u8 *sound, u32 len);
-  int videoFrames();
-  int videoWidth() const { return m_bitmap.biWidth; }
-  int videoHeight() const { return m_bitmap.biHeight; }
-  void Pause(bool pause);
-  bool IsPaused();
+  virtual void SetVideoFormat(BITMAPINFOHEADER *);
+  virtual bool IsSoundAdded();
+  virtual void SetSoundFormat(WAVEFORMATEX *);
+  virtual bool AddSound(const u8 *sound, u32 len);
+  virtual int videoFrames();
+  virtual int videoWidth() const { return m_bitmap.biWidth; }
+  virtual int videoHeight() const { return m_bitmap.biHeight; }
+  virtual void Pause(bool pause);
+  virtual bool IsPaused();
 
  private:
   WAVEFORMATEX m_soundFormat;

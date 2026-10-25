@@ -365,3 +365,16 @@ Title:	标题：
 
 E&xplain	解释(&X)
 Cheat explanation	金手指说明
+Recording Settings	录制设置
+&Quality:	质量(&Q)：
+Start Recording	开始录制
+&Frame rate:	帧率(&F)：
+Video	视频
+Audio	音频
+&Encoder:	编码器(&E)：
+&Bitrate (kbps):	码率(&B)（kbps）：
+B&itrate (kbps):	码率(&I)（kbps）：
+&Profile:	档次(&P)：
+E&ncoder:	编码器(&N)：
+Sample rate:	采样率(&S)：
+Encode in a background &thread	后台线程编码(&T)

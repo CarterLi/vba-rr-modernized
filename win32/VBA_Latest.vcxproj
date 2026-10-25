@@ -1099,6 +1099,7 @@ call "$(ProjectDir)defaultconfig\CopyWgpu.bat" "$(Platform)" "$(OutDir)"</Comman
     <ClCompile Include="..\src\win32\Dialogs\RomInfo.cpp" />
     <ClCompile Include="..\src\win32\Dialogs\TextOptions.cpp" />
     <ClCompile Include="..\src\win32\Dialogs\Throttle.cpp" />
+    <ClCompile Include="..\src\win32\Dialogs\RecordSettings.cpp" />
     <ClCompile Include="..\src\win32\Dialogs\TileView.cpp" />
     <ClCompile Include="..\src\win32\WinSystem.cpp" />
     <ClCompile Include="..\src\win32\WinText.cpp" />
@@ -1129,6 +1130,9 @@ call "$(ProjectDir)defaultconfig\CopyWgpu.bat" "$(Platform)" "$(OutDir)"</Comman
     <ClCompile Include="..\src\filters\lcdfilter.cpp" />
     <ClCompile Include="..\src\win32\AcceleratorManager.cpp" />
     <ClCompile Include="..\src\win32\AVIWrite.cpp" />
+    <ClCompile Include="..\src\win32\MFVideoWriter.cpp" />
+    <ClCompile Include="..\src\win32\MFLite.cpp" />
+    <ClCompile Include="..\src\win32\VideoEncoders.cpp" />
     <ClCompile Include="..\src\win32\CmdAccelOb.cpp" />
     <ClCompile Include="..\src\win32\DarkMode.cpp" />
     <ClCompile Include="..\src\win32\Direct3D.cpp" />
@@ -1224,6 +1228,10 @@ call "$(ProjectDir)defaultconfig\CopyWgpu.bat" "$(Platform)" "$(OutDir)"</Comman
     <ClInclude Include="..\src\gb\gbSound.h" />
     <ClInclude Include="..\src\win32\AcceleratorManager.h" />
     <ClInclude Include="..\src\win32\AVIWrite.h" />
+    <ClInclude Include="..\src\win32\MFVideoWriter.h" />
+    <ClInclude Include="..\src\win32\MFLite.h" />
+    <ClInclude Include="..\src\win32\VideoEncoders.h" />
+    <ClInclude Include="..\src\win32\VideoWriter.h" />
     <ClInclude Include="..\src\win32\CmdAccelOb.h" />
     <ClInclude Include="..\src\win32\DarkMode.h" />
     <ClInclude Include="..\src\win32\Controls\BitmapControl.h" />
@@ -1279,6 +1287,7 @@ call "$(ProjectDir)defaultconfig\CopyWgpu.bat" "$(Platform)" "$(OutDir)"</Comman
     <ClInclude Include="..\src\win32\Dialogs\RomInfo.h" />
     <ClInclude Include="..\src\win32\Dialogs\TextOptions.h" />
     <ClInclude Include="..\src\win32\Dialogs\Throttle.h" />
+    <ClInclude Include="..\src\win32\Dialogs\RecordSettings.h" />
     <ClInclude Include="..\src\win32\Dialogs\TileView.h" />
     <ClInclude Include="..\src\win32\Display.h" />
     <ClInclude Include="..\src\win32\TextOverlay.h" />

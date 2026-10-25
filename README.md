@@ -75,8 +75,9 @@ fallback that needs nothing, GPU upscaling
 with NVIDIA Image Scaling, AMD FidelityFX and
 the whole libretro xBR family, a Windows 10 era shell with dark mode and
 per-monitor DPI, XAudio2 as a lower latency sound backend, screenshots in
-whatever format the machine can actually write and AVI recordings with the
-filter and the magnification already applied, a 64-bit and an ARM64 build,
+whatever format the machine can actually write, recordings in the container the
+chosen encoder calls for with the filter and the magnification already applied,
+a 64-bit and an ARM64 build,
 Switch controller support, cheat management, and a movie dialog that tells you
 which core recorded the movie - with the emulation itself left bit for bit
 alone.
@@ -232,14 +233,14 @@ method that finally starts is the one that is saved.
   (per-channel gamma plus a colour matrix) baked into the palette tables, so
   every renderer picks it up.  The GBA and the GB/GBC variants are separate
   menu entries and are remembered.
-* **Tools -> "Record AVI/Screenshot at Window Size and Filter"** writes the
-  AVI at the size the emulator is drawn and runs every frame through the
-  active pixel filter and the window magnification, instead of dumping the raw
-  unfiltered LCD buffer.  A VBM recording can therefore be exported straight
-  to an AVI that looks the way the emulator looked while it was being made -
-  there is no need to export the raw frames first and enlarge them with a
-  third party tool afterwards.  The same option applies to the screenshots,
-  so a capture is exactly the frame an AVI would hold.
+* **Tools -> "Record at Window Size and Filter"** writes the video at the size
+  the emulator is drawn and runs every frame through the active pixel filter
+  and the window magnification, instead of dumping the raw unfiltered LCD
+  buffer.  A VBM recording can therefore be exported straight to a video that
+  looks the way the emulator looked while it was being made - there is no need
+  to export the raw frames first and enlarge them with a third party tool
+  afterwards.  The same option applies to the screenshots, so a capture is
+  exactly the frame the video would hold.
 
 ### Audio that says what it is doing
 
@@ -266,6 +267,45 @@ method that finally starts is the one that is saved.
 The Windows Imaging Component is the one piece of this that is not loaded at
 run time and does not degrade gracefully - it needs the codecs Windows 7 and
 later ship with.  Everything else in this branch degrades.
+
+### Recording that uses the machine's encoders
+
+* **Tools -> "Start/Stop Audio/Video File Recording..."** asks for the encoder
+  before it asks for a file name.  The list is built with `MFTEnumEx` from the
+  Media Foundation encoders this machine actually has, hardware ones first and
+  labelled with the vendor, so a machine with NVENC offers "NVIDIA H.264
+  Encoder MFT / Hardware" and a machine without it simply does not.  The audio
+  box works the same way: AAC, MP3, FLAC, ALAC, Opus and Dolby Digital each
+  appear only when an encoder for them is installed.
+* **The container is not a choice, it is a consequence.**  H.264, HEVC or AV1
+  with any audio codec goes into `.mp4`; choosing "None (audio only)" gives
+  `.m4a`, `.mp3` or `.flac` depending on the codec.  The save dialog's filter
+  and default extension follow, so there is no way to end up with an extension
+  that does not match the stream.
+* **The bit rate is a number, not a word**, with Low/Medium/High presets next
+  to it (2000/4000/8000 kbps for the picture, 64/128/192 for the sound);
+  typing a value by hand puts the preset box back on "Custom".  H.264 gets a
+  profile box (Auto/Baseline/Main/High), and the frame rate box records below
+  the emulator's own rate by **dropping** frames instead of duplicating them,
+  so the duration of the file stays right.
+* **The encoding runs on its own thread, and that is not about the GPU.**  A
+  hardware encoder still makes `WriteSample` block: its surface pool is small
+  and the call returns only once the encoder takes the sample, so the wait
+  lands on the emulation thread.  With the box ticked the emulation thread
+  only converts the frame into one of three slots and signals the worker.
+  Frames that arrive while all three are busy are dropped and the timestamps
+  keep moving, so the duration of the file stays right; the sound is never
+  dropped, because a missing block would shorten the track and pull the
+  picture out of sync.  At 240x160 this buys almost nothing - 0.10 ms to
+  0.08 ms per frame, since the encoder keeps up anyway.  At 1440x960 with the
+  window filter applied it is 3.54 ms to 2.19 ms on a hardware encoder and
+  5.17 ms to 4.02 ms on the software one.
+* **The old flow is still there**, under Tools -> "Legacy AVI Recording":
+  Video for Windows with the `AVISaveOptions` codec picker, and the WAV
+  recorder.  Neither has changed.  They live in a submenu because that flow
+  runs the other way round - save the file first, choose the codec second -
+  and folding the two into one list would have meant a list where one row
+  behaves unlike the rest.
 
 ### A shell that looks like it belongs on this decade's desktop
 
@@ -559,14 +599,18 @@ plainly:
   what they meant.
 * **The executable still starts on old Windows.**  Every optional library -
   `D3D11.DLL`, `D3DCOMPILER_47.DLL`, `XAUDIO2_9.DLL`, `DXGI.DLL`, `7z.dll`,
-  `wgpu_native.dll` - is resolved at run time with `LoadLibrary`, and each one
+  `wgpu_native.dll`, `mfplat.dll`, `mfreadwrite.dll` - is resolved at run time
+  with `LoadLibrary`, and each one
   degrades gracefully: a missing DLL leaves its menu entry out, the renderer
   falls back to the next one, and the emulator carries on.  The last step of
   that chain is the GDI renderer, which imports nothing but GDI and USER and
   therefore always starts.  Nothing is imported statically, so the program
   still starts where the library is not installed.
 * The one exception is the **Windows Imaging Component** the screenshots go
-  through, which needs the codecs that Windows 7 and later ship with.
+  through, which needs the codecs that Windows 7 and later ship with.  The
+  Media Foundation recorder is in the same position: it needs the sink writer
+  of Windows 7 and later, and where Media Foundation is absent the encoder
+  list comes up empty and starting a recording says why.
 * **Windows 7 or later is what we recommend**, and Windows 10 or 11 if you want
   the dark mode and the per-monitor DPI handling.  The old systems still run
   the emulator - they just do not get everything.
@@ -593,6 +637,22 @@ plainly:
   chain, at 1:1 and at 3x.
 * The WIC writer was exercised by saving GIF, DDS and HEIF captures from a
   running build.
+* The Media Foundation recorder was checked by driving `MFVideoWriter` with
+  synthetic frames and reading the result back with ffprobe: H.264 through the
+  hardware and the software encoder into MP4, AAC into `.m4a`, MP3 into
+  `.mp3`, FLAC into `.flac`, ALAC and Dolby Digital into `.m4a` - each with
+  the stream, the frame rate and the duration the settings asked for.
+* The frame rate box was checked the same way: at a 30 fps target the 120
+  emulator frames became 60 written frames at 179/6 fps and the duration did
+  not change, which is what dropping frames instead of duplicating them is
+  supposed to look like.
+* The H.264 profile box was checked by reading the profile back out of the
+  file: Auto and Baseline report `Constrained Baseline`, High reports `High`.
+* The background thread was measured against the synchronous path with the
+  same synthetic frames: identical output byte for byte, and the time the
+  emulation thread spends in the call went from 3.54 ms to 2.19 ms per frame
+  at 1440x960.  At 240x160 both are under 0.15 ms, which is why the box
+  matters for window-sized recordings and not for raw LCD ones.
 
 ## Downloads and resources
 

@@ -4,6 +4,7 @@
 #include "Sound.h"
 #include "Input.h"
 #include "IUpdate.h"
+#include "AVIWrite.h"
 #include "WinMiscUtil.h"
 #include "WinResUtil.h"
 #include "resource.h"
@@ -478,7 +479,10 @@ static void systemRecordAviFrame(int width, int height)
 				}
 			}
 
-			if (theApp.aviRecorder != NULL && !theApp.aviRecorder->IsPaused())
+			// An audio-only recording has no picture to build, so skip the
+			// conversion instead of handing AddFrame() a frame it drops.
+			if (theApp.aviRecorder != NULL && !theApp.aviRecorder->IsPaused() &&
+			    theApp.aviRecorder->videoWidth() > 0)
 			{
 				if (theApp.captureScaled &&
 				    (systemColorDepth == 16 || systemColorDepth == 32))

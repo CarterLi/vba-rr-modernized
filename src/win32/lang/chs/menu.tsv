@@ -409,3 +409,7 @@ Console	控制台
 &Font...	字体(&F)...
 Clear	清除
 &About	关于(&A)
+&Legacy AVI Recording	旧版 AVI 录制(&L)
+Record at &Window Size and Filter	按窗口尺寸和滤镜录制(&W)
+Start/Stop Audio/Video &File Recording...	开始/停止音视频文件录制(&F)...
+&Pause/Resume File Recording	暂停/继续文件录制(&P)

@@ -267,3 +267,27 @@ the keys written in the code	代码里写的按键
 Gameshark	Gameshark
 CodeBreaker	CodeBreaker
 data used by the line above	上一行的数据
+MPEG-4 Video_*.mp4_All Files_*.*__	MPEG-4 视频_*.mp4_所有文件_*.*__
+FLAC Audio_*.flac_All Files_*.*__	FLAC 音频_*.flac_所有文件_*.*__
+MPEG-4 Audio_*.m4a_All Files_*.*__	MPEG-4 音频_*.m4a_所有文件_*.*__
+MP3 Audio_*.mp3_All Files_*.*__	MP3 音频_*.mp3_所有文件_*.*__
+Select recording file name	选择录制文件名
+Codec	编码
+Encoder	编码器
+Hardware	硬件
+Software	软件
+None (audio only)	无（仅音频）
+Choose a video or an audio encoder.	请选择视频或音频编码器。
+Encoded on the GPU: low CPU load, the frame rate stays.	在 GPU 上编码：CPU 占用低，帧率不受影响。
+Encoded on the CPU. Lower the quality if the frame rate suffers.	在 CPU 上编码。若帧率受影响，请降低质量。
+Audio only: no picture is recorded.	仅录制音频，不录制画面。
+Cannot start the recording encoder.	无法启动录制编码器。
+Start Audio/Video &File Recording...	开始音视频文件录制(&F)...
+Stop Audio/Video &File Recording	停止音视频文件录制(&F)
+Pause Audio/Video &File Recording	暂停音视频文件录制(&F)
+Resume Audio/Video &File Recording	继续音视频文件录制(&F)
+Low	低
+Medium	中
+High	高
+Custom	自定义
+Auto	自动

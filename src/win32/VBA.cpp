@@ -16,6 +16,7 @@
 #include "MainWnd.h"
 #include "Reg.h"
 #include "UiFont.h"
+#include "VideoEncoders.h"
 #include "WavWriter.h"
 #include "WinResUtil.h"
 #include "WinMiscUtil.h"
@@ -599,6 +600,13 @@ VBA::VBA() : emulator(::theEmulator)
 	sound					= NULL;
 	aviRecording			= false;
 	aviRecorder				= NULL;
+	recordingBackend		= RECORDING_NONE;
+	ZeroMemory(&recordParams, sizeof(recordParams));
+	recordParams.videoBitrate	= VIDEO_BITRATE_DEFAULT;
+	recordParams.audioBitrate	= AUDIO_BITRATE_DEFAULT;
+	recordParams.profile		= VIDEO_PROFILE_AUTO;
+	recordParams.frameRate		= FRAMERATE_DEFAULT;
+	recordParams.async			= true;
 	painting				= false;
 	mouseCounter			= 0;
 	movieReadOnly			= true;
@@ -2773,6 +2781,66 @@ void VBA::loadSettings()
 	filenamePreference = regQueryDwordValue(_T("filenamePreference"), 0);
 	altAviRecordMethod = regQueryDwordValue(_T("altAviRecordMethod"), false) ? true : false;
 	captureScaled = regQueryDwordValue(_T("captureScaled"), regQueryDwordValue(_T("aviRecordScaled"), false)) ? true : false;
+
+	// What the recording dialog remembers.  An absent value means "never
+	// chosen", so a first run starts on H.264 and AAC; the literal "none"
+	// means the user switched that codec off.
+	{
+		recordParams.videoSubtype  = videoEncoders::defaultVideoCodec();
+		recordParams.audioSubtype  = videoEncoders::defaultAudioCodec();
+		recordParams.videoHardware = true;
+		recordParams.videoBitrate	 = VIDEO_BITRATE_DEFAULT;
+		recordParams.audioBitrate	 = AUDIO_BITRATE_DEFAULT;
+		recordParams.profile		 = VIDEO_PROFILE_AUTO;
+		recordParams.frameRate		 = FRAMERATE_DEFAULT;
+		recordParams.async			 = true;
+
+		const CString videoText = regQueryStringValue(_T("recordVideoCodec"), _T(""));
+		if (!videoText.IsEmpty())
+		{
+			GUID video = { 0 };
+			recordParams.videoSubtype = videoEncoders::guidFromString(
+			                                std::wstring(videoText.GetString()), &video)
+			                                ? video : GUID();
+		}
+
+		const CString audioText = regQueryStringValue(_T("recordAudioCodec"), _T(""));
+		if (!audioText.IsEmpty())
+		{
+			GUID audio = { 0 };
+			recordParams.audioSubtype = videoEncoders::guidFromString(
+			                                std::wstring(audioText.GetString()), &audio)
+			                                ? audio : GUID();
+		}
+
+		recordParams.videoHardware =
+		    regQueryDwordValue(_T("recordVideoHardware"), 1) ? true : false;
+
+		int videoBitrate = (int)regQueryDwordValue(_T("recordVideoBitrate"), VIDEO_BITRATE_DEFAULT);
+		if (videoBitrate < VIDEO_BITRATE_MIN || videoBitrate > VIDEO_BITRATE_MAX)
+			videoBitrate = VIDEO_BITRATE_DEFAULT;
+		recordParams.videoBitrate = videoBitrate;
+
+		int audioBitrate = (int)regQueryDwordValue(_T("recordAudioBitrate"), AUDIO_BITRATE_DEFAULT);
+		if (audioBitrate < AUDIO_BITRATE_MIN || audioBitrate > AUDIO_BITRATE_MAX)
+			audioBitrate = AUDIO_BITRATE_DEFAULT;
+		recordParams.audioBitrate = audioBitrate;
+
+		int profile = (int)regQueryDwordValue(_T("recordProfile"), VIDEO_PROFILE_AUTO);
+		if (profile != H264_PROFILE_BASELINE && profile != H264_PROFILE_MAIN &&
+		    profile != H264_PROFILE_HIGH)
+			profile = VIDEO_PROFILE_AUTO;
+		recordParams.profile = profile;
+
+		// Only the rates the dialog offers, so a stale value cannot pick
+		// something the box cannot show.
+		int frameRate = (int)regQueryDwordValue(_T("recordFrameRate"), FRAMERATE_DEFAULT);
+		if (frameRate != 0 && frameRate != 60 && frameRate != 30 && frameRate != 20 && frameRate != 15)
+			frameRate = FRAMERATE_DEFAULT;
+		recordParams.frameRate = frameRate;
+
+		recordParams.async = regQueryDwordValue(_T("recordAsync"), 1) ? true : false;
+	}
 	imageCaptureSelect(winAnsiFromWide(regQueryStringValue(_T("captureFormat"), _T(".png"))));
 
 	rewindTimer = regQueryDwordValue(_T("rewindTimer"), 0);
@@ -2989,6 +3057,23 @@ void VBA::saveSettings()
 	regSetDwordValue(_T("altAviRecordMethod"), altAviRecordMethod);
 	regSetDwordValue(_T("captureScaled"), captureScaled);
 	regSetStringValue(_T("captureFormat"), winWideFromAnsi(imageCaptureExtension()));
+
+	// "none" rather than an empty string: regSetStringValue() writes an empty
+	// value as "not present", which reads back as the default, not as "off".
+	regSetStringValue(_T("recordVideoCodec"),
+	                  videoEncoders::isNullGuid(recordParams.videoSubtype)
+	                      ? _T("none")
+	                      : CString(videoEncoders::guidToString(recordParams.videoSubtype).c_str()));
+	regSetDwordValue(_T("recordVideoHardware"), recordParams.videoHardware ? 1 : 0);
+	regSetStringValue(_T("recordAudioCodec"),
+	                  videoEncoders::isNullGuid(recordParams.audioSubtype)
+	                      ? _T("none")
+	                      : CString(videoEncoders::guidToString(recordParams.audioSubtype).c_str()));
+	regSetDwordValue(_T("recordVideoBitrate"), recordParams.videoBitrate);
+	regSetDwordValue(_T("recordAudioBitrate"), recordParams.audioBitrate);
+	regSetDwordValue(_T("recordProfile"), recordParams.profile);
+	regSetDwordValue(_T("recordFrameRate"), recordParams.frameRate);
+	regSetDwordValue(_T("recordAsync"), recordParams.async ? 1 : 0);
 
 	regSetDwordValue(_T("cheatsEnabled"), cheatsEnabled);
 	regSetDwordValue(_T("autoSaveCheatList"), autoSaveLoadCheatList);

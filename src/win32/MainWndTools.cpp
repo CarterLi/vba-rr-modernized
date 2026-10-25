@@ -3,7 +3,9 @@
 #include "resource.h"
 #include "MainWnd.h"
 #include "AVIWrite.h"
+#include "MFVideoWriter.h"
 #include "Reg.h"
+#include "VideoEncoders.h"
 #include "WavWriter.h"
 #include "WinResUtil.h"
 #include "WinMiscUtil.h"
@@ -25,6 +27,7 @@
 #include "Dialogs/MovieCreate.h"
 #include "Dialogs/OamView.h"
 #include "Dialogs/PaletteView.h"
+#include "Dialogs/RecordSettings.h"
 #include "Dialogs/TileView.h"
 
 #include "../gba/GBA.h"
@@ -541,58 +544,228 @@ void MainWnd::OnUpdateToolsSoundRecording(CCmdUI *pCmdUI)
 	pCmdUI->Enable(emulating);
 }
 
-void MainWnd::OnToolsAVIRecording()
+// Both recording menus name the file after the running game or movie.
+static CString recordingBaseName()
 {
-	if (!theApp.aviRecording)
-		OnToolsStartAVIRecording();
-	else
-		OnToolsStopAVIRecording();
-}
-
-void MainWnd::OnToolsStartAVIRecording()
-{
-
-	CString aviName = theApp.gameFilename;
+	CString name = theApp.gameFilename;
 
 	if (VBAMovieIsActive())
 	{
 		extern SMovie Movie;
-		aviName = Movie.filename;
-		int index = aviName.ReverseFind('.');
+		name	   = Movie.filename;
+		int index = name.ReverseFind('.');
 		if (index != -1)
-			aviName = aviName.Left(index);
+			name = name.Left(index);
 	}
+
+	return name;
+}
+
+// The PCM format the sound backend produces, which is what both writers take.
+static WAVEFORMATEX recordingSoundFormat()
+{
+	WAVEFORMATEX wfx;
+	memset(&wfx, 0, sizeof(wfx));
+	wfx.wFormatTag		= WAVE_FORMAT_PCM;
+	wfx.nChannels		= 2;
+	wfx.nSamplesPerSec	= 44100 / soundQuality;
+	wfx.wBitsPerSample	= 16;
+	wfx.nBlockAlign		= (wfx.wBitsPerSample / 8) * wfx.nChannels;
+	wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
+	wfx.cbSize			= 0;
+	return wfx;
+}
+
+void MainWnd::OnToolsRecording()
+{
+	if (theApp.recordingBackend == RECORDING_MF)
+		OnToolsStopRecording();
+	else if (theApp.recordingBackend == RECORDING_NONE)
+		OnToolsStartRecording();
+}
+
+void MainWnd::OnToolsStartRecording()
+{
+	if (theApp.recordingBackend != RECORDING_NONE)
+		return;
+
+	CRecordSettings settings(this, theApp.recordParams);
+	if (settings.DoModal() != IDOK)
+		return;
+
+	const RecordParams params = settings.params();
+
+	const RecordContainer *container =
+	    videoEncoders::containerFor(params.videoSubtype, params.audioSubtype);
+	if (container == NULL)
+		return;
+
+	const bool hasVideo = !videoEncoders::isNullGuid(params.videoSubtype);
+	const bool hasAudio = !videoEncoders::isNullGuid(params.audioSubtype);
+
+	LPCTSTR exts[] = { container->extension, NULL };
+
+	CString filter = winResLoadFilter(container->filterId);
+	CString title  = winResLoadString(IDS_SELECT_RECORD_NAME);
+
+	CString name = winGetDestFilename(recordingBaseName(), IDS_AVI_DIR, container->extension);
+	CString dir	 = winGetDestDir(IDS_AVI_DIR);
+
+	FileDlg dlg(this, name, filter, 1, container->extension, exts, dir, title, true);
+
+	if (dlg.DoModal() == IDCANCEL)
+		return;
+
+	int width = 0;
+	int height = 0;
+	systemGetLCDResolution(width, height);
+
+	// Recording the filtered window contents means the frame is the size the
+	// emulator is displayed at, not the raw LCD resolution.
+	if (theApp.captureScaled && theApp.surfaceSizeX > 0 && theApp.surfaceSizeY > 0)
+	{
+		width  = theApp.surfaceSizeX;
+		height = theApp.surfaceSizeY;
+	}
+
+	MFVideoWriter *writer = new MFVideoWriter(params);
+
+	if (hasVideo)
+	{
+		BITMAPINFOHEADER bi;
+		memset(&bi, 0, sizeof(bi));
+		bi.biSize	   = 0x28;
+		bi.biPlanes	   = 1;
+		bi.biBitCount  = 24;
+		bi.biWidth	   = width;
+		bi.biHeight	   = height;
+		bi.biSizeImage = 3 * width * height;
+		writer->SetVideoFormat(&bi);
+	}
+
+	if (hasAudio)
+	{
+		WAVEFORMATEX wfx = recordingSoundFormat();
+		writer->SetSoundFormat(&wfx);
+	}
+
+	// A sink writer that cannot be built (no encoder for that codec, no
+	// write permission) must fail here, before the file looks recorded.
+	if (!writer->Open(dlg.GetPathName()))
+	{
+		delete writer;
+		// The sink writer creates the file before it fails, so remove what
+		// it left behind rather than leaving an empty .mp4 in the folder.
+		DeleteFile(dlg.GetPathName());
+		systemMessage(IDS_RECORD_START_FAILED, "Cannot start the recording encoder.");
+		return;
+	}
+
+	theApp.aviRecorder		= writer;
+	theApp.aviRecordName	= dlg.GetPathName();
+	theApp.recordParams		= params;
+	theApp.aviRecording		= true;
+	theApp.recordingBackend = RECORDING_MF;
+}
+
+void MainWnd::OnToolsStopRecording()
+{
+	if (theApp.recordingBackend != RECORDING_MF)
+		return;
+
+	if (theApp.aviRecorder != NULL)
+	{
+		delete theApp.aviRecorder;
+		theApp.aviRecorder = NULL;
+	}
+
+	theApp.aviRecording		= false;
+	theApp.recordingBackend = RECORDING_NONE;
+}
+
+void MainWnd::OnToolsPauseRecording()
+{
+	if (theApp.recordingBackend == RECORDING_MF && theApp.aviRecorder != NULL)
+		theApp.aviRecorder->Pause(!theApp.aviRecorder->IsPaused());
+}
+
+void MainWnd::OnUpdateToolsRecording(CCmdUI *pCmdUI)
+{
+	if (pCmdUI->m_pMenu != NULL)
+	{
+		if (theApp.recordingBackend != RECORDING_MF)
+			pCmdUI->SetText(winResLoadString(IDS_STARTRECORDING));
+		else
+			pCmdUI->SetText(winResLoadString(IDS_STOPRECORDING));
+
+		theApp.winAccelMgr.UpdateMenu(pCmdUI->m_pMenu->GetSafeHmenu());
+	}
+
+	pCmdUI->Enable(emulating && theApp.recordingBackend != RECORDING_VFW);
+}
+
+void MainWnd::OnUpdateToolsPauseRecording(CCmdUI *pCmdUI)
+{
+	if (pCmdUI->m_pMenu != NULL)
+	{
+		if (theApp.aviRecorder != NULL && theApp.aviRecorder->IsPaused())
+			pCmdUI->SetText(winResLoadString(IDS_RESUMERECORDING));
+		else
+			pCmdUI->SetText(winResLoadString(IDS_PAUSERECORDING));
+
+		theApp.winAccelMgr.UpdateMenu(pCmdUI->m_pMenu->GetSafeHmenu());
+	}
+
+	pCmdUI->Enable(emulating && theApp.recordingBackend == RECORDING_MF);
+}
+
+// --- Tools > Legacy AVI Recording ------------------------------------------
+//
+// The VFW writer keeps the flow it always had: save dialog first, then the
+// AVISaveOptions codec picker, because that dialog needs a stream that has
+// already been created.  That is why it is not part of the encoder list.
+
+void MainWnd::OnToolsLegacyAVIRecording()
+{
+	if (theApp.recordingBackend == RECORDING_VFW)
+	{
+		if (theApp.aviRecorder != NULL)
+		{
+			delete theApp.aviRecorder;
+			theApp.aviRecorder = NULL;
+		}
+
+		theApp.aviRecording		= false;
+		theApp.recordingBackend = RECORDING_NONE;
+		return;
+	}
+
+	if (theApp.recordingBackend != RECORDING_NONE)
+		return;
 
 	LPCTSTR exts[] = { _T(".avi"), NULL };
 
 	CString filter = winResLoadFilter(IDS_FILTER_AVI);
 	CString title  = winResLoadString(IDS_SELECT_AVI_NAME);
 
-	aviName = winGetDestFilename(aviName, IDS_AVI_DIR, exts[0]);
-	CString aviDir = winGetDestDir(IDS_AVI_DIR);
+	CString aviName = winGetDestFilename(recordingBaseName(), IDS_AVI_DIR, exts[0]);
+	CString aviDir	= winGetDestDir(IDS_AVI_DIR);
 
 	FileDlg dlg(this, aviName, filter, 1, _T("AVI"), exts, aviDir, title, true);
 
 	if (dlg.DoModal() == IDCANCEL)
-	{
 		return;
-	}
 
-	theApp.aviRecordName = theApp.soundRecordName =  dlg.GetPathName();
+	theApp.aviRecordName = theApp.soundRecordName = dlg.GetPathName();
 	theApp.aviRecording	 = true;
-
-///  extern long linearFrameCount; linearFrameCount = 0;
-///  extern long linearSoundByteCount; linearSoundByteCount = 0;
 
 	if (theApp.aviRecorder == NULL)
 	{
-		theApp.aviRecorder = new AVIWrite();
+		AVIWrite *writer = new AVIWrite();
 
 		int width, height;
 		systemGetLCDResolution(width, height);
 
-		// When recording the filtered window contents the frame is the size the
-		// emulator is displayed at, not the raw LCD resolution.
 		if (theApp.captureScaled && theApp.surfaceSizeX > 0 && theApp.surfaceSizeY > 0)
 		{
 			width  = theApp.surfaceSizeX;
@@ -607,50 +780,36 @@ void MainWnd::OnToolsStartAVIRecording()
 		bi.biWidth	   = width;
 		bi.biHeight	   = height;
 		bi.biSizeImage = 3 * width * height;
-		theApp.aviRecorder->SetVideoFormat(&bi);
-		if (!theApp.aviRecorder->Open(theApp.aviRecordName))
+		writer->SetVideoFormat(&bi);
+
+		if (!writer->Open(theApp.aviRecordName))
 		{
-			delete theApp.aviRecorder;
-			theApp.aviRecorder	= NULL;
-			theApp.aviRecording = false;
+			delete writer;
+			theApp.aviRecording		= false;
+			theApp.recordingBackend = RECORDING_NONE;
+			return;
 		}
 
-		if (theApp.aviRecorder)
-		{
-			WAVEFORMATEX wfx;
-			memset(&wfx, 0, sizeof(wfx));
-			wfx.wFormatTag		= WAVE_FORMAT_PCM;
-			wfx.nChannels		= 2;
-			wfx.nSamplesPerSec	= 44100 / soundQuality;
-			wfx.wBitsPerSample	= 16;
-			wfx.nBlockAlign		= (wfx.wBitsPerSample / 8) * wfx.nChannels;
-			wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
-			wfx.cbSize = 0;
-			theApp.aviRecorder->SetSoundFormat(&wfx);
-		}
+		WAVEFORMATEX wfx = recordingSoundFormat();
+		writer->SetSoundFormat(&wfx);
+
+		theApp.aviRecorder = writer;
 	}
+
+	theApp.recordingBackend = RECORDING_VFW;
 }
 
-void MainWnd::OnToolsPauseAVIRecording()
+void MainWnd::OnToolsLegacyPauseAVIRecording()
 {
-	theApp.aviRecorder->Pause(!theApp.aviRecorder->IsPaused());
+	if (theApp.recordingBackend == RECORDING_VFW && theApp.aviRecorder != NULL)
+		theApp.aviRecorder->Pause(!theApp.aviRecorder->IsPaused());
 }
 
-void MainWnd::OnToolsStopAVIRecording()
-{
-	if (theApp.aviRecorder != NULL)
-	{
-		delete theApp.aviRecorder;
-		theApp.aviRecorder = NULL;
-	}
-	theApp.aviRecording = false;
-}
-
-void MainWnd::OnUpdateToolsAVIRecording(CCmdUI *pCmdUI)
+void MainWnd::OnUpdateToolsLegacyAVIRecording(CCmdUI *pCmdUI)
 {
 	if (pCmdUI->m_pMenu != NULL)
 	{
-		if (!theApp.aviRecording)
+		if (theApp.recordingBackend != RECORDING_VFW)
 			pCmdUI->SetText(winResLoadString(IDS_STARTAVIRECORDING));
 		else
 			pCmdUI->SetText(winResLoadString(IDS_STOPAVIRECORDING));
@@ -658,7 +817,22 @@ void MainWnd::OnUpdateToolsAVIRecording(CCmdUI *pCmdUI)
 		theApp.winAccelMgr.UpdateMenu(pCmdUI->m_pMenu->GetSafeHmenu());
 	}
 
-	pCmdUI->Enable(emulating);
+	pCmdUI->Enable(emulating && theApp.recordingBackend != RECORDING_MF);
+}
+
+void MainWnd::OnUpdateToolsLegacyPauseAVIRecording(CCmdUI *pCmdUI)
+{
+	if (pCmdUI->m_pMenu != NULL)
+	{
+		if (theApp.aviRecorder != NULL && theApp.aviRecorder->IsPaused())
+			pCmdUI->SetText(winResLoadString(IDS_RESUMEAVIRECORDING));
+		else
+			pCmdUI->SetText(winResLoadString(IDS_PAUSEAVIRECORDING));
+
+		theApp.winAccelMgr.UpdateMenu(pCmdUI->m_pMenu->GetSafeHmenu());
+	}
+
+	pCmdUI->Enable(emulating && theApp.recordingBackend == RECORDING_VFW);
 }
 
 void MainWnd::OnToolsCaptureScaled()
@@ -670,29 +844,6 @@ void MainWnd::OnUpdateToolsCaptureScaled(CCmdUI *pCmdUI)
 {
 	pCmdUI->SetCheck(theApp.captureScaled);
 	pCmdUI->Enable(emulating);
-}
-
-void MainWnd::OnUpdateToolsPauseAVIRecording(CCmdUI *pCmdUI)
-{
-	if (pCmdUI->m_pMenu != NULL)
-	{
-		if (!theApp.aviRecording)
-		{
-			pCmdUI->SetText(winResLoadString(IDS_PAUSEAVIRECORDING));
-			theApp.winAccelMgr.UpdateMenu(pCmdUI->m_pMenu->GetSafeHmenu());
-			pCmdUI->Enable(false);
-		}
-		else
-		{
-			if (!theApp.aviRecorder->IsPaused())
-				pCmdUI->SetText(winResLoadString(IDS_PAUSEAVIRECORDING));
-			else
-				pCmdUI->SetText(winResLoadString(IDS_RESUMEAVIRECORDING));
-
-			theApp.winAccelMgr.UpdateMenu(pCmdUI->m_pMenu->GetSafeHmenu());
-			pCmdUI->Enable(emulating);
-		}
-	}
 }
 
 void MainWnd::OnToolsRecordMovie()

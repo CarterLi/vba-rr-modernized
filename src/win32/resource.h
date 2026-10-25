@@ -272,6 +272,33 @@
 #define IDS_CHEAT_EXPLAIN_TYPE_GAMESHARK 267
 #define IDS_CHEAT_EXPLAIN_TYPE_CODEBREAKER 268
 #define IDS_CHEAT_EXPLAIN_DATA            269
+#define IDS_FILTER_MP4                 270
+#define IDS_FILTER_M4A                 271
+#define IDS_FILTER_MP3                 272
+#define IDS_FILTER_FLAC                273
+#define IDS_SELECT_RECORD_NAME         274
+#define IDS_STARTRECORDING             275
+#define IDS_STOPRECORDING              276
+#define IDS_PAUSERECORDING             277
+#define IDS_RESUMERECORDING            278
+#define IDS_RECORD_SETTINGS            279
+#define IDS_RECORD_CODEC               280
+#define IDS_RECORD_ENCODER             281
+#define IDS_RECORD_TYPE                282
+#define IDS_RECORD_HARDWARE            283
+#define IDS_RECORD_SOFTWARE            284
+#define IDS_RECORD_NONE                285
+#define IDS_RECORD_PRESET_LOW           286
+#define IDS_RECORD_PRESET_MEDIUM        287
+#define IDS_RECORD_PRESET_HIGH          288
+#define IDS_RECORD_PRESET_CUSTOM        295
+#define IDS_RECORD_AUTO                 296
+#define IDS_RECORD_NOTHING_SELECTED    289
+#define IDS_RECORD_HINT_HARDWARE       290
+#define IDS_RECORD_HINT_SOFTWARE       291
+#define IDS_RECORD_HINT_AUDIO_ONLY     292
+#define IDS_RECORD_NONE_VIDEO           294
+#define IDS_RECORD_START_FAILED        293
 #define IDR_MENU                        401
 #define IDR_ACCELERATOR                 405
 #define IDR_GB_PRINTER                  406
@@ -897,7 +924,7 @@
 #define ID_OPTIONS_EMULATOR_SAVETYPE_FLASH512K 40174
 #define ID_OPTIONS_EMULATOR_SAVETYPE_FLASH1M 40175
 #define ID_OPTIONS_EMULATOR_AUTOMATICALLYIPSPATCH 40176
-#define ID_TOOLS_AVIRECORDING           40177
+#define ID_TOOLS_RECORDING              40177
 #define ID_OPTIONS_SOUND_VOLUME_1X      40182
 #define ID_OPTIONS_SOUND_VOLUME_2X      40183
 #define ID_OPTIONS_SOUND_VOLUME_3X      40184
@@ -1236,7 +1263,9 @@
 #define ID_OPTIONS_VIDEO_X12            42421
 #define ID_OPTIONS_SOUND_MUTEWHENINACTIVE 42404
 #define ID_FILE_SLOT_DISPLAYMODIFICATIONTIME 42405
-#define ID_TOOLS_PAUSEAVIRECORDING      42406
+#define ID_TOOLS_PAUSERECORDING         42406
+#define ID_TOOLS_LEGACY_AVIRECORDING    42463
+#define ID_TOOLS_LEGACY_PAUSEAVIRECORDING 42464
 #define ID_AUTO_TAKELAGINTOACCOUNT      42407
 #define ID_OPTIONS_JOYPAD_AUTOFIRE_ACCOUNTFORLAG 42408
 #define ID_FILE_FRAMEADVANCESETTINGS    42409
@@ -1282,6 +1311,25 @@
 #define IDC_TEXT_MARGIN_BOTTOM_SPIN     43421
 #define IDC_RENDER_WND                  43422
 #define IDC_STATUS_BAR                  43423
+
+// Recording settings dialog (see Dialogs/RecordSettings.cpp)
+#define IDD_RECORD_SETTINGS             566
+#define IDC_ENC_VIDEO                   1501
+#define IDC_ENC_AUDIO                   1502
+#define IDC_ENC_VIDEO_BITRATE           1503
+#define IDC_ENC_AUDIO_BITRATE           1504
+#define IDC_ENC_SUMMARY                 1505
+#define IDC_ENC_HINT                    1506
+#define IDC_ENC_VIDEO_SPIN              1507
+#define IDC_ENC_AUDIO_SPIN              1508
+#define IDC_ENC_VIDEO_PRESET            1509
+#define IDC_ENC_AUDIO_PRESET            1510
+#define IDC_ENC_PROFILE                 1511
+#define IDC_ENC_FRAMERATE               1514
+#define IDC_ENC_VIDEO_TITLE             1515
+#define IDC_ENC_AUDIO_TITLE             1516
+#define IDC_ENC_SAMPLE_RATE             1517
+#define IDC_ENC_ASYNC                   1518
 
 // Embedded 7z.dll (see 7zip/7zapi.cpp and the RCDATA entry in VBA.rc)
 #define IDR_SEVENZ_DLL                  310

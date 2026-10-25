@@ -635,12 +635,16 @@ ON_UPDATE_COMMAND_UI(ID_TOOLS_DEBUG_DISCONNECT, OnUpdateToolsDebugDisconnect)
 
 ON_COMMAND(ID_TOOLS_SOUNDRECORDING, OnToolsSoundRecording)
 ON_UPDATE_COMMAND_UI(ID_TOOLS_SOUNDRECORDING, OnUpdateToolsSoundRecording)
-ON_COMMAND(ID_TOOLS_AVIRECORDING, OnToolsAVIRecording)
-ON_UPDATE_COMMAND_UI(ID_TOOLS_AVIRECORDING, OnUpdateToolsAVIRecording)
+ON_COMMAND(ID_TOOLS_RECORDING, OnToolsRecording)
+ON_UPDATE_COMMAND_UI(ID_TOOLS_RECORDING, OnUpdateToolsRecording)
 ON_COMMAND(ID_TOOLS_CAPTURESCALED, OnToolsCaptureScaled)
 ON_UPDATE_COMMAND_UI(ID_TOOLS_CAPTURESCALED, OnUpdateToolsCaptureScaled)
-ON_COMMAND(ID_TOOLS_PAUSEAVIRECORDING, OnToolsPauseAVIRecording)
-ON_UPDATE_COMMAND_UI(ID_TOOLS_PAUSEAVIRECORDING, OnUpdateToolsPauseAVIRecording)
+ON_COMMAND(ID_TOOLS_PAUSERECORDING, OnToolsPauseRecording)
+ON_UPDATE_COMMAND_UI(ID_TOOLS_PAUSERECORDING, OnUpdateToolsPauseRecording)
+ON_COMMAND(ID_TOOLS_LEGACY_AVIRECORDING, OnToolsLegacyAVIRecording)
+ON_UPDATE_COMMAND_UI(ID_TOOLS_LEGACY_AVIRECORDING, OnUpdateToolsLegacyAVIRecording)
+ON_COMMAND(ID_TOOLS_LEGACY_PAUSEAVIRECORDING, OnToolsLegacyPauseAVIRecording)
+ON_UPDATE_COMMAND_UI(ID_TOOLS_LEGACY_PAUSEAVIRECORDING, OnUpdateToolsLegacyPauseAVIRecording)
 
 ON_COMMAND(ID_MOVIE_RECORD, OnToolsRecordMovie)
 ON_UPDATE_COMMAND_UI(ID_MOVIE_RECORD, OnUpdateToolsRecordMovie)
@@ -2311,7 +2315,9 @@ bool MainWnd::winFileRun(bool reopening)
 		if (outputAVIFile)
 		{
 			outputAVIFile = false;
-			OnToolsStartAVIRecording();
+			// The -avi switch is as old as the command line itself, so it
+			// keeps starting the VFW writer.
+			OnToolsLegacyAVIRecording();
 		}
 		if (pauseAfterTime >= 0)
 		{

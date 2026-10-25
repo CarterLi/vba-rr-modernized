@@ -12,7 +12,7 @@
 #include <afxtempl.h>
 
 #include "AcceleratorManager.h"
-#include "AVIWrite.h"
+#include "VideoWriter.h"
 #include "Display.h"
 #include "DDrawConfig.h"
 #include "GdiConfig.h"
@@ -44,6 +44,15 @@ enum
 {
 	SOUND_API_DIRECTSOUND,
 	SOUND_API_XAUDIO2
+};
+
+// Which writer the running recording is using (theApp.recordingBackend).
+// The two menus are mutually exclusive; WAV recording is independent of both.
+enum
+{
+	RECORDING_NONE,
+	RECORDING_MF,
+	RECORDING_VFW
 };
 
 // Frame upscaling (theApp.upscaler): the frame is either drawn by the sampler
@@ -317,8 +326,10 @@ public:
 	ISound *	 sound;
 	int			 soundApi;  // SOUND_API_DIRECTSOUND or SOUND_API_XAUDIO2
 	bool		 aviRecording;
-	AVIWrite *	 aviRecorder;
+	IVideoWriter *aviRecorder;
 	CString		 aviRecordName;
+	int			 recordingBackend;	// RECORDING_NONE / RECORDING_MF / RECORDING_VFW
+	RecordParams recordParams;		// what the recording dialog last chose
 	bool		 altAviRecordMethod;
 	bool		 captureScaled;  // record AVI/screenshots at the window size, with filters
 	bool		 nvVideoLog;

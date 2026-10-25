@@ -335,7 +335,7 @@ BEGIN
     EDITTEXT        IDC_EDIT_AF_START,47,151,81,12,ES_AUTOHSCROLL
     PUSHBUTTON      "Clear",IDC_CLEAR_KEY,5,214,38,14
     PUSHBUTTON      "OK",ID_OK,47,214,40,14
-    PUSHBUTTON      "Cancel",ID_CANCEL,90,214,40,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     LTEXT           "Up:",IDC_STATIC_UP,5,25,35,10
     LTEXT           "Down:",IDC_STATIC_DOWN,5,39,35,10
     LTEXT           "Left:",IDC_STATIC_LEFT,5,53,35,10
@@ -379,7 +379,7 @@ BEGIN
     PUSHBUTTON      "&Start",IDC_START,15,237,50,14,WS_GROUP
     PUSHBUTTON      "S&earch",IDC_SEARCH,80,236,50,14
     PUSHBUTTON      "&Add cheat",IDC_ADD_CHEAT,145,236,50,14
-    DEFPUSHBUTTON   "OK",ID_OK,210,236,50,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
     GROUPBOX        "&Search type",IDC_STATIC,3,118,84,36
     GROUPBOX        "&Data size",IDC_STATIC,3,158,84,44
     GROUPBOX        "Compare type",IDC_STATIC,95,118,92,84
@@ -403,8 +403,8 @@ BEGIN
     CONTROL         "&Unsigned",IDC_UNSIGNED,"Button",BS_AUTORADIOBUTTON,62,98,46,10
     CONTROL         "&Hexadecimal",IDC_HEXADECIMAL,"Button",BS_AUTORADIOBUTTON,117,98,57,10
     CONTROL         "&Enabled",IDC_CHEAT_ENABLED,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,11,116,60,10
-    DEFPUSHBUTTON   "&OK",ID_OK,36,136,50,14,WS_GROUP
-    PUSHBUTTON      "&Cancel",ID_CANCEL,99,136,50,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     LTEXT           "&Value:",IDC_STATIC,3,27,54,8
     GROUPBOX        "Number format",IDC_STATIC,3,88,180,24
     LTEXT           "&Address:",IDC_STATIC,3,9,54,8
@@ -427,7 +427,7 @@ BEGIN
     PUSHBUTTON      "&Edit",IDC_EDIT,9,230,64,14
     PUSHBUTTON      "&Remove",IDC_REMOVE,75,230,64,14
     PUSHBUTTON      "&Enable/Dis.",IDC_ENABLE,141,230,64,14
-    DEFPUSHBUTTON   "&OK",ID_OK,206,230,64,14,WS_GROUP
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
     CONTROL         "",IDC_CHEAT_LIST,"SysListView32",LVS_REPORT | WS_BORDER | WS_GROUP | WS_TABSTOP,5,15,269,156
     LTEXT           "Status legend:",IDC_STATIC,6,3,46,8
     LTEXT           "-: Mixed",IDC_STATIC,110,3,40,8
@@ -442,7 +442,7 @@ CAPTION "Cheat explanation"
 FONT 8, "MS Sans Serif"
 BEGIN
     EDITTEXT        IDC_EXPLAIN_TEXT,7,7,306,170,ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL | WS_TABSTOP
-    DEFPUSHBUTTON   "&OK",ID_OK,135,182,50,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
 END
 
 IDD_ASSOCIATIONS DIALOG 0, 0, 116, 95
@@ -457,8 +457,8 @@ BEGIN
     CONTROL         ".gba",IDC_GBA,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,75,13,30,10
     CONTROL         ".agb",IDC_AGB,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,75,27,30,10
     CONTROL         ".bin",IDC_BIN,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,75,41,27,10
-    DEFPUSHBUTTON   "OK",ID_OK,3,78,50,14
-    PUSHBUTTON      "Cancel",ID_CANCEL,63,78,50,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     GROUPBOX        "GBA Types",IDC_STATIC,63,3,50,51
     GROUPBOX        "GB Types",IDC_STATIC,3,3,50,69
 END
@@ -468,7 +468,7 @@ STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Rom information"
 FONT 8, "MS Sans Serif"
 BEGIN
-    DEFPUSHBUTTON   "OK",ID_OK,84,121,50,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
     LTEXT           "Game title:",IDC_STATIC,7,10,60,8
     LTEXT           "Game code:",IDC_STATIC,7,24,60,8
     LTEXT           "Maker code:",IDC_STATIC,7,38,60,8
@@ -492,7 +492,7 @@ STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Rom information"
 FONT 8, "MS Sans Serif"
 BEGIN
-    DEFPUSHBUTTON   "OK",ID_OK,84,200,50,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
     LTEXT           "Game title:",IDC_STATIC,7,10,60,8
     LTEXT           "Maker code:",IDC_STATIC,7,38,60,8
     LTEXT           "Unit code:",IDC_STATIC,7,68,60,8
@@ -532,7 +532,7 @@ BEGIN
     PUSHBUTTON      "&Remove",IDC_REMOVE,197,183,80,14
     PUSHBUTTON      "Remove A&ll",IDC_REMOVE_ALL,9,202,80,14
     PUSHBUTTON      "&Enable/Dis.",IDC_ENABLE,103,202,80,14
-    DEFPUSHBUTTON   "&OK",ID_OK,197,202,80,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
     LTEXT           "Status legend:",IDC_STATIC,10,9,46,8
     LTEXT           "E: Enabled",IDC_STATIC,195,9,36,8
     LTEXT           "D: Disabled",IDC_STATIC,241,9,38,8
@@ -546,8 +546,8 @@ BEGIN
     EDITTEXT        IDC_DESC,60,7,120,14,ES_AUTOHSCROLL
     EDITTEXT        IDC_CODE,60,23,120,58,ES_MULTILINE | ES_UPPERCASE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_WANTRETURN
     CONTROL         "&Enabled",IDC_CHEAT_ENABLED,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,11,88,60,10
-    DEFPUSHBUTTON   "OK",ID_OK,33,106,50,14
-    PUSHBUTTON      "Cancel",ID_CANCEL,99,106,50,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     LTEXT           "&Description:",IDC_STATIC,3,10,54,8
     LTEXT           "&Code:",IDC_STATIC,3,29,54,8
 END
@@ -578,7 +578,7 @@ BEGIN
     EDITTEXT        IDC_EDIT_LEFT,47,30,81,12,ES_AUTOHSCROLL
     EDITTEXT        IDC_EDIT_RIGHT,47,44,81,12,ES_AUTOHSCROLL
     PUSHBUTTON      "OK",ID_OK,20,60,40,14
-    PUSHBUTTON      "Cancel",ID_CANCEL,74,60,40,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     LTEXT           "Up:",IDC_STATIC,5,2,35,10
     LTEXT           "Down:",IDC_STATIC,5,16,35,10
     LTEXT           "Left:",IDC_STATIC,5,30,35,10
@@ -591,8 +591,8 @@ CAPTION "Language selection"
 FONT 8, "MS Sans Serif"
 BEGIN
     EDITTEXT        IDC_LANG_STRING,140,25,40,14,ES_AUTOHSCROLL
-    DEFPUSHBUTTON   "OK",ID_OK,30,49,50,14
-    PUSHBUTTON      "Cancel",ID_CANCEL,104,49,50,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     LTEXT           "Current system language is:",IDC_STATIC,6,9,123,8
     LTEXT           "Enter language name (3 letter):",IDC_STATIC,6,30,127,8
     LTEXT           "",IDC_LANG_NAME,140,9,40,8
@@ -603,8 +603,8 @@ STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Select codes to import"
 FONT 8, "MS Sans Serif"
 BEGIN
-    DEFPUSHBUTTON   "OK",ID_OK,91,214,50,14
-    PUSHBUTTON      "Cancel",ID_CANCEL,174,214,50,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     LISTBOX         IDC_GAME_LIST,7,7,302,205,LBS_SORT | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_HSCROLL | WS_TABSTOP
 END
 
@@ -766,8 +766,8 @@ BEGIN
     EDITTEXT        IDC_EDIT_KEY,156,100,100,12,ES_AUTOHSCROLL | NOT WS_TABSTOP,WS_EX_TRANSPARENT
     CONTROL         "",IDC_ACCELEDIT_PROGRESSBAR,"msctls_progress32",PBS_SMOOTH | WS_BORDER,156,116,100,14
     CONTROL         "",IDC_CURRENTS,"SysListView32",LVS_REPORT | LVS_SHOWSELALWAYS | LVS_NOLABELWRAP | LVS_ALIGNLEFT | LVS_NOSCROLL | LVS_NOCOLUMNHEADER | WS_BORDER | WS_TABSTOP,156,19,100,63
-    DEFPUSHBUTTON   "&OK",ID_OK,263,7,50,14
-    PUSHBUTTON      "&Cancel",ID_CANCEL,263,25,50,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     PUSHBUTTON      "&Apply",IDC_ACCELEDIT_APPLY,264,44,49,14
     PUSHBUTTON      "&Insert",IDC_ASSIGN,263,82,50,14
     PUSHBUTTON      "&Delete",IDC_REMOVE,263,100,50,14
@@ -826,8 +826,8 @@ BEGIN
     PUSHBUTTON      "",IDC_COLOR_OB2,89,78,28,14
     PUSHBUTTON      "",IDC_COLOR_OB3,126,78,28,14
     PUSHBUTTON      "Reset",IDC_RESET,7,100,50,14
-    DEFPUSHBUTTON   "OK",ID_OK,59,100,50,14
-    PUSHBUTTON      "Cancel",ID_CANCEL,111,100,50,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     GROUPBOX        "Background",IDC_STATIC,8,37,154,29
     GROUPBOX        "Sprite",IDC_STATIC,8,67,154,30
 END
@@ -899,8 +899,8 @@ STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "GDB connection"
 FONT 8, "MS Sans Serif"
 BEGIN
-    DEFPUSHBUTTON   "OK",ID_OK,34,30,50,14
-    PUSHBUTTON      "Cancel",ID_CANCEL,102,30,50,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     LTEXT           "Port to wait for connection:",IDC_STATIC,7,10,105,8
     EDITTEXT        IDC_PORT,125,7,54,14,ES_RIGHT | ES_AUTOHSCROLL
 END
@@ -910,7 +910,7 @@ STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Waiting..."
 FONT 8, "MS Sans Serif"
 BEGIN
-    PUSHBUTTON      "Cancel",ID_CANCEL,67,23,50,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     LTEXT           "Waiting for connection on port:",IDC_STATIC,7,7,117,8
     LTEXT           "",IDC_PORT,143,7,36,8
 END
@@ -933,7 +933,7 @@ BEGIN
     EDITTEXT        IDC_LOG,107,7,252,183,ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_READONLY | WS_VSCROLL | WS_HSCROLL
     PUSHBUTTON      "Save...",IDC_SAVE,75,197,50,14
     PUSHBUTTON      "Clear",IDC_CLEAR,137,197,50,14
-    DEFPUSHBUTTON   "OK",ID_OK,197,197,50,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
     GROUPBOX        "Verbose",IDC_STATIC,7,7,93,142
 END
 
@@ -945,8 +945,8 @@ BEGIN
     EDITTEXT        IDC_TITLE,84,7,157,14,ES_AUTOHSCROLL
     EDITTEXT        IDC_DESC,84,27,157,14,ES_AUTOHSCROLL
     EDITTEXT        IDC_NOTES,84,47,157,73,ES_MULTILINE | ES_AUTOHSCROLL | ES_WANTRETURN
-    DEFPUSHBUTTON   "OK",ID_OK,67,127,50,14
-    PUSHBUTTON      "Cancel",ID_CANCEL,130,127,50,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     LTEXT           "Title:",IDC_STATIC,7,8,62,8
     LTEXT           "Description:",IDC_STATIC,7,28,63,8
     LTEXT           "Notes:",IDC_STATIC,7,48,60,8
@@ -959,10 +959,43 @@ FONT 8, "MS Sans Serif"
 BEGIN
     EDITTEXT        IDC_ADDRESS,99,6,80,14,ES_AUTOHSCROLL
     EDITTEXT        IDC_SIZE_CONTROL,99,26,80,14,ES_AUTOHSCROLL
-    DEFPUSHBUTTON   "OK",ID_OK,34,46,50,14
-    PUSHBUTTON      "Cancel",ID_CANCEL,102,46,50,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     LTEXT           "Address:",IDC_STATIC,7,11,65,8
     LTEXT           "Size:",IDC_STATIC,7,29,65,8
+END
+
+IDD_RECORD_SETTINGS DIALOGEX 0, 0, 240, 322
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Recording Settings"
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    LTEXT           "Video",IDC_ENC_VIDEO_TITLE,7,6,226,11
+    LTEXT           "&Encoder:",IDC_STATIC,7,21,78,8
+    CONTROL         "",IDC_ENC_VIDEO,"SysListView32",LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP,7,32,226,72
+    LTEXT           "&Bitrate (kbps):",IDC_STATIC,7,110,78,8
+    EDITTEXT        IDC_ENC_VIDEO_BITRATE,88,108,70,14,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "",IDC_ENC_VIDEO_SPIN,"msctls_updown32",UDS_AUTOBUDDY | UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_ARROWKEYS | UDS_NOTHOUSANDS,148,108,10,14
+    COMBOBOX        IDC_ENC_VIDEO_PRESET,163,108,70,90,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "&Profile:",IDC_STATIC,7,128,78,8
+    COMBOBOX        IDC_ENC_PROFILE,163,126,70,90,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "&Frame rate:",IDC_STATIC,7,146,78,8
+    COMBOBOX        IDC_ENC_FRAMERATE,163,144,70,90,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Encode in a background &thread",IDC_ENC_ASYNC,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,162,226,11
+    LTEXT           "",IDC_ENC_SUMMARY,7,180,226,10
+    LTEXT           "",IDC_ENC_HINT,7,192,226,20
+    CONTROL         "",IDC_STATIC,"Static",SS_ETCHEDHORZ,7,218,226,1
+    LTEXT           "Audio",IDC_ENC_AUDIO_TITLE,7,226,226,11
+    LTEXT           "E&ncoder:",IDC_STATIC,7,241,78,8
+    COMBOBOX        IDC_ENC_AUDIO,88,239,145,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "B&itrate (kbps):",IDC_STATIC,7,259,78,8
+    EDITTEXT        IDC_ENC_AUDIO_BITRATE,88,257,70,14,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "",IDC_ENC_AUDIO_SPIN,"msctls_updown32",UDS_AUTOBUDDY | UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_ARROWKEYS | UDS_NOTHOUSANDS,148,257,10,14
+    COMBOBOX        IDC_ENC_AUDIO_PRESET,163,257,70,90,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Sample rate:",IDC_STATIC,7,277,78,8
+    LTEXT           "",IDC_ENC_SAMPLE_RATE,88,275,70,8
+    DEFPUSHBUTTON   "Start Recording",ID_OK,114,300,60,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,178,300,55,14
 END
 
 IDD_THROTTLE DIALOGEX 0, 0, 186, 63
@@ -971,8 +1004,8 @@ CAPTION "Throttle"
 FONT 8, "MS Sans Serif", 0, 0, 0x0
 BEGIN
     EDITTEXT        IDC_THROTTLE,7,20,172,14,ES_AUTOHSCROLL
-    DEFPUSHBUTTON   "OK",ID_OK,37,42,50,14
-    PUSHBUTTON      "Cancel",ID_CANCEL,99,42,50,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     LTEXT           "Enter desired throttle (1%...1000%):",IDC_STATIC,7,7,172,8
 END
 
@@ -1144,8 +1177,8 @@ STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Confirm mode"
 FONT 8, "MS Sans Serif"
 BEGIN
-    DEFPUSHBUTTON   "OK",ID_OK,31,36,50,14
-    PUSHBUTTON      "Cancel",ID_CANCEL,103,36,50,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     CTEXT           "Do you want to keep the current mode?",IDC_STATIC,7,7,172,8
     CTEXT           "",IDC_TIMER,7,19,172,8
 END
@@ -1156,8 +1189,8 @@ CAPTION "Rewind Settings"
 FONT 8, "MS Sans Serif", 0, 0, 0x0
 BEGIN
     EDITTEXT        IDC_INTERVAL,7,26,174,14,ES_AUTOHSCROLL
-    DEFPUSHBUTTON   "OK",ID_OK,37,111,50,14
-    PUSHBUTTON      "Cancel",ID_CANCEL,99,111,50,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     LTEXT           "Enter the rewind interval (0.2 ... 600) in seconds:",IDC_STATIC,7,7,174,8
     LTEXT           "Or enter 0 to disable rewind.",IDC_STATIC,7,15,174,8
     EDITTEXT        IDC_REWINDSLOTS,7,66,174,14,ES_AUTOHSCROLL
@@ -1202,8 +1235,8 @@ CAPTION "Fullscreen scale"
 FONT 8, "MS Sans Serif"
 BEGIN
     EDITTEXT        IDC_VALUE,7,28,172,14,ES_AUTOHSCROLL
-    DEFPUSHBUTTON   "OK",ID_OK,37,47,50,14
-    PUSHBUTTON      "Cancel",ID_CANCEL,99,47,50,14
+    DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     LTEXT           "Enter the maxium fullscreen scale:",IDC_STATIC,7,7,172,8
     LTEXT           "Enter 0 to use maximum scale.",IDC_STATIC,7,17,172,8
 END
@@ -1418,7 +1451,7 @@ BEGIN
     CONTROL         "&2 bytes",IDC_2_BYTES,"Button",BS_AUTORADIOBUTTON,98,57,61,11
     CONTROL         "&4 bytes",IDC_4_BYTES,"Button",BS_AUTORADIOBUTTON,98,67,61,11
     DEFPUSHBUTTON   "&OK",IDOK,66,80,50,14
-    PUSHBUTTON      "&Cancel",ID_CANCEL,120,80,50,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
 END
 
 IDD_RAMWATCH DIALOGEX 0, 0, 269, 242
@@ -1446,7 +1479,7 @@ FONT 8, "MS Sans Serif", 0, 0, 0x0
 BEGIN
     EDITTEXT        IDC_PROMPT_EDIT,10,30,170,15,ES_AUTOHSCROLL
     DEFPUSHBUTTON   "OK",IDOK,100,50,50,15
-    PUSHBUTTON      "Cancel",ID_CANCEL,40,50,50,15
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     CTEXT           "",IDC_PROMPT_TEXT,0,3,190,8,SS_CENTERIMAGE
     CTEXT           "",IDC_PROMPT_TEXT2,0,15,190,8,SS_CENTERIMAGE
 END
@@ -2487,10 +2520,15 @@ BEGIN
             MENUITEM SEPARATOR
             MENUITEM "&Associate With Savestates",  ID_MOVIE_ASSC_WITH_SAVESTATE
         END
-        MENUITEM "Pause/Resume AVI &Recording", ID_TOOLS_PAUSEAVIRECORDING
-        MENUITEM "Start/Stop &AVI Recording...", ID_TOOLS_AVIRECORDING
-        MENUITEM "Record AVI/Screenshot at &Window Size and Filter", ID_TOOLS_CAPTURESCALED
-        MENUITEM "Start/Stop &WAV Recording...", ID_TOOLS_SOUNDRECORDING
+        MENUITEM "Start/Stop Audio/Video &File Recording...", ID_TOOLS_RECORDING
+        MENUITEM "&Pause/Resume File Recording", ID_TOOLS_PAUSERECORDING
+        MENUITEM "Record at &Window Size and Filter", ID_TOOLS_CAPTURESCALED
+        POPUP "&Legacy AVI Recording"
+        BEGIN
+            MENUITEM "Start/Stop &AVI Recording...", ID_TOOLS_LEGACY_AVIRECORDING
+            MENUITEM "Pause/Resume AVI &Recording", ID_TOOLS_LEGACY_PAUSEAVIRECORDING
+            MENUITEM "Start/Stop &WAV Recording...", ID_TOOLS_SOUNDRECORDING
+        END
         MENUITEM SEPARATOR
         MENUITEM "Screenshot &Capture...",      ID_FILE_SCREENCAPTURE
         // "Screenshot &Format" is replaced at run time with one entry per WIC
@@ -3011,6 +3049,33 @@ BEGIN
     IDS_CHEAT_EXPLAIN_TYPE_GAMESHARK"Gameshark"
     IDS_CHEAT_EXPLAIN_TYPE_CODEBREAKER    "CodeBreaker"
     IDS_CHEAT_EXPLAIN_DATA          "data used by the line above"
+    IDS_FILTER_MP4                 "MPEG-4 Video_*.mp4_All Files_*.*__"
+    IDS_FILTER_FLAC               "FLAC Audio_*.flac_All Files_*.*__"
+    IDS_FILTER_M4A                 "MPEG-4 Audio_*.m4a_All Files_*.*__"
+    IDS_FILTER_MP3                 "MP3 Audio_*.mp3_All Files_*.*__"
+    IDS_SELECT_RECORD_NAME         "Select recording file name"
+    IDS_STARTRECORDING             "Start Audio/Video &File Recording..."
+    IDS_STOPRECORDING              "Stop Audio/Video &File Recording"
+    IDS_PAUSERECORDING             "Pause Audio/Video &File Recording"
+    IDS_RESUMERECORDING            "Resume Audio/Video &File Recording"
+    IDS_RECORD_SETTINGS            "Recording Settings"
+    IDS_RECORD_CODEC               "Codec"
+    IDS_RECORD_ENCODER             "Encoder"
+    IDS_RECORD_TYPE                "Type"
+    IDS_RECORD_HARDWARE            "Hardware"
+    IDS_RECORD_SOFTWARE            "Software"
+    IDS_RECORD_NONE                "None"
+    IDS_RECORD_NONE_VIDEO          "None (audio only)"
+    IDS_RECORD_PRESET_LOW          "Low"
+    IDS_RECORD_PRESET_MEDIUM       "Medium"
+    IDS_RECORD_PRESET_HIGH         "High"
+    IDS_RECORD_PRESET_CUSTOM       "Custom"
+    IDS_RECORD_AUTO                "Auto"
+    IDS_RECORD_NOTHING_SELECTED    "Choose a video or an audio encoder."
+    IDS_RECORD_HINT_HARDWARE       "Encoded on the GPU: low CPU load, the frame rate stays."
+    IDS_RECORD_HINT_SOFTWARE       "Encoded on the CPU. Lower the quality if the frame rate suffers."
+    IDS_RECORD_HINT_AUDIO_ONLY     "Audio only: no picture is recorded."
+    IDS_RECORD_START_FAILED        "Cannot start the recording encoder."
 END
 
 /////////////////////////////////////////////////////////////////////////////
@@ -3024,7 +3089,7 @@ CAPTION "Choose File"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
     DEFPUSHBUTTON   "&OK",IDOK,128,94,50,16
-    PUSHBUTTON      "&Cancel",ID_CANCEL,73,94,50,16
+    PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     LISTBOX         IDC_LIST1,4,4,173,87,LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_TABSTOP
 END
 
