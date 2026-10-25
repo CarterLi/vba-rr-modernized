@@ -22,7 +22,7 @@ LOGFONT LuaConsoleLogFont;
 struct ControlLayoutInfo
 {
 	int controlID;
-	
+
 	enum LayoutType // what to do when the containing window resizes
 	{
 		NONE, // leave the control where it was
@@ -139,8 +139,8 @@ INT_PTR CALLBACK DlgLuaScriptDialog(HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 		r.bottom += staggerOffset;
 
 		// push it away from the main window if we can
-		const int width = (r.right-r.left); 
-		const int width2 = (r2.right-r2.left); 
+		const int width = (r.right-r.left);
+		const int width2 = (r2.right-r2.left);
 		if(r.left+width2 + width < GetSystemMetrics(SM_CXSCREEN))
 		{
 			r.right += width;
@@ -354,15 +354,16 @@ INT_PTR CALLBACK DlgLuaScriptDialog(HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 				// version when it carries one, which is where a stock Lua 5.1
 				// build states its patch level.
 				text.Format(_T(VBA_NAME_AND_VERSION) _T(" Lua scripting\r\n\r\n")
-				            "Engine  : %s\r\n"
-				            "Lua DLL : %s",
+				            "Engine  : %hs\r\n"
+				            "Lua DLL : %hs",
 				            VBALuaEngineVersion(), VBALuaEnginePath());
 
 				CString fileVersion = VBALuaEngineFileVersion();
 				if (!fileVersion.IsEmpty())
 					text.AppendFormat(_T("\r\nFile ver: %s"), (LPCTSTR)fileVersion);
 
-				MessageBox(hDlg, text, _T("About Lua Scripting"), MB_OK | MB_ICONINFORMATION);
+				CString title = winResLoadString(IDS_LUA_ABOUT_TITLE);
+				MessageBox(hDlg, text, title, MB_OK | MB_ICONINFORMATION);
 			}	break;
 		}
 		break;

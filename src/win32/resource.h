@@ -330,6 +330,7 @@
 #define IDS_VBMEDITOR_TIP_PLAYHEAD     321
 #define IDS_VBMEDITOR_TIP_FRAMENO      322
 #define IDS_VBMEDITOR_TIME             323
+#define IDS_LUA_ABOUT_TITLE            324
 #define IDR_MENU                        401
 #define IDR_ACCELERATOR                 405
 #define IDR_GB_PRINTER                  406
