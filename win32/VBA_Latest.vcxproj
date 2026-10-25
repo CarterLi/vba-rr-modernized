@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="V72XD|x64">
@@ -1174,6 +1174,7 @@ call "$(ProjectDir)defaultconfig\CopyWgpu.bat" "$(Platform)" "$(OutDir)"</Comman
     <ClInclude Include="..\src\filters\filters.h" />
     <ClInclude Include="..\src\filters\xbrz.h" />
     <ClInclude Include="..\src\filters\xbrz_config.h" />
+    <ClInclude Include="..\src\filters\xbrz_simd.h" />
     <ClInclude Include="..\src\filters\xbrz_tools.h" />
     <ClInclude Include="..\src\gb\V7\gbCodes.h" />
     <ClInclude Include="..\src\gb\V7\gbCodesCB.h" />
