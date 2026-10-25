@@ -25,6 +25,8 @@ The short version, for the impatient:
 * **Record straight to MP4** with the encoder your machine already has — the graphics card's
   when there is one — at the window size and with the filter you were watching: no raw frames,
   no third-party tool.
+* **Edit a movie's key timeline** — a TAStudio-style frame grid, and every change goes
+  straight back into the `.vbm`.
 * Dark mode, sharp text on any monitor, and file dialogs from this decade.
 * Switch controllers work, controllers can be plugged in while the emulator runs, and cheats
   can explain themselves.
@@ -141,6 +143,20 @@ This is the part built for people who record:
   with the `AVISaveOptions` codec picker, and the WAV recorder, both unchanged. They live in
   a submenu because that flow runs the other way round — save the file first, choose the
   codec second.
+
+### Editing a movie's key timeline
+
+**Tools → Movie → VBM Editor…** shows the open `.vbm` as a frame grid — one row per frame,
+one column per pad button, an `HH:mm:ss.SS` stamp, an arrow on the row being played. Click a
+cell to press or release that button, right-click to insert, delete or mark a row; every
+change is written straight back into the `.vbm`. The buttons at the top are the File menu's
+pause and frame advance, and a box jumps to a typed frame number.
+
+It edits the recording, never the emulator — no pause, reset, seek or state load — so a frame
+before the playhead can only matter from the next playback on. Movies open read-only; turn
+that off first, then untick the editor's own box. The grid is a virtual list, so a three-hour
+movie opens as fast as a ten-second one. Notes:
+[documentation/vbm-editor.md](documentation/vbm-editor.md).
 
 ### Screenshots
 

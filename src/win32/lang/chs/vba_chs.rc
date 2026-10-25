@@ -827,6 +827,26 @@ BEGIN
     PUSHBUTTON      "取消",ID_CANCEL,178,300,55,14
 END
 
+IDD_VBM_EDITOR DIALOGEX 0, 0, 276, 352
+STYLE DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX
+CAPTION "VBM 编辑器"
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    CONTROL         "",IDC_VBM_PLAY,"Button",BS_OWNERDRAW | WS_TABSTOP,7,5,21,14
+    CONTROL         "",IDC_VBM_PAUSE,"Button",BS_OWNERDRAW | WS_TABSTOP,29,5,21,14
+    CONTROL         "",IDC_VBM_STEP,"Button",BS_OWNERDRAW | WS_TABSTOP,51,5,21,14
+    CONTROL         "",IDC_VBM_GOTOPLAYHEAD,"Button",BS_OWNERDRAW | WS_TABSTOP,73,5,21,14
+    LTEXT           "跳转到帧",IDC_STATIC,146,8,52,8,SS_RIGHT
+    EDITTEXT        IDC_VBM_FRAMENO,202,6,67,13,ES_NUMBER | ES_RIGHT | ES_AUTOHSCROLL
+    CONTROL         "只读",IDC_VBM_READONLY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,26,58,10
+    CONTROL         "跟随播放位置",IDC_VBM_FOLLOW,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,67,26,79,10
+    PUSHBUTTON      "上一个标记",IDC_VBM_PREVMARK,155,24,55,14
+    PUSHBUTTON      "下一个标记",IDC_VBM_NEXTMARK,212,24,57,14
+    CONTROL         "",IDC_VBM_LIST,"SysListView32",LVS_REPORT | LVS_OWNERDATA | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER | WS_BORDER | WS_TABSTOP,7,42,262,284,WS_EX_CLIENTEDGE
+    LTEXT           "",IDC_VBM_HINT,7,329,262,9
+    LTEXT           "",IDC_VBM_STATUS,7,340,262,9
+END
+
 IDD_THROTTLE DIALOGEX 0, 0, 186, 63
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "速度限制"
@@ -1949,6 +1969,7 @@ BEGIN
             MENUITEM "继续/退出录制(&R)",      ID_MOVIE_RESUME_RECORD
             MENUITEM SEPARATOR
             MENUITEM "只读模式(&O)",             ID_MOVIE_READONLY
+            MENUITEM "VBM 编辑器(&E)...",              ID_TOOLS_VBMEDITOR
             POPUP "编辑模式(&M)"
             BEGIN
                 MENUITEM "切换到下一模式(&N)",           ID_MOVIE_TOOL_EDIT_MODE_NEXT
@@ -2421,6 +2442,33 @@ BEGIN
     IDS_RECORD_HINT_SOFTWARE       "在 CPU 上编码。若帧率受影响，请降低质量。"
     IDS_RECORD_HINT_AUDIO_ONLY     "仅录制音频，不录制画面。"
     IDS_RECORD_START_FAILED        "无法启动录制编码器。"
+    IDS_VBMEDITOR_HINT             "播放位置之前的修改只改变录像，不影响正在运行的游戏。"
+    IDS_VBMEDITOR_FRAME            "帧"
+    IDS_VBMEDITOR_NO_MOVIE         "没有打开录像文件。"
+    IDS_VBMEDITOR_FILE_READONLY    "录像文件不可写，无法编辑时间轴。"
+    IDS_VBMEDITOR_MARK             "标记该帧(&M)"
+    IDS_VBMEDITOR_UNMARK           "取消该帧的标记(&M)"
+    IDS_VBMEDITOR_INSERT_ROW       "在该帧之前插入一行(&I)"
+    IDS_VBMEDITOR_DELETE_ROW       "删除该行(&D)"
+    IDS_VBMEDITOR_GOTO_PREV        "跳到上一个标记(&P)"
+    IDS_VBMEDITOR_GOTO_NEXT        "跳到下一个标记(&N)"
+    IDS_VBMEDITOR_CLEAR_MARKS      "清除所有标记(&C)"
+    IDS_VBMEDITOR_INSERTED         "已在第 %u 帧插入一行。"
+    IDS_VBMEDITOR_DELETED          "已删除第 %u 帧。"
+    IDS_VBMEDITOR_MARKED           "已标记第 %u 帧。"
+    IDS_VBMEDITOR_UNMARKED         "已取消第 %u 帧的标记。"
+    IDS_VBMEDITOR_NO_MARKS         "该方向上没有标记。"
+    IDS_VBMEDITOR_END_STATE        "录像已结束，无法插入或删除行。"
+    IDS_VBMEDITOR_RECORD_STATE     "录制中无法插入或删除行。"
+    IDS_VBMEDITOR_CANNOT_EDIT      "该帧无法在这里编辑。"
+    IDS_VBMEDITOR_READONLY_STATE   "录像处于只读模式，请用「工具 > 录像 > 只读模式」取消后再编辑。"
+    IDS_VBMEDITOR_SHIFT_WARNING    "播放位置所在的行发生了位移，下一帧将使用编辑后的按键序列。"
+    IDS_VBMEDITOR_TIP_PLAY         "播放"
+    IDS_VBMEDITOR_TIP_PAUSE        "暂停"
+    IDS_VBMEDITOR_TIP_STEP         "前进一帧"
+    IDS_VBMEDITOR_TIP_PLAYHEAD     "跳到正在播放的帧"
+    IDS_VBMEDITOR_TIP_FRAMENO      "输入帧号后按回车。"
+    IDS_VBMEDITOR_TIME             "时间"
 END
 
 IDD_ARCHIVEFILECHOOSER DIALOGEX 0, 0, 182, 113

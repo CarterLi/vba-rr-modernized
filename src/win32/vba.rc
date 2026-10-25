@@ -998,6 +998,30 @@ BEGIN
     PUSHBUTTON      "Cancel",ID_CANCEL,178,300,55,14
 END
 
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog: the recorded key sequence, one row per frame (Tools > Movie)
+//
+IDD_VBM_EDITOR DIALOGEX 0, 0, 276, 352
+STYLE DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX
+CAPTION "VBM Editor"
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    CONTROL         "",IDC_VBM_PLAY,"Button",BS_OWNERDRAW | WS_TABSTOP,7,5,21,14
+    CONTROL         "",IDC_VBM_PAUSE,"Button",BS_OWNERDRAW | WS_TABSTOP,29,5,21,14
+    CONTROL         "",IDC_VBM_STEP,"Button",BS_OWNERDRAW | WS_TABSTOP,51,5,21,14
+    CONTROL         "",IDC_VBM_GOTOPLAYHEAD,"Button",BS_OWNERDRAW | WS_TABSTOP,73,5,21,14
+    LTEXT           "Go to frame",IDC_STATIC,146,8,52,8,SS_RIGHT
+    EDITTEXT        IDC_VBM_FRAMENO,202,6,67,13,ES_NUMBER | ES_RIGHT | ES_AUTOHSCROLL
+    CONTROL         "Read-only",IDC_VBM_READONLY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,26,58,10
+    CONTROL         "Follow playhead",IDC_VBM_FOLLOW,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,67,26,79,10
+    PUSHBUTTON      "Prev mark",IDC_VBM_PREVMARK,155,24,55,14
+    PUSHBUTTON      "Next mark",IDC_VBM_NEXTMARK,212,24,57,14
+    CONTROL         "",IDC_VBM_LIST,"SysListView32",LVS_REPORT | LVS_OWNERDATA | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER | WS_BORDER | WS_TABSTOP,7,42,262,284,WS_EX_CLIENTEDGE
+    LTEXT           "",IDC_VBM_HINT,7,329,262,9
+    LTEXT           "",IDC_VBM_STATUS,7,340,262,9
+END
+
 IDD_THROTTLE DIALOGEX 0, 0, 186, 63
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Throttle"
@@ -2482,6 +2506,7 @@ BEGIN
             MENUITEM "&Resume/Exit Recording",      ID_MOVIE_RESUME_RECORD
             MENUITEM SEPARATOR
             MENUITEM "Read-&Only Mode",             ID_MOVIE_READONLY
+            MENUITEM "VBM &Editor...",              ID_TOOLS_VBMEDITOR
             POPUP "Edit &Mode"
             BEGIN
                 MENUITEM "Select &Next Mode",           ID_MOVIE_TOOL_EDIT_MODE_NEXT
@@ -3076,6 +3101,33 @@ BEGIN
     IDS_RECORD_HINT_SOFTWARE       "Encoded on the CPU. Lower the quality if the frame rate suffers."
     IDS_RECORD_HINT_AUDIO_ONLY     "Audio only: no picture is recorded."
     IDS_RECORD_START_FAILED        "Cannot start the recording encoder."
+    IDS_VBMEDITOR_HINT             "Changes above the playhead alter the recording, not the running game."
+    IDS_VBMEDITOR_FRAME            "Frame"
+    IDS_VBMEDITOR_NO_MOVIE         "No movie is open."
+    IDS_VBMEDITOR_FILE_READONLY    "The movie file cannot be written to, so the timeline cannot be edited."
+    IDS_VBMEDITOR_MARK             "&Mark frame"
+    IDS_VBMEDITOR_UNMARK           "&Unmark frame"
+    IDS_VBMEDITOR_INSERT_ROW       "&Insert a row before this frame"
+    IDS_VBMEDITOR_DELETE_ROW       "&Delete this row"
+    IDS_VBMEDITOR_GOTO_PREV        "Go to &previous mark"
+    IDS_VBMEDITOR_GOTO_NEXT        "Go to &next mark"
+    IDS_VBMEDITOR_CLEAR_MARKS      "&Clear all marks"
+    IDS_VBMEDITOR_INSERTED         "Inserted a row at frame %u."
+    IDS_VBMEDITOR_DELETED          "Deleted frame %u."
+    IDS_VBMEDITOR_MARKED           "Marked frame %u."
+    IDS_VBMEDITOR_UNMARKED         "Unmarked frame %u."
+    IDS_VBMEDITOR_NO_MARKS         "There is no mark in that direction."
+    IDS_VBMEDITOR_END_STATE        "The movie has ended; rows cannot be inserted or deleted."
+    IDS_VBMEDITOR_RECORD_STATE     "Rows cannot be inserted or deleted while recording."
+    IDS_VBMEDITOR_CANNOT_EDIT      "This frame cannot be edited here."
+    IDS_VBMEDITOR_READONLY_STATE   "The movie is read-only; use Tools > Movie > Read-Only Mode to edit it."
+    IDS_VBMEDITOR_SHIFT_WARNING    "The playhead row shifted, so the next frame will use the edited sequence."
+    IDS_VBMEDITOR_TIP_PLAY         "Play"
+    IDS_VBMEDITOR_TIP_PAUSE        "Pause"
+    IDS_VBMEDITOR_TIP_STEP         "Advance one frame"
+    IDS_VBMEDITOR_TIP_PLAYHEAD     "Go to the frame being played"
+    IDS_VBMEDITOR_TIP_FRAMENO      "Type a frame number, then press Enter."
+    IDS_VBMEDITOR_TIME             "Time"
 END
 
 /////////////////////////////////////////////////////////////////////////////

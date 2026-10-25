@@ -29,6 +29,7 @@
 #include "Dialogs/PaletteView.h"
 #include "Dialogs/RecordSettings.h"
 #include "Dialogs/TileView.h"
+#include "Dialogs/VbmEditor.h"
 
 #include "../gba/GBA.h"
 #include "../gba/GBAGlobals.h"
@@ -895,6 +896,16 @@ void MainWnd::OnUpdateToolsPlayReadOnly(CCmdUI *pCmdUI)
 {
 	pCmdUI->Enable(VBAMovieIsActive()); // TEMP
 	pCmdUI->SetCheck(VBAMovieIsActive() ? VBAMovieIsReadOnly() : theApp.movieReadOnly);
+}
+
+void MainWnd::OnToolsVbmEditor()
+{
+	VbmEditor::open(this);
+}
+
+void MainWnd::OnUpdateToolsVbmEditor(CCmdUI *pCmdUI)
+{
+	pCmdUI->Enable(!isFullscreenOption(theApp.videoOption));
 }
 
 void MainWnd::OnAsscWithSaveState()

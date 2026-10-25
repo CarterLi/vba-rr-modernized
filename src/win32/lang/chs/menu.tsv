@@ -1,4 +1,4 @@
-﻿# Simplified Chinese glossary: menus.
+# Simplified Chinese glossary: menus.
 #
 # Format: English<TAB>Chinese, where the English side is the literal exactly
 # as it appears in ../vba.rc.  The & marks the accelerator key and sits on the
@@ -413,3 +413,4 @@ Clear	清除
 Record at &Window Size and Filter	按窗口尺寸和滤镜录制(&W)
 Start/Stop Audio/Video &File Recording...	开始/停止音视频文件录制(&F)...
 &Pause/Resume File Recording	暂停/继续文件录制(&P)
+VBM &Editor...	VBM 编辑器(&E)...

@@ -1,4 +1,4 @@
-﻿# Simplified Chinese glossary: string table.
+# Simplified Chinese glossary: string table.
 #
 # Format: English<TAB>Chinese.  The English side is the literal exactly as it
 # appears in ../vba.rc.  Format specifiers (%s %d %02x %08x), the \n escapes
@@ -291,3 +291,29 @@ Medium	中
 High	高
 Custom	自定义
 Auto	自动
+Changes above the playhead alter the recording, not the running game.	播放位置之前的修改只改变录像，不影响正在运行的游戏。
+No movie is open.	没有打开录像文件。
+The movie file cannot be written to, so the timeline cannot be edited.	录像文件不可写，无法编辑时间轴。
+&Mark frame	标记该帧(&M)
+&Unmark frame	取消该帧的标记(&M)
+&Insert a row before this frame	在该帧之前插入一行(&I)
+&Delete this row	删除该行(&D)
+Go to &previous mark	跳到上一个标记(&P)
+Go to &next mark	跳到下一个标记(&N)
+&Clear all marks	清除所有标记(&C)
+Inserted a row at frame %u.	已在第 %u 帧插入一行。
+Deleted frame %u.	已删除第 %u 帧。
+Marked frame %u.	已标记第 %u 帧。
+Unmarked frame %u.	已取消第 %u 帧的标记。
+There is no mark in that direction.	该方向上没有标记。
+The movie has ended; rows cannot be inserted or deleted.	录像已结束，无法插入或删除行。
+Rows cannot be inserted or deleted while recording.	录制中无法插入或删除行。
+This frame cannot be edited here.	该帧无法在这里编辑。
+The movie is read-only; use Tools > Movie > Read-Only Mode to edit it.	录像处于只读模式，请用「工具 > 录像 > 只读模式」取消后再编辑。
+The playhead row shifted, so the next frame will use the edited sequence.	播放位置所在的行发生了位移，下一帧将使用编辑后的按键序列。
+Play	播放
+Pause	暂停
+Advance one frame	前进一帧
+Go to the frame being played	跳到正在播放的帧
+Type a frame number, then press Enter.	输入帧号后按回车。
+Time	时间

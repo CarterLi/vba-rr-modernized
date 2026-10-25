@@ -299,6 +299,37 @@
 #define IDS_RECORD_HINT_AUDIO_ONLY     292
 #define IDS_RECORD_NONE_VIDEO           294
 #define IDS_RECORD_START_FAILED        293
+
+// VBM Editor (frame timeline).  The column headers are the pad characters the
+// on-screen display already uses, so they are not translated; everything the
+// user reads as a sentence lives here.
+#define IDS_VBMEDITOR_HINT             297
+#define IDS_VBMEDITOR_FRAME            298
+#define IDS_VBMEDITOR_NO_MOVIE         299
+#define IDS_VBMEDITOR_FILE_READONLY    300
+#define IDS_VBMEDITOR_MARK             301
+#define IDS_VBMEDITOR_UNMARK           302
+#define IDS_VBMEDITOR_INSERT_ROW       303
+#define IDS_VBMEDITOR_DELETE_ROW       304
+#define IDS_VBMEDITOR_GOTO_PREV        305
+#define IDS_VBMEDITOR_GOTO_NEXT        306
+#define IDS_VBMEDITOR_CLEAR_MARKS      307
+#define IDS_VBMEDITOR_INSERTED         308
+#define IDS_VBMEDITOR_DELETED          309
+#define IDS_VBMEDITOR_MARKED           310
+#define IDS_VBMEDITOR_UNMARKED         311
+#define IDS_VBMEDITOR_NO_MARKS         312
+#define IDS_VBMEDITOR_END_STATE        313
+#define IDS_VBMEDITOR_RECORD_STATE     314
+#define IDS_VBMEDITOR_CANNOT_EDIT      315
+#define IDS_VBMEDITOR_READONLY_STATE   316
+#define IDS_VBMEDITOR_SHIFT_WARNING    317
+#define IDS_VBMEDITOR_TIP_PLAY         318
+#define IDS_VBMEDITOR_TIP_PAUSE        319
+#define IDS_VBMEDITOR_TIP_STEP         320
+#define IDS_VBMEDITOR_TIP_PLAYHEAD     321
+#define IDS_VBMEDITOR_TIP_FRAMENO      322
+#define IDS_VBMEDITOR_TIME             323
 #define IDR_MENU                        401
 #define IDR_ACCELERATOR                 405
 #define IDR_GB_PRINTER                  406
@@ -1276,6 +1307,8 @@
 #define ID_TOOLS_EXTRACOUNTERRESET      42415
 #define ID_TOOLS_NEXTINPUTDISPLAY       42416
 #define ID_TOOLS_STATUSBAR              42422
+// Frame timeline editor (Tools > Movie).
+#define ID_TOOLS_VBMEDITOR              42470
 // The three screen scaling modes, in the order of the SCREEN_SCALING_*
 // values in VBA.h: MainWndOptions.cpp works the setting out from the id.
 #define ID_OPTIONS_VIDEO_SCALING_STRETCH 42460
@@ -1314,6 +1347,7 @@
 
 // Recording settings dialog (see Dialogs/RecordSettings.cpp)
 #define IDD_RECORD_SETTINGS             566
+#define IDD_VBM_EDITOR                  567
 #define IDC_ENC_VIDEO                   1501
 #define IDC_ENC_AUDIO                   1502
 #define IDC_ENC_VIDEO_BITRATE           1503
@@ -1330,6 +1364,20 @@
 #define IDC_ENC_AUDIO_TITLE             1516
 #define IDC_ENC_SAMPLE_RATE             1517
 #define IDC_ENC_ASYNC                   1518
+
+// VBM Editor (frame timeline)
+#define IDC_VBM_LIST                    1520
+#define IDC_VBM_READONLY                1521
+#define IDC_VBM_FOLLOW                  1522
+#define IDC_VBM_HINT                    1523
+#define IDC_VBM_PREVMARK                1524
+#define IDC_VBM_NEXTMARK                1525
+#define IDC_VBM_STATUS                  1526
+#define IDC_VBM_PLAY                    1527
+#define IDC_VBM_PAUSE                   1528
+#define IDC_VBM_STEP                    1529
+#define IDC_VBM_GOTOPLAYHEAD            1530
+#define IDC_VBM_FRAMENO                 1531
 
 // Embedded 7z.dll (see 7zip/7zapi.cpp and the RCDATA entry in VBA.rc)
 #define IDR_SEVENZ_DLL                  310

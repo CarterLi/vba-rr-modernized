@@ -576,6 +576,8 @@ protected:
 	afx_msg void OnUpdateToolsStopMovie(CCmdUI*pCmdUI);
 	afx_msg void OnToolsPlayMovie();
 	afx_msg void OnUpdateToolsPlayMovie(CCmdUI*pCmdUI);
+	afx_msg void OnToolsVbmEditor();
+	afx_msg void OnUpdateToolsVbmEditor(CCmdUI*pCmdUI);
 	afx_msg void OnToolsPlayReadOnly();
 	afx_msg void OnUpdateToolsPlayReadOnly(CCmdUI*pCmdUI);
 	afx_msg void OnAsscWithSaveState();

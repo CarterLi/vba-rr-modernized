@@ -850,6 +850,7 @@ int VBAMovieOpen(const char *filename, bool8 read_only)
 	uint32 to_read = Movie.bytesPerFrame * Movie.header.length_frames;
 	reserve_movie_buffer_space(to_read);
 	fread(Movie.inputBuffer, 1, to_read, file);
+	++Movie.inputGeneration;
 
 	change_movie_state(MOVIE_STATE_PLAY);
 
@@ -1136,6 +1137,7 @@ int VBAMovieCreate(const char *filename, const char *authorInfo, uint8 startFlag
 	Movie.readOnly		 = false;
 
 	change_movie_state(MOVIE_STATE_RECORD);
+	++Movie.inputGeneration;
 
 	systemScreenMessage("Recording movie...");
 	{ loadingMovie = false; return MOVIE_SUCCESS; }
@@ -1817,6 +1819,7 @@ int VBAMovieUnfreeze(const uint8 *buf, uint32 size)
 
 	preserve_movie_next_input();
 
+	++Movie.inputGeneration;
 	return MOVIE_SUCCESS;
 }
 
@@ -1973,6 +1976,7 @@ int VBAMovieConvertCurrent(bool force)
 	}
 
 	Movie.header.minorVersion = VBM_REVISION;
+	++Movie.inputGeneration;
 
 	if (Movie.header.length_frames == 0) // this could happen
 	{
@@ -2051,6 +2055,7 @@ int VBAMovieInsertFrames(uint32 num)
 
 	preserve_movie_next_input();
 
+	++Movie.inputGeneration;
 	return MOVIE_SUCCESS;
 }
 
@@ -2079,6 +2084,7 @@ int VBAMovieDeleteFrames(uint32 num)
 
 	preserve_movie_next_input();
 
+	++Movie.inputGeneration;
 	return MOVIE_SUCCESS;
 }
 
@@ -2089,6 +2095,7 @@ bool VBAMovieTuncateAtCurrentFrame()
 
 	truncate_movie(Movie.currentFrame);
 	change_movie_state(MOVIE_STATE_END);
+	++Movie.inputGeneration;
 	systemScreenMessage("Movie truncated");
 
 	return true;
@@ -2102,5 +2109,195 @@ bool VBAMovieFixHeader()
 	flush_movie_header();
 	systemScreenMessage("Movie header fixed");
 	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Frame timeline editing (VBM Editor).
+//
+// The functions above always act at the playhead; these take an absolute row.
+// They obey the rule that the editor may rewrite the recorded key sequence and
+// nothing else, because "what the user pressed on frame N" is the only thing a
+// TAS editor is allowed to own:
+//
+//   * only the controller bytes of Movie.inputBuffer change, and only the
+//     BUTTON_REGULAR_MASK bits of them - the reset and motion bits are not
+//     keys and are preserved byte for byte;
+//   * Movie.header.length_frames moves by exactly one on insert/delete;
+//   * Movie.currentFrame is never touched.  It is a position on the timeline,
+//     not a pointer to a particular frame's data: the savestate checks, the
+//     frame counters and truncate_movie() all depend on it meaning "how many
+//     frames have run";
+//   * state, editMode, readOnly, pauseFrame and rerecord_count are untouched,
+//     as is the emulator itself.
+//
+// The one consequence the callers must warn about: inserting or deleting at or
+// above the playhead shifts the bytes under it, so the next frame the emulator
+// reads is a different one.  Editing a cell only changes a frame that either
+// already ran (desync, no immediate effect) or has not run yet (no desync).
+// ---------------------------------------------------------------------------
+
+static uint8 *movie_input_ptr(uint32 row, int controller)
+{
+	return Movie.inputBuffer + (size_t)Movie.bytesPerFrame * row + CONTROLLER_DATA_SIZE * controller;
+}
+
+static bool movie_timeline_editable()
+{
+	return VBAMovieIsActive() && Movie.file != NULL && !Movie.readOnly;
+}
+
+uint32 VBAMovieGetInputGeneration()
+{
+	return Movie.inputGeneration;
+}
+
+int VBAMovieGetReadOnlyMode()
+{
+	return VBAMovieIsActive() ? Movie.readOnly : 0;
+}
+
+uint16 VBAMovieGetInputAt(uint32 row, int controller)
+{
+	if (!VBAMovieIsActive() || !Movie.inputBuffer)
+		return 0;
+	if (controller < 0 || controller >= MOVIE_NUM_OF_POSSIBLE_CONTROLLERS)
+		return 0;
+	if (!(Movie.header.controllerFlags & MOVIE_CONTROLLER(controller)))
+		return 0;
+	if (row >= Movie.header.length_frames)
+		return 0;
+
+	return Read16(movie_input_ptr(row, controller));
+}
+
+uint16 VBAMovieGetUsedInputMask(int controller)
+{
+	if (!VBAMovieIsActive() || !Movie.inputBuffer || !Movie.bytesPerFrame)
+		return 0;
+	if (controller < 0 || controller >= MOVIE_NUM_OF_POSSIBLE_CONTROLLERS)
+		return 0;
+	if (!(Movie.header.controllerFlags & MOVIE_CONTROLLER(controller)))
+		return 0;
+
+	// One linear pass.  The editor calls this once per edit, and an edit can
+	// only happen while the emulator is paused, so even a multi-hour movie
+	// costs less than one frame's worth of time.
+	uint16		 mask = 0;
+	const uint8 *ptr  = Movie.inputBuffer + CONTROLLER_DATA_SIZE * controller;
+	for (uint32 i = 0; i < Movie.header.length_frames; ++i, ptr += Movie.bytesPerFrame)
+		mask |= Read16(ptr);
+
+	return mask;
+}
+
+int VBAMovieSetInputAt(uint32 row, int controller, uint16 value)
+{
+	if (!movie_timeline_editable())
+		return MOVIE_NOTHING;
+	if (controller < 0 || controller >= MOVIE_NUM_OF_POSSIBLE_CONTROLLERS
+	    || !(Movie.header.controllerFlags & MOVIE_CONTROLLER(controller)))
+		return MOVIE_WRONG_FORMAT;
+	if (row >= Movie.header.length_frames)
+		return MOVIE_WRONG_FORMAT;
+
+	uint8 *ptr = movie_input_ptr(row, controller);
+	uint16 old = Read16(ptr);
+	uint16 next = uint16((old & ~BUTTON_REGULAR_MASK) | (value & BUTTON_REGULAR_MASK));
+	if (next == old)
+		return MOVIE_SUCCESS;
+
+	Write16(next, ptr);
+
+	// Rewrite just these two bytes.  The rest of the file already matches the
+	// buffer, and a whole-block flush per click would rewrite megabytes for no
+	// reason.  The stream position is restored because recording appends at it.
+	long originalPos = ftell(Movie.file);
+	fseek(Movie.file,
+	      Movie.header.offset_to_controller_data
+	          + long((size_t)Movie.bytesPerFrame * row + CONTROLLER_DATA_SIZE * controller),
+	      SEEK_SET);
+	fwrite(ptr, 1, CONTROLLER_DATA_SIZE, Movie.file);
+	fflush(Movie.file);
+	fseek(Movie.file, originalPos, SEEK_SET);
+
+	// keep the OSD's "next input" line in step when the playhead frame moved
+	preserve_movie_next_input();
+
+	++Movie.inputGeneration;
+	return MOVIE_SUCCESS;
+}
+
+int VBAMovieInsertFrameAt(uint32 row)
+{
+	if (!movie_timeline_editable())
+		return MOVIE_NOTHING;
+	// A blank frame recorded during RECORD is undone by the next
+	// VBAMovieAfterEmulation() (length_frames = currentFrame), so refuse it.
+	// END refuses like VBAMovieInsertFrames() does.
+	if (Movie.state == MOVIE_STATE_RECORD || Movie.state == MOVIE_STATE_END)
+		return MOVIE_NOTHING;
+	if (Movie.header.minorVersion > VBM_REVISION)
+		return MOVIE_WRONG_VERSION;
+	if (row > Movie.header.length_frames)
+		return MOVIE_WRONG_FORMAT;
+	if (Movie.header.length_frames >= MOVIE_MAX_FRAMES)
+		return MOVIE_FATAL_ERROR;
+
+	// same normalisation VBAMovieInsertFrames() performs, so a 1.0 movie is
+	// converted to 1.1 before we write to it
+	VBAMovieConvertCurrent(false);
+
+	uint32 newLength = Movie.header.length_frames + 1;
+	reserve_movie_buffer_space(newLength * Movie.bytesPerFrame);
+	Movie.header.length_frames = newLength;
+
+	uint8 *at = Movie.inputBuffer + (size_t)Movie.bytesPerFrame * row;
+	memmove(at + Movie.bytesPerFrame, at, (size_t)Movie.bytesPerFrame * (newLength - 1 - row));
+	memset(at, 0, Movie.bytesPerFrame);
+
+	// The buffer may have moved, and only then does the pointer need fixing:
+	// currentFrame itself stays put on purpose.
+	Movie.inputBufferPtr = Movie.inputBuffer + (size_t)Movie.bytesPerFrame * min(Movie.currentFrame, Movie.header.length_frames);
+
+	flush_movie_header();
+	flush_movie_frames();
+
+	preserve_movie_next_input();
+
+	++Movie.inputGeneration;
+	return MOVIE_SUCCESS;
+}
+
+int VBAMovieDeleteFrameAt(uint32 row)
+{
+	if (!movie_timeline_editable())
+		return MOVIE_NOTHING;
+	if (Movie.state == MOVIE_STATE_RECORD || Movie.state == MOVIE_STATE_END)
+		return MOVIE_NOTHING;
+	if (Movie.header.minorVersion > VBM_REVISION)
+		return MOVIE_WRONG_VERSION;
+	if (row >= Movie.header.length_frames)
+		return MOVIE_WRONG_FORMAT;
+
+	VBAMovieConvertCurrent(false);
+
+	uint32 newLength = Movie.header.length_frames - 1;
+	uint8 *at		 = Movie.inputBuffer + (size_t)Movie.bytesPerFrame * row;
+	memmove(at, at + Movie.bytesPerFrame, (size_t)Movie.bytesPerFrame * (newLength - row));
+	memset(Movie.inputBuffer + (size_t)Movie.bytesPerFrame * newLength, 0, Movie.bytesPerFrame);
+	Movie.header.length_frames = newLength;
+
+	Movie.inputBufferPtr = Movie.inputBuffer + (size_t)Movie.bytesPerFrame * min(Movie.currentFrame, Movie.header.length_frames);
+
+	// flush the shifted data, then cut the file back to the new end - without
+	// the truncate, VBAMovieOpen() would recover the deleted frame from the
+	// file size
+	flush_movie_frames();
+	truncate_movie(newLength);
+
+	preserve_movie_next_input();
+
+	++Movie.inputGeneration;
+	return MOVIE_SUCCESS;
 }
 

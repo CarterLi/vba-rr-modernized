@@ -159,6 +159,12 @@ struct SMovie
 	uint8 RecordedThisSession;
 
 	uint32 errorInfo;
+
+	// Bumped by anything that rewrites the timeline (open, savestate load,
+	// conversion, insert/delete, cell edit).  Front ends that mirror the
+	// timeline poll this instead of comparing buffers.  Not part of the file
+	// format and never written anywhere.
+	uint32 inputGeneration;
 };
 
 // methods used by the user-interface code
@@ -208,6 +214,32 @@ uint32 VBAMovieGetLastErrorInfo();
 
 uint16 VBAMovieGetCurrentInputOf(int which, bool normalOnly = false);
 uint16 VBAMovieGetNextInputOf(int which, bool normalOnly = false);
+
+// --- frame timeline editing (VBM Editor) -----------------------------------
+//
+// Absolute-row counterparts of VBAMovieInsertFrames()/VBAMovieDeleteFrames(),
+// which can only act at the playhead, plus the cell edit the editor needs.
+//
+// They only ever change the movie: the controller bytes of the timeline, the
+// movie length, and the matching bytes in the file.  They never touch
+// currentFrame, the movie state, the edit mode, the read-only flag or the
+// emulator, and they never write the reset or motion bits.
+//
+// Inserting or deleting at or above the playhead does shift the data the
+// emulator is about to read - the callers are expected to warn about that.
+#define MOVIE_MAX_FRAMES (0x0FFFFFFFu)
+
+uint32 VBAMovieGetInputGeneration();
+uint16 VBAMovieGetInputAt(uint32 row, int controller = 0);
+uint16 VBAMovieGetUsedInputMask(int controller = 0);
+int	   VBAMovieSetInputAt(uint32 row, int controller, uint16 value);
+int	   VBAMovieInsertFrameAt(uint32 row);
+int	   VBAMovieDeleteFrameAt(uint32 row);
+
+// 0: editable, 1: read-only mode, 2: the file itself cannot be written to
+// (opened "rb" because "rb+" failed), which read-only mode cannot undo.
+int VBAMovieGetReadOnlyMode();
+
 void VBAMovieSignalReset();
 bool VBAMovieIsResetSignaled();
 void VBAMovieResetIfRequested();

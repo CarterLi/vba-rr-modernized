@@ -1101,6 +1101,7 @@ call "$(ProjectDir)defaultconfig\CopyWgpu.bat" "$(Platform)" "$(OutDir)"</Comman
     <ClCompile Include="..\src\win32\Dialogs\Throttle.cpp" />
     <ClCompile Include="..\src\win32\Dialogs\RecordSettings.cpp" />
     <ClCompile Include="..\src\win32\Dialogs\TileView.cpp" />
+    <ClCompile Include="..\src\win32\Dialogs\VbmEditor.cpp" />
     <ClCompile Include="..\src\win32\WinSystem.cpp" />
     <ClCompile Include="..\src\win32\WinText.cpp" />
     <ClCompile Include="..\src\win32\WinMiscUtil.cpp" />
@@ -1290,6 +1291,7 @@ call "$(ProjectDir)defaultconfig\CopyWgpu.bat" "$(Platform)" "$(OutDir)"</Comman
     <ClInclude Include="..\src\win32\Dialogs\Throttle.h" />
     <ClInclude Include="..\src\win32\Dialogs\RecordSettings.h" />
     <ClInclude Include="..\src\win32\Dialogs\TileView.h" />
+    <ClInclude Include="..\src\win32\Dialogs\VbmEditor.h" />
     <ClInclude Include="..\src\win32\Display.h" />
     <ClInclude Include="..\src\win32\TextOverlay.h" />
     <ClInclude Include="..\src\win32\GameText.h" />

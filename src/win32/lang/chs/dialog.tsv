@@ -1,4 +1,4 @@
-﻿# Simplified Chinese glossary: dialog templates.
+# Simplified Chinese glossary: dialog templates.
 #
 # Format: English<TAB>Chinese.  The English side is the literal exactly as it
 # appears in ../vba.rc, so it carries the same leading spaces and the same
@@ -378,3 +378,9 @@ B&itrate (kbps):	码率(&I)（kbps）：
 E&ncoder:	编码器(&N)：
 Sample rate:	采样率(&S)：
 Encode in a background &thread	后台线程编码(&T)
+VBM Editor	VBM 编辑器
+Read-only	只读
+Follow playhead	跟随播放位置
+Prev mark	上一个标记
+Next mark	下一个标记
+Go to frame	跳转到帧
