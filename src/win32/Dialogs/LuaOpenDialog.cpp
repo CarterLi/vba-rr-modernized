@@ -290,28 +290,21 @@ INT_PTR CALLBACK DlgLuaScriptDialog(HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 				CString luaName = winGetDestFilename(theApp.gameFilename, IDS_LUA_DIR, ".lua");
 				CString luaDir  = winGetDestDir(IDS_LUA_DIR);
 
-				// The dialog layer speaks the ANSI code page; the copies have to
-				// outlive the call, so they are named locals.
-				const CStringA titleA  = winAnsiFromWide(title);
-				const CStringA dirA    = winAnsiFromWide(luaDir);
-				const CStringA nameA   = winAnsiFromWide(luaName);
-				const CStringA filterA = winAnsiFromWide(filter);
-
 				WinFileDialogParams params;
 				params.owner       = hDlg;
 				params.save        = false;
 				params.mustExist   = true;
-				params.title       = titleA;
-				params.initialDir  = dirA;
-				params.fileName    = nameA;
-				params.filter      = filterA;
+				params.title       = title;
+				params.initialDir  = luaDir;
+				params.fileName    = luaName;
+				params.filter      = filter;
 				params.filterIndex = 1;
-				params.defaultExt  = "lua";
+				params.defaultExt  = L"lua";
 
-				std::string path;
+				std::wstring path;
 				if (winFileDialog(params, path) == IDOK)
 				{
-					SetWindowText(GetDlgItem(hDlg, IDC_EDIT_LUAPATH), winWideFromAnsi(path));
+					SetWindowText(GetDlgItem(hDlg, IDC_EDIT_LUAPATH), path.c_str());
 				}
 				return TRUE;
 			}	break;

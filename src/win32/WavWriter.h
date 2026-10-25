@@ -20,7 +20,10 @@ class WavWriter
   WavWriter();
   ~WavWriter();
 
-  bool Open(const char *name);
+  // The path is TCHAR like IVideoWriter::Open: the writer is Win32 side code
+  // and opens the file itself, so a name the code page cannot hold does not
+  // have to be squeezed through ANSI on the way in.
+  bool Open(LPCTSTR name);
   void SetFormat(const WAVEFORMATEX *format);
   void AddSound(const u8 *data, int len);
 

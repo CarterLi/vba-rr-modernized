@@ -15,7 +15,9 @@ class Logging : public ResizeDlg
 {
 	// Construction
 public:
-	void log(const char *);
+	// TCHAR, because the only caller already holds the text as a CString: it
+	// used to narrow and widen again on the way here.
+	void log(LPCTSTR);
 	Logging(CWnd*pParent = NULL);  // standard constructor
 
 	// Dialog Data

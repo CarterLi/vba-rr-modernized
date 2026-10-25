@@ -214,11 +214,11 @@ BOOL Logging::OnInitDialog()
 	             // EXCEPTION: OCX Property Pages should return FALSE
 }
 
-void Logging::log(const char *s)
+void Logging::log(LPCTSTR s)
 {
 	int size = (int)::SendMessage(m_log, WM_GETTEXTLENGTH, 0, 0);
 	m_log.SetSel(size, size);
-	m_log.ReplaceSel(winWideFromAnsi(s));
+	m_log.ReplaceSel(s);
 }
 
 void Logging::OnClose()
@@ -246,28 +246,31 @@ void toolsLogging()
 
 void toolsLog(const char *s)
 {
+	// The debug calls of the core hand their text over in the ANSI code page,
+	// so it is widened once here; the window wants TCHAR and there is no
+	// reason to narrow it again on the way to it.
 	CString str;
 	int     state = 0;
 	if (s)
 	{
-		char c = *s++;
-		while (c)
+		const CString text = winWideFromAnsi(s);
+		for (int i = 0; i < text.GetLength(); i++)
 		{
-			if (c == '\n' && state == 0)
-				str += '\r';
-			else if (c == '\r')
+			TCHAR c = text[i];
+			if (c == _T('\n') && state == 0)
+				str += _T('\r');
+			else if (c == _T('\r'))
 				state = 1;
 			else
 				state = 0;
 			str += c;
-			c    = *s++;
 		}
 	}
 
 	Logging::text += str;
 	if (Logging::instance != NULL)
 	{
-		Logging::instance->log(winAnsiFromWide(str));
+		Logging::instance->log(str);
 	}
 }
 

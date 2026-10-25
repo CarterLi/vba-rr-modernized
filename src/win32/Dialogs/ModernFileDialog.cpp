@@ -52,7 +52,7 @@ namespace {
 // every other build
 // ---------------------------------------------------------------------------
 
-const char *const *g_legacyExtensions = NULL;
+const wchar_t *const *g_legacyExtensions = NULL;
 
 void legacySyncExtension(HWND dialog, int selected)
 {
@@ -69,28 +69,28 @@ void legacySyncExtension(HWND dialog, int selected)
 	while (g_legacyExtensions[count] != NULL)
 		count++;
 
-	const char *extension = "";
+	const wchar_t *extension = L"";
 	if (selected >= 0 && selected < count && g_legacyExtensions[selected] != NULL)
 		extension = g_legacyExtensions[selected];
 
-	char text[MAX_PATH] = "";
-	::GetWindowTextA(edit, text, MAX_PATH);
+	wchar_t text[MAX_PATH] = L"";
+	::GetWindowTextW(edit, text, MAX_PATH);
 
-	std::string name;
-	if (text[0] == '\0')
+	std::wstring name;
+	if (text[0] == L'\0')
 	{
-		if (*extension == '\0')
+		if (*extension == L'\0')
 			return;
-		name = std::string("*") + extension;
+		name = std::wstring(L"*") + extension;
 	}
 	else
 	{
 		name = text;
-		size_t dot = name.find('.');
-		name = (dot == std::string::npos) ? name + extension : name.substr(0, dot) + extension;
+		size_t dot = name.find(L'.');
+		name = (dot == std::wstring::npos) ? name + extension : name.substr(0, dot) + extension;
 	}
 
-	::SetWindowTextA(edit, name.c_str());
+	::SetWindowTextW(edit, name.c_str());
 }
 
 UINT_PTR CALLBACK legacyHook(HWND hwnd, UINT msg, WPARAM wParam, LPARAM)
@@ -108,29 +108,29 @@ UINT_PTR CALLBACK legacyHook(HWND hwnd, UINT msg, WPARAM wParam, LPARAM)
 	return 0;
 }
 
-int legacyFileDialog(const WinFileDialogParams &params, std::string &path, int *filterIndex)
+int legacyFileDialog(const WinFileDialogParams &params, std::wstring &path, int *filterIndex)
 {
-	std::string filter;
+	std::wstring filter;
 	if (params.filter != NULL)
 	{
 		filter = params.filter;
 		for (size_t i = 0; i < filter.size(); i++)
 		{
-			if (filter[i] == '|')
-				filter[i] = '\0';
+			if (filter[i] == L'|')
+				filter[i] = L'\0';
 		}
 	}
 
-	std::vector<char> buffer(4 * MAX_PATH, '\0');
+	std::vector<wchar_t> buffer(4 * MAX_PATH, L'\0');
 	if (params.fileName != NULL)
 	{
-		size_t length = strlen(params.fileName);
+		size_t length = wcslen(params.fileName);
 		if (length >= buffer.size())
 			length = buffer.size() - 1;
-		memcpy(&buffer[0], params.fileName, length);
+		memcpy(&buffer[0], params.fileName, length * sizeof(wchar_t));
 	}
 
-	OPENFILENAMEA ofn;
+	OPENFILENAMEW ofn;
 	ZeroMemory(&ofn, sizeof(ofn));
 	ofn.lStructSize     = sizeof(ofn);
 	ofn.hwndOwner       = params.owner;
@@ -152,10 +152,10 @@ int legacyFileDialog(const WinFileDialogParams &params, std::string &path, int *
 	if (params.hideReadOnly)
 		ofn.Flags |= OFN_HIDEREADONLY;
 
-	const char *const *previous = g_legacyExtensions;
+	const wchar_t *const *previous = g_legacyExtensions;
 	g_legacyExtensions = params.extensions;
 
-	BOOL picked = params.save ? ::GetSaveFileNameA(&ofn) : ::GetOpenFileNameA(&ofn);
+	BOOL picked = params.save ? ::GetSaveFileNameW(&ofn) : ::GetOpenFileNameW(&ofn);
 
 	g_legacyExtensions = previous;
 
@@ -173,16 +173,16 @@ int CALLBACK browseCallback(HWND hwnd, UINT msg, LPARAM, LPARAM data)
 {
 	if (msg == BFFM_INITIALIZED)
 	{
-		const char *dir = reinterpret_cast<const char *>(data);
-		if (dir != NULL && *dir != '\0')
-			::SendMessage(hwnd, BFFM_SETSELECTION, TRUE, data);
+		const wchar_t *dir = reinterpret_cast<const wchar_t *>(data);
+		if (dir != NULL && *dir != L'\0')
+			::SendMessageW(hwnd, BFFM_SETSELECTIONW, TRUE, data);
 	}
 	return 0;
 }
 
-bool legacyBrowseForFolder(HWND owner, const char *title, const char *initialDir, std::string &path)
+bool legacyBrowseForFolder(HWND owner, const wchar_t *title, const wchar_t *initialDir, std::wstring &path)
 {
-	BROWSEINFOA info;
+	BROWSEINFOW info;
 	ZeroMemory(&info, sizeof(info));
 	info.hwndOwner = owner;
 	info.lpszTitle = title;
@@ -191,12 +191,12 @@ bool legacyBrowseForFolder(HWND owner, const char *title, const char *initialDir
 	info.lpfn      = browseCallback;
 	info.lParam    = reinterpret_cast<LPARAM>(initialDir);
 
-	LPITEMIDLIST idList = ::SHBrowseForFolderA(&info);
+	LPITEMIDLIST idList = ::SHBrowseForFolderW(&info);
 	if (idList == NULL)
 		return false;
 
-	char buffer[MAX_PATH] = "";
-	bool picked = ::SHGetPathFromIDListA(idList, buffer) != FALSE;
+	wchar_t buffer[MAX_PATH] = L"";
+	bool picked = ::SHGetPathFromIDListW(idList, buffer) != FALSE;
 	::CoTaskMemFree(idList);
 
 	if (!picked)
@@ -212,53 +212,31 @@ bool legacyBrowseForFolder(HWND owner, const char *title, const char *initialDir
 // the shell dialogs of Windows Vista and later
 // ---------------------------------------------------------------------------
 
-std::wstring widen(const char *text)
-{
-	if (text == NULL || *text == '\0')
-		return std::wstring();
-
-	int length = ::MultiByteToWideChar(CP_ACP, 0, text, -1, NULL, 0);
-	if (length <= 1)
-		return std::wstring();
-
-	std::wstring result(static_cast<size_t>(length) - 1, L'\0');
-	::MultiByteToWideChar(CP_ACP, 0, text, -1, &result[0], length);
-	return result;
-}
-
-std::string narrow(const wchar_t *text)
-{
-	if (text == NULL || *text == L'\0')
-		return std::string();
-
-	int length = ::WideCharToMultiByte(CP_ACP, 0, text, -1, NULL, 0, NULL, NULL);
-	if (length <= 1)
-		return std::string();
-
-	std::string result(static_cast<size_t>(length) - 1, '\0');
-	::WideCharToMultiByte(CP_ACP, 0, text, -1, &result[0], length, NULL, NULL);
-	return result;
-}
+// Both kinds of folder picker hand the picked path back as wchar_t, and take
+// the title and start directory the same way: the folder picker is shell UI,
+// so it does not narrow anything the way the emulation core's file names are
+// narrowed at their own boundary.
 
 // "Description|pattern|Description|pattern|" -> COMDLG_FILTERSPEC pairs,
 // leaving out the empty pairs the trailing separators of the resource
 // strings produce.
-void buildFilterSpecs(const char *filter,
+void buildFilterSpecs(const wchar_t *filter,
                       std::vector<std::wstring> &storage,
                       std::vector<COMDLG_FILTERSPEC> &specs)
 {
-	if (filter == NULL || *filter == '\0')
+	if (filter == NULL || *filter == L'\0')
 		return;
 
-	for (const char *start = filter; ; )
+	for (const wchar_t *start = filter; ; )
 	{
-		const char *end = strchr(start, '|');
-		if (end == NULL)
+		const wchar_t *end = start;
+		while (*end != L'\0' && *end != L'|')
+			++end;
+		storage.push_back(std::wstring(start, end - start));
+		if (*end == L'\0')
 		{
-			storage.push_back(widen(start));
 			break;
 		}
-		storage.push_back(widen(std::string(start, end - start).c_str()));
 		start = end + 1;
 	}
 
@@ -295,11 +273,11 @@ void splitPath(const std::wstring &path, std::wstring &dir, std::wstring &leaf)
 class FileDialogEvents : public IFileDialogEvents
 {
 public:
-	FileDialogEvents(bool save, const char *const *extensions, int count)
+	FileDialogEvents(bool save, const wchar_t *const *extensions, int count)
 		: m_ref(1), m_save(save), m_updating(false)
 	{
 		for (int i = 0; i < count; i++)
-			m_extensions.push_back(extensions[i] ? widen(extensions[i]) : std::wstring());
+			m_extensions.push_back(extensions[i] ? extensions[i] : L"");
 	}
 
 	STDMETHODIMP QueryInterface(REFIID riid, void **ppv)
@@ -405,7 +383,7 @@ private:
 };
 
 // IDOK / IDCANCEL, or -1 when the shell dialog could not be used at all.
-int vistaFileDialog(const WinFileDialogParams &params, std::string &path, int *filterIndex)
+int vistaFileDialog(const WinFileDialogParams &params, std::wstring &path, int *filterIndex)
 {
 	// The shell dialogs need a single threaded apartment of their own.
 	HRESULT hr = ::CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
@@ -439,15 +417,11 @@ int vistaFileDialog(const WinFileDialogParams &params, std::string &path, int *f
 	}
 	dialog->SetOptions(options);
 
-	if (params.title != NULL && *params.title != '\0')
-	{
-		std::wstring title = widen(params.title);
-		if (!title.empty())
-			dialog->SetTitle(title.c_str());
-	}
+	if (params.title != NULL && *params.title != L'\0')
+		dialog->SetTitle(params.title);
 
-	std::wstring initialDir = params.initialDir ? widen(params.initialDir) : std::wstring();
-	std::wstring fileName   = params.fileName ? widen(params.fileName) : std::wstring();
+	std::wstring initialDir = params.initialDir ? params.initialDir : L"";
+	std::wstring fileName   = params.fileName ? params.fileName : L"";
 	if (!fileName.empty())
 	{
 		std::wstring dir;
@@ -470,9 +444,9 @@ int vistaFileDialog(const WinFileDialogParams &params, std::string &path, int *f
 		}
 	}
 
-	if (params.defaultExt != NULL && *params.defaultExt != '\0')
+	if (params.defaultExt != NULL && *params.defaultExt != L'\0')
 	{
-		std::wstring extension = widen(params.defaultExt);
+		std::wstring extension = params.defaultExt;
 		while (!extension.empty() && extension[0] == L'.')
 			extension = extension.substr(1);
 		if (!extension.empty())
@@ -525,14 +499,14 @@ int vistaFileDialog(const WinFileDialogParams &params, std::string &path, int *f
 		return -1;
 	}
 
-	std::string picked;
+	std::wstring picked;
 	IShellItem *item = NULL;
 	if (SUCCEEDED(dialog->GetResult(&item)) && item != NULL)
 	{
 		LPWSTR display = NULL;
 		if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &display)) && display != NULL)
 		{
-			picked = narrow(display);
+			picked = display;
 			::CoTaskMemFree(display);
 		}
 		item->Release();
@@ -555,7 +529,7 @@ int vistaFileDialog(const WinFileDialogParams &params, std::string &path, int *f
 
 // 1 when a folder was picked, 0 when the user cancelled, -1 when the shell
 // dialog could not be used at all.
-int vistaBrowseForFolder(HWND owner, const char *title, const char *initialDir, std::string &path)
+int vistaBrowseForFolder(HWND owner, const wchar_t *title, const wchar_t *initialDir, std::wstring &path)
 {
 	HRESULT hr = ::CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 	if (hr == RPC_E_CHANGED_MODE)
@@ -577,18 +551,13 @@ int vistaBrowseForFolder(HWND owner, const char *title, const char *initialDir, 
 	options |= FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR;
 	dialog->SetOptions(options);
 
-	if (title != NULL && *title != '\0')
-	{
-		std::wstring text = widen(title);
-		if (!text.empty())
-			dialog->SetTitle(text.c_str());
-	}
+	if (title != NULL && *title != L'\0')
+		dialog->SetTitle(title);
 
-	if (initialDir != NULL && *initialDir != '\0')
+	if (initialDir != NULL && *initialDir != L'\0')
 	{
-		std::wstring dir = widen(initialDir);
 		IShellItem *folder = NULL;
-		if (SUCCEEDED(::SHCreateItemFromParsingName(dir.c_str(), NULL, IID_PPV_ARGS(&folder))) &&
+		if (SUCCEEDED(::SHCreateItemFromParsingName(initialDir, NULL, IID_PPV_ARGS(&folder))) &&
 		    folder != NULL)
 		{
 			dialog->SetFolder(folder);
@@ -606,7 +575,7 @@ int vistaBrowseForFolder(HWND owner, const char *title, const char *initialDir, 
 		return 0;
 	}
 
-	std::string picked;
+	std::wstring picked;
 	if (SUCCEEDED(hr))
 	{
 		IShellItem *item = NULL;
@@ -615,7 +584,7 @@ int vistaBrowseForFolder(HWND owner, const char *title, const char *initialDir, 
 			LPWSTR display = NULL;
 			if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &display)) && display != NULL)
 			{
-				picked = narrow(display);
+				picked = display;
 				::CoTaskMemFree(display);
 			}
 			item->Release();
@@ -637,7 +606,7 @@ int vistaBrowseForFolder(HWND owner, const char *title, const char *initialDir, 
 
 } // namespace
 
-int winFileDialog(const WinFileDialogParams &params, std::string &path, int *filterIndex)
+int winFileDialog(const WinFileDialogParams &params, std::wstring &path, int *filterIndex)
 {
 	path.clear();
 	if (filterIndex != NULL)
@@ -652,7 +621,8 @@ int winFileDialog(const WinFileDialogParams &params, std::string &path, int *fil
 	return legacyFileDialog(params, path, filterIndex);
 }
 
-bool winBrowseForFolder(HWND owner, const char *title, const char *initialDir, std::string &path)
+bool winBrowseForFolder(HWND owner, const wchar_t *title, const wchar_t *initialDir,
+                        std::wstring &path)
 {
 	path.clear();
 

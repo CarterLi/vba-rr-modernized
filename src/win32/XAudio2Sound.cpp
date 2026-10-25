@@ -366,7 +366,7 @@ void XAudio2Sound::write()
 			{
 				theApp.soundRecorder = new WavWriter;
 
-				if (theApp.soundRecorder->Open(winAnsiFromWide(theApp.soundRecordName)))
+				if (theApp.soundRecorder->Open(theApp.soundRecordName))
 					theApp.soundRecorder->SetFormat(&wfx);
 			}
 

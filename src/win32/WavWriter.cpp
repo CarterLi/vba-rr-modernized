@@ -40,11 +40,11 @@ void WavWriter::Close()
 	m_file = NULL;
 }
 
-bool WavWriter::Open(const char *name)
+bool WavWriter::Open(LPCTSTR name)
 {
 	if (m_file)
 		Close();
-	m_file = fopen(name, "wb");
+	m_file = _wfopen(name, L"wb");
 
 	if (!m_file)
 		return false;

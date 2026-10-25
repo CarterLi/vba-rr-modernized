@@ -26,13 +26,13 @@ struct WinFileDialogParams
 	bool        save;          // save dialog instead of an open dialog
 	bool        mustExist;     // open dialogs: the picked file has to exist
 	bool        hideReadOnly;  // legacy dialogs only: no read-only check box
-	const char *title;         // may be NULL
-	const char *initialDir;    // may be NULL
-	const char *fileName;      // initial name, may be NULL or empty
-	const char *filter;        // "Description|pattern|Description|pattern|"
+	const wchar_t *title;         // may be NULL
+	const wchar_t *initialDir;    // may be NULL
+	const wchar_t *fileName;      // initial name, may be NULL or empty
+	const wchar_t *filter;        // "Description|pattern|Description|pattern|"
 	int         filterIndex;   // 1 based, as OPENFILENAME.nFilterIndex
-	const char *defaultExt;    // without the leading dot, may be NULL
-	const char *const *extensions; // see below
+	const wchar_t *defaultExt;    // without the leading dot, may be NULL
+	const wchar_t *const *extensions; // see below
 };
 
 // Shows the dialog and waits for the user.  Returns IDOK when a file was
@@ -43,11 +43,14 @@ struct WinFileDialogParams
 // array of the extensions matching the entries of filter (".sgm" style); the
 // save dialog keeps the extension of an already typed name in sync with the
 // selected file type, the way the legacy common dialog did.
-int winFileDialog(const WinFileDialogParams &params, std::string &path,
+int winFileDialog(const WinFileDialogParams &params, std::wstring &path,
                   int *filterIndex = NULL);
 
 // Shows the folder picker.  Returns false when the user cancelled.
-bool winBrowseForFolder(HWND owner, const char *title, const char *initialDir,
-                        std::string &path);
+//
+// This stays wide like winFileDialog above: it is shell UI, so a folder whose
+// name the code page cannot hold must not be squeezed into an ANSI string.
+bool winBrowseForFolder(HWND owner, const wchar_t *title, const wchar_t *initialDir,
+                        std::wstring &path);
 
 #endif // !defined(VBA_WIN32_MODERNFILEDIALOG_H_INCLUDED)

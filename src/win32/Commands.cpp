@@ -10,13 +10,15 @@ typedef CMap< CString, LPCTSTR, WORD, WORD & > CMapStringToWord;
 static CMapStringToWord winAccelStrings;
 static bool initialized = false;
 
+// The names are what the menu shows, so they are TCHAR here already: the
+// accelerator manager takes them as they are.
 struct
 {
-	const char *command;
-	WORD        id;
+	LPCTSTR command;
+	WORD    id;
 } winAccelCommands[] = {
-	{	"Minimize",				ID_SYSTEM_MINIMIZE	},
-	{	"Maximize",				ID_SYSTEM_MAXIMIZE	},
+	{	_T("Minimize"),			ID_SYSTEM_MINIMIZE	},
+	{	_T("Maximize"),			ID_SYSTEM_MAXIMIZE	},
 };
 
 void winAccelAddCommandsFromTable(CAcceleratorManager &mgr)
@@ -25,8 +27,8 @@ void winAccelAddCommandsFromTable(CAcceleratorManager &mgr)
 
 	for (int i = 0; i < count; i++)
 	{
-		if (!mgr.AddCommandAccel(winAccelCommands[i].id, winWideFromAnsi(winAccelCommands[i].command), false))
-			mgr.CreateEntry(winAccelCommands[i].id, winWideFromAnsi(winAccelCommands[i].command));
+		if (!mgr.AddCommandAccel(winAccelCommands[i].id, winAccelCommands[i].command, false))
+			mgr.CreateEntry(winAccelCommands[i].id, winAccelCommands[i].command);
 	}
 }
 

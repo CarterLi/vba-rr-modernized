@@ -371,11 +371,10 @@ void Directories::OnOK()
 
 CString Directories::browseForDir(CString title)
 {
-	std::string path;
+	std::wstring path;
 
-	if (!winBrowseForFolder(m_hWnd, winAnsiFromWide(title),
-	                        winAnsiFromWide(initialFolderDir), path))
+	if (!winBrowseForFolder(m_hWnd, title, initialFolderDir, path))
 		return CString();
 
-	return winWideFromAnsi(path);
+	return CString(path.c_str());
 }

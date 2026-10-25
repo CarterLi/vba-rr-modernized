@@ -384,7 +384,7 @@ void DirectSound::write()
 						theApp.soundRecorder = new WavWriter;
 						WAVEFORMATEX format;
 						dsbSecondary->GetFormat(&format, sizeof(format), NULL);
-						if (theApp.soundRecorder->Open(winAnsiFromWide(theApp.soundRecordName)))
+						if (theApp.soundRecorder->Open(theApp.soundRecordName))
 							theApp.soundRecorder->SetFormat(&format);
 					}
 				}

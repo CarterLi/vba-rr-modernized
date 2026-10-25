@@ -1813,7 +1813,10 @@ void MainWnd::OnDropFiles(HDROP hDropInfo)
 		else if (_tcsicmp(ext, _T(".vbm")) == 0)
 		{
 			SMovie movieInfo;
-			const char *movieName = winAnsiFromWide(szFile);
+			// The converted name has to outlive the statement: winAnsiFromWide
+			// returns a temporary, and its buffer is gone by the time the movie
+			// calls below read the name.
+			const CStringA movieName = winAnsiFromWide(szFile);
 			char   romTitle [12];
 			uint32 romGameCode;
 			uint16 checksum;

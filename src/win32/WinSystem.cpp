@@ -78,12 +78,15 @@ void winOutput(const char *s, u32 addr)
 	}
 	else
 	{
-		CString str;
+		// Bytes the emulated CPU left in its debug area: they are a string in
+		// the code page the core works in, so they go straight into the narrow
+		// buffer instead of being widened and narrowed again on the way.
+		CStringA str;
 		while (char c = CPUReadByteQuick(addr++))
 		{
-			str += (TCHAR)c;
+			str += c;
 		}
-		log(winAnsiFromWide(str));
+		log(str);
 	}
 }
 
