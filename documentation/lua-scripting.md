@@ -54,6 +54,34 @@ Now:
 The cheapest way to tell whether a script started is the Run button's caption:
 `WinLuaOnStart()` turns it into "Restart", `WinLuaOnStop()` turns it back.
 
+## Which encoding a script's text is in
+
+`print()`, `gui.popup()` and every error message reach a Unicode control as
+bytes, so the console has to know how to read them.  The rule is the one the
+rest of the program follows, plus a single exception that the file itself
+declares:
+
+- **A UTF-8 BOM at the start of the .lua file means UTF-8.**  Every string the
+  script produces is decoded as UTF-8, so Chinese literals print as Chinese.
+- **Anything else is the process ANSI code page**, exactly like before
+  2026-10-26: a script that printed correctly then prints the same now.
+
+Nothing is sniffed.  A .lua file has no other marker and the bytes cannot decide
+the question - `"中文"` in GBK is `D6 D0 CE C4`, which is a legal UTF-8 sequence
+as well - so guessing would turn some files into garbage instead of leaving them
+alone.  Saving the file as "UTF-8 with BOM" is how a script opts in.
+
+The BOM is also what makes such a file load at all.  Lua 5.1 does not skip a
+BOM (`luaL_loadfile()` only skips a leading `#` line), so a file saved that way
+used to fail with `unexpected symbol near '\239'`.  A file that starts with a
+BOM is read into memory and handed to `luaL_loadbuffer()` with the BOM dropped;
+every other file still goes through `luaL_loadfile()`.
+
+One line can still mix the two: an error message names the file in the code page
+and quotes the source line out of the file.  The console therefore falls back to
+the code page for a string that is not valid UTF-8, rather than printing
+replacement characters.
+
 ## Hook order: why a write lands one frame late
 
 - `vba.registerbefore` runs inside `systemUpdateJoypads()`, before the game
