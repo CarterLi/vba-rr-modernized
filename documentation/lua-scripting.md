@@ -139,6 +139,10 @@ while true do vba.frameadvance() end
 
 ## References
 
+- LuaJIT 2.1 - <https://luajit.org/> the engine behind `lua51.dll` in this
+  build: the Lua 5.1 language plus `bit`, `jit` and `ffi`.  A stock Lua 5.1 DLL
+  can be dropped in its place, which is why nothing here assumes LuaJIT; see
+  `documentation/lua-api/README.md` for how to point an editor at the API.
 - TASVideos, VBA Lua Scripting Functions -
   <https://tasvideos.org/EmulatorResources/VBA/LuaScriptingFunctions>
   the function semantics are upstream's; this file only records what this

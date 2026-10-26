@@ -1,5 +1,5 @@
 Copyright for all files in trunk/src excluding 7-zip, Blip_Buffer,
-Lua, SFMT, unRAR, modified files from zlib, or when stated otherwise
+LuaJIT, SFMT, unRAR, modified files from zlib, or when stated otherwise
 in the source file:
   VisualBoyAdvance - Nintendo Gameboy/GameboyAdvance (TM) emulator
   Copyright (C) 1999-2003 Forgotten
@@ -16,7 +16,7 @@ Copyright for the modifications to the files mentioned above:
   Copyright (C) 2005-2013 nitsuja and the VBA-rr development team
 
 All files excluding precompiled libraries or executables in win32,
-7-zip files under the restrictions of unRAR license, Lua, SFMT, zlib,
+7-zip files under the restrictions of unRAR license, LuaJIT, SFMT, zlib,
 modified files from zlib, or when stated otherwise
 in the source file are distributed under the GNU GPL v2:
 

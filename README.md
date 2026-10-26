@@ -219,7 +219,8 @@ movie opens as fast as a ten-second one. Notes:
 ### Scripts
 
 * **Lua runs on LuaJIT 2.1**, so the scripts you already have keep working and the heavy ones
-  run a lot faster.
+  run a lot faster. `lua51.dll` is still the file that decides: drop the original Lua 5.1 DLL
+  in its place and everything keeps working, only `bit`, `jit` and `ffi` go away with it.
 * `vba.screenshot()` takes a capture from a script.
 * **As many script windows as you like, side by side.** Each window runs its own script and
   they no longer replace one another: **File → Lua Scripting → New Lua Script Window...**
