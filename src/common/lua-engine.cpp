@@ -66,6 +66,12 @@ bool DemandLua()
 #endif
 }
 
+// The engine is whatever lua51.dll sits next to the exe.  This build ships
+// LuaJIT 2.1 (win32/lib/{x86,x64,arm64}/lua51.dll) and compiles against its
+// headers, which are Lua 5.1's API plus `bit`, `jit` and `ffi`; dropping a
+// stock Lua 5.1 DLL in its place still works, because the 5.1 ABI is what
+// LuaJIT implements.  So nothing in here may depend on a LuaJIT extension -
+// that is why the five legacy bit globals were moved to plain C.
 extern "C"
 {
 #include "../lua/src/lua.h"
@@ -4619,216 +4625,79 @@ static int sfmt_randomseed(lua_State *L)
 	return 0;
 }
 
-// the following bit operations are ported from LuaBitOp 1.0.1,
-// because it can handle the sign bit (bit 31) correctly.
-
-/*
-** Lua BitOp -- a bit operations library for Lua 5.1.
-** http://bitop.luajit.org/
-**
-** Copyright (C) 2008-2009 Mike Pall. All rights reserved.
-**
-** Permission is hereby granted, free of charge, to any person obtaining
-** a copy of this software and associated documentation files (the
-** "Software"), to deal in the Software without restriction, including
-** without limitation the rights to use, copy, modify, merge, publish,
-** distribute, sublicense, and/or sell copies of the Software, and to
-** permit persons to whom the Software is furnished to do so, subject to
-** the following conditions:
-**
-** The above copyright notice and this permission notice shall be
-** included in all copies or substantial portions of the Software.
-**
-** THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-** EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-** MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-** IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-** CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-** TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-** SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-**
-** [ MIT license: http://www.opensource.org/licenses/mit-license.php ]
-*/
-
-#ifdef _MSC_VER
-/* MSVC is stuck in the last century and doesn't have C99's stdint.h. */
-typedef __int32			 int32_t;
-typedef unsigned __int32 uint32_t;
-typedef unsigned __int64 uint64_t;
-#else
-#include <stdint.h>
-#endif
-
-typedef int32_t	 SBits;
-typedef uint32_t UBits;
-
-typedef union
+// The old global bit functions.  AND, OR, XOR, SHIFT and BIT are what the VBA
+// documentation lists and what existing scripts call, so they stay; the ported
+// LuaBitOp that used to live here does not, because the LuaJIT this fork ships
+// brings the `bit` library itself.  These five are plain C now, so they work
+// with a stock Lua 5.1 lua51.dll as well, which has no `bit` at all.
+//
+// The conversion rule is the one LuaBitOp used: a number is truncated and
+// wrapped to 32 bits (-1 and 0xFFFFFFFF mean the same thing), and a result with
+// bit 31 set comes back as a negative number.
+static uint32 luaToU32(lua_State *L, int idx)
 {
-	lua_Number n;
-#ifdef LUA_NUMBER_DOUBLE
-	uint64_t b;
-#else
-	UBits b;
-#endif
-} BitNum;
-
-/* Convert argument to bit type. */
-static UBits barg(lua_State *L, int idx)
-{
-	BitNum bn;
-	UBits  b;
-	bn.n = lua_tonumber(L, idx);
-#if defined(LUA_NUMBER_DOUBLE)
-	bn.n += 6755399441055744.0; /* 2^52+2^51 */
-#ifdef SWAPPED_DOUBLE
-	b = (UBits)(bn.b >> 32);
-#else
-	b = (UBits)(bn.b & 0xffffffff);
-#endif
-#elif defined(LUA_NUMBER_INT) || defined(LUA_NUMBER_LONG) || \
-	defined(LUA_NUMBER_LONGLONG) || defined(LUA_NUMBER_LONG_LONG) || \
-	defined(LUA_NUMBER_LLONG)
-	if (sizeof(UBits) == sizeof(lua_Number))
-		b = bn.b;
-	else
-		b = (UBits)(SBits)bn.n;
-#elif defined(LUA_NUMBER_FLOAT)
-#error "A 'float' lua_Number type is incompatible with this library"
-#else
-#error "Unknown number type, check LUA_NUMBER_* in luaconf.h"
-#endif
-	if (b == 0 && !lua_isnumber(L, idx))
-		luaL_typerror(L, idx, "number");
-	return b;
+	lua_Number n	   = luaL_checknumber(L, idx);
+	lua_Number wrapped = fmod(trunc(n), 4294967296.0);
+	if (wrapped < 0)
+		wrapped += 4294967296.0;
+	return (uint32)wrapped;
 }
 
-/* Return bit type. */
-#define BRET(b)  lua_pushnumber(L, (lua_Number)(SBits)(b)); return 1;
-
-static int bit_tobit(lua_State *L) { BRET(barg(L, 1)) }
-static int bit_bnot(lua_State *L) { BRET(~barg(L, 1)) }
-
-#define BIT_OP(func, opr) \
-	static int func(lua_State * L) { \
-	UBits b = barg(L, 1); \
-	for (int i = lua_gettop(L); i > 1; i--) \
-		b opr barg(L, i); \
-	BRET(b) }
-BIT_OP(bit_band, &= )
-BIT_OP(bit_bor, |= )
-BIT_OP(bit_bxor, ^= )
-
-#define bshl(b, n)  (b << n)
-#define bshr(b, n)  (b >> n)
-#define bsar(b, n)  ((SBits)b >> n)
-#define brol(b, n)  ((b << n) | (b >> (32 - n)))
-#define bror(b, n)  ((b << (32 - n)) | (b >> n))
-#define BIT_SH(func, fn) \
-	static int func(lua_State * L) { \
-	UBits b = barg(L, 1); UBits n = barg(L, 2) & 31; BRET(fn(b, n)) }
-BIT_SH(bit_lshift, bshl)
-BIT_SH(bit_rshift, bshr)
-BIT_SH(bit_arshift, bsar)
-BIT_SH(bit_rol, brol)
-BIT_SH(bit_ror, bror)
-
-static int bit_bswap(lua_State *L)
+static int pushU32(lua_State *L, uint32 value)
 {
-	UBits b = barg(L, 1);
-	b = (b >> 24) | ((b >> 8) & 0xff00) | ((b & 0xff00) << 8) | (b << 24);
-	BRET(b)
-}
-
-static int bit_tohex(lua_State *L)
-{
-	UBits		b		  = barg(L, 1);
-	SBits		n		  = lua_isnone(L, 2) ? 8 : (SBits)barg(L, 2);
-	const char *hexdigits = "0123456789abcdef";
-	char		buf[8];
-	int			i;
-	if (n < 0) { n = -n; hexdigits = "0123456789ABCDEF"; }
-	if (n > 8) n = 8;
-	for (i = (int)n; --i >= 0; )
-	{
-		buf[i] = hexdigits[b & 15]; b >>= 4;
-	}
-	lua_pushlstring(L, buf, (size_t)n);
+	lua_pushnumber(L, value <= 0x7FFFFFFFU ? (lua_Number)value
+										   : (lua_Number)value - 4294967296.0);
 	return 1;
 }
 
-static const struct luaL_Reg bit_funcs[] = {
-	{ "tobit",	 bit_tobit	 },
-	{ "bnot",	 bit_bnot	 },
-	{ "band",	 bit_band	 },
-	{ "bor",	 bit_bor	 },
-	{ "bxor",	 bit_bxor	 },
-	{ "lshift",	 bit_lshift	 },
-	{ "rshift",	 bit_rshift	 },
-	{ "arshift", bit_arshift },
-	{ "rol",	 bit_rol	 },
-	{ "ror",	 bit_ror	 },
-	{ "bswap",	 bit_bswap	 },
-	{ "tohex",	 bit_tohex	 },
-	{ NULL,		 NULL		 }
-};
-
-/* Signed right-shifts are implementation-defined per C89/C99.
-** But the de facto standard are arithmetic right-shifts on two's
-** complement CPUs. This behaviour is required here, so test for it.
-*/
-#define BAD_SAR	 (bsar(-8, 2) != (SBits) - 2)
-
-bool luabitop_validate(lua_State *L) // originally named as luaopen_bit
+static int bits_and(lua_State *L)
 {
-	UBits b;
-	lua_pushnumber(L, (lua_Number)1437217655L);
-	b = barg(L, -1);
-	if (b != (UBits)1437217655L || BAD_SAR) /* Perform a simple self-test. */
-	{
-		const char *msg = "compiled with incompatible luaconf.h";
-#ifdef LUA_NUMBER_DOUBLE
-#ifdef WIN32
-		if (b == (UBits)1610612736L)
-			msg = "use D3DCREATE_FPU_PRESERVE with DirectX";
-#endif
-		if (b == (UBits)1127743488L)
-			msg = "not compiled with SWAPPED_DOUBLE";
-#endif
-		if (BAD_SAR)
-			msg = "arithmetic right-shift broken";
-		luaL_error(L, "bit library self-test failed (%s)", msg);
-		return false;
-	}
-	return true;
+	uint32 bits = luaToU32(L, 1);
+	for (int i = lua_gettop(L); i > 1; --i)
+		bits &= luaToU32(L, i);
+	return pushU32(L, bits);
 }
 
-// LuaBitOp ends here
+static int bits_or(lua_State *L)
+{
+	uint32 bits = luaToU32(L, 1);
+	for (int i = lua_gettop(L); i > 1; --i)
+		bits |= luaToU32(L, i);
+	return pushU32(L, bits);
+}
 
+static int bits_xor(lua_State *L)
+{
+	uint32 bits = luaToU32(L, 1);
+	for (int i = lua_gettop(L); i > 1; --i)
+		bits ^= luaToU32(L, i);
+	return pushU32(L, bits);
+}
+
+// SHIFT(value, count): left for a positive count, right for a negative one.
 static int bit_bshift_emulua(lua_State *L)
 {
-	int shift = (int)luaL_checkinteger(L, 2);
+	uint32 value = luaToU32(L, 1);
+	int	   shift = (int)luaL_checkinteger(L, 2);
+
 	if (shift < 0)
-	{
-		lua_pushinteger(L, -shift);
-		lua_replace(L, 2);
-		return bit_lshift(L);
-	}
-	else
-		return bit_rshift(L);
+		return pushU32(L, value << ((-shift) & 31));
+	return pushU32(L, value >> (shift & 31));
 }
 
+// BIT(bit, ...): a number with the given bits set; 0-31, anything else ignored.
 static int bitbit(lua_State *L)
 {
-	int rv		= 0;
-	int numArgs = lua_gettop(L);
+	uint32 bits		= 0;
+	int	   numArgs	= lua_gettop(L);
 	for (int i = 1; i <= numArgs; i++)
 	{
 		int where = (int)luaL_checkinteger(L, i);
 		if (where >= 0 && where < 32)
-			rv |= (1 << where);
+			bits |= 1u << where;
 	}
 	lua_settop(L, 0);
-	BRET(rv);
+	return pushU32(L, bits);
 }
 
 // The function called periodically to ensure Lua doesn't run amok.
@@ -5299,7 +5168,6 @@ bool VbaLuaState::load(const char *filename)
 		luaL_register(L, "gui", guilib);
 		luaL_register(L, "input", inputlib);
 		luaL_register(L, "sound", soundlib);
-		luaL_register(L, "bit", bit_funcs); // LuaBitOp library
 		luaL_register(L, "avi", avilib); // workaround for enhanced video encoding
 		lua_settop(L, 0); // clean the stack, because each call to luaL_register leaves a table on top
 
@@ -5309,14 +5177,14 @@ bool VbaLuaState::load(const char *filename)
 		lua_register(L, "addressof", addressof);
 		lua_register(L, "copytable", copytable);
 
-		// old bit operation functions
-		lua_register(L, "AND", bit_band);
-		lua_register(L, "OR", bit_bor);
-		lua_register(L, "XOR", bit_bxor);
+		// The old spellings of the bit operations.  `bit` itself comes from the
+		// engine: LuaJIT opens it with the standard libraries, and a stock Lua
+		// 5.1 lua51.dll simply has none.
+		lua_register(L, "AND", bits_and);
+		lua_register(L, "OR", bits_or);
+		lua_register(L, "XOR", bits_xor);
 		lua_register(L, "SHIFT", bit_bshift_emulua);
 		lua_register(L, "BIT", bitbit);
-
-		luabitop_validate(L);
 
 		lua_pushstring(L, "math");
 		lua_gettable(L, LUA_GLOBALSINDEX);
