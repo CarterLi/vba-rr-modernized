@@ -503,10 +503,12 @@ void VbaLuaState::resetAfterStop(void)
 }
 
 /**
- * Asks Lua if it wants control of the emulator's speed.
- * Returns 0 if no, 1 if yes. If yes, we also tamper with the
- * IPPU's settings for speed ourselves, so the calling code
- * need not do anything.
+ * Asks Lua how fast the emulator should run.
+ *
+ * Returns the number of frames the scripts want skipped: 0 for "draw every
+ * frame, just stop waiting for the clock", 9 for the ratio the fast-forward
+ * key uses, VBALUA_SPEED_MAXIMUM for "never draw", or VBALUA_SPEED_NONE when
+ * every script is at the default speed.
  *
  * Several scripts may disagree; the fastest mode wins, the same way the merged
  * joypad takes every script's buttons.
@@ -522,40 +524,20 @@ int VBALuaSpeed(void)
 			fastest = state->speedmode;
 	}
 
-	if (fastest == VbaLuaState::SPEED_NORMAL)
-		return 0;
-
-	//printf("%d\n", speedmode);
 	switch (fastest)
 	{
-	/*
-	case SPEED_NORMAL:
+	case VbaLuaState::SPEED_NOTHROTTLE:
 		return 0;
-	case SPEED_NOTHROTTLE:
-		IPPU.RenderThisFrame = true;
-		return 1;
 
-	case SPEED_TURBO:
-		IPPU.SkippedFrames++;
-		if (IPPU.SkippedFrames >= 40) {
-			IPPU.SkippedFrames = 0;
-			IPPU.RenderThisFrame = true;
-		}
-		else
-			IPPU.RenderThisFrame = false;
-		return 1;
+	case VbaLuaState::SPEED_TURBO:
+		return 9;
 
-	// In mode 3, SkippedFrames is set to zero so that the frame
-	// skipping code doesn't try anything funny.
-	case SPEED_MAXIMUM:
-		IPPU.SkippedFrames=0;
-		IPPU.RenderThisFrame = false;
-		return 1;
-	 */
-	case 0: // FIXME: to get rid of the warning
+	case VbaLuaState::SPEED_MAXIMUM:
+		return VBALUA_SPEED_MAXIMUM;
+
+	case VbaLuaState::SPEED_NORMAL:
 	default:
-		assert(false);
-		return 0;
+		return VBALUA_SPEED_NONE;
 	}
 }
 
@@ -4775,7 +4757,7 @@ static void VBALuaHookFunction(lua_State *L, lua_Debug *dbg)
 }
 
 static const struct luaL_Reg vbalib[] = {
-	//	{"speedmode", vba_speedmode},	// TODO: NYI
+	{ "speedmode",		vba_speedmode		 },
 	{ "frameadvance",	vba_frameadvance	 },
 	{ "pause",			vba_pause			 },
 	{ "framecount",		vba_framecount		 },
@@ -5268,6 +5250,10 @@ bool VbaLuaState::load(const char *filename)
 	memHooks		 = 0;
 	transparency	 = 255; // opaque
 	joypadUsed		 = 0; // not used
+	// A restart is a new run: the speed the previous one asked for must not
+	// outlive it, or "Run" on a script that no longer calls vba.speedmode would
+	// leave the emulator at that speed with nothing in the console to say why.
+	speedmode		 = SPEED_NORMAL;
 	for (int i = 0; i < 4; ++i)
 	{
 		inputRemap[i].from	   = 0;

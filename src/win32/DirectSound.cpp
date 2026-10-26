@@ -10,6 +10,7 @@
 
 #include "../common/SystemGlobals.h"
 #include "../common/nesvideos-piece.h"
+#include "../common/vbalua.h"
 
 extern void directXMessage(const char *);
 
@@ -440,7 +441,9 @@ void DirectSound::write()
 
 	HRESULT hr;
 
-	bool fastForward = speedup;
+	// Blocking here is the throttle when the sound is the clock; a script that
+	// took the speed over wants the buffer to run dry instead.
+	bool fastForward = speedup || (VBALuaSpeed() >= 0);
 #if (defined(WIN32) && !defined(SDL))
 	fastForward |= theApp.frameSearchSkipping;
 #endif

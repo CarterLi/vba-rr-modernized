@@ -35,6 +35,7 @@
 
 #include "../common/SystemGlobals.h"
 #include "../common/nesvideos-piece.h"
+#include "../common/vbalua.h"
 
 // Number of blocks the voice may hold at once and, because the emulator waits
 // for a free one when this many are queued, the latency this backend adds on
@@ -71,7 +72,7 @@ int xaudio2DropoutCount() { return (int)xaudio2Dropouts; }
 // the voice run dry on purpose and would only add noise to that count.
 static bool pacingAgainstDevice()
 {
-	bool fastForward = speedup;
+	bool fastForward = speedup || (VBALuaSpeed() >= 0);
 	fastForward |= theApp.frameSearchSkipping;
 
 	return !fastForward && synchronize && !(theApp.throttle > 100 && theApp.accuratePitchThrottle)

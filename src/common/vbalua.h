@@ -73,6 +73,18 @@ int VBALuaUsingJoypad(int);
 int VBALuaReadJoypad(int);
 int VBALuaRemappingInputDisplay(int);
 int VBALuaRemapInputDisplay(int, int, enum LuaJoypadType);
+
+// How many frames the running scripts want the frontend to skip, or
+// VBALUA_SPEED_NONE when none of them asked for a speed.  The frontend owns
+// the effect: it feeds the value into systemFramesToSkip() and drops its
+// throttling while the value is not VBALUA_SPEED_NONE, the same way it does
+// for the fast-forward key.
+enum
+{
+	VBALUA_SPEED_NONE	 = -1,			// no script asked for anything
+	VBALUA_SPEED_MAXIMUM = 0x7FFFFFFF	// never draw a frame again
+};
+
 int VBALuaSpeed();
 bool8 VBALuaRerecordCountSkip();
 

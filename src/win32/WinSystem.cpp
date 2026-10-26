@@ -849,12 +849,16 @@ void systemFrame()
 		AfxPostQuitMessage(0);
 	}
 
+	// While a script holds the speed, nothing down here may slow the frame
+	// down: neither the sound rate nor the sleep below.
+	const bool luaSpeed = VBALuaSpeed() >= 0;
+
 	// change the sound speed, or set it to normal - must always do this or it won't get reset after a change, but that's OK
 	// because it's inexpensive
 	if (theApp.sound)
 	{
 		theApp.sound->setSpeed(
-		    speedup || theApp.winPauseNextFrame || !synchronize || theApp.accuratePitchThrottle || theApp.useOldSync
+		    speedup || luaSpeed || theApp.winPauseNextFrame || !synchronize || theApp.accuratePitchThrottle || theApp.useOldSync
 			? 1.0f : (float)theApp.throttle / 100.0f);
 	}
 
@@ -867,7 +871,7 @@ void systemFrame()
 
 		static float sleepAmt = 0.0f; // variable to smooth out the sleeping amount so it doesn't oscillate so fast
 //		if(!theApp.wasPaused) {
-		if (!speedup)
+		if (!speedup && !luaSpeed)
 		{
 			u32 time = systemGetClock();
 			u32 diff = time - theApp.throttleLastTime;
@@ -942,6 +946,14 @@ int systemFramesToSkip()
 			framesToSkip = 9;  // try 6 FPS during speedup
 		else if (throttle != 100)
 			framesToSkip = (framesToSkip * throttle) / 100;
+
+		// A script that took the speed over outranks the settings above, the
+		// same way the fast-forward key does; the fastest of the two wins, so
+		// holding the key down still does what it says.  Recording and a frame
+		// that has to be drawn are excluded by the branch above on purpose.
+		int luaSkip = VBALuaSpeed();
+		if (luaSkip > framesToSkip)
+			framesToSkip = luaSkip;
 	}
 
 	return framesToSkip;
