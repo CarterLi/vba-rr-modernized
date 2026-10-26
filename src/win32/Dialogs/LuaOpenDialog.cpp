@@ -1,5 +1,10 @@
 // LuaOpenDialog.cpp : implementation file
 //
+// One console window per script.  Every window owns a VbaLuaState (see
+// common/lua-engine.cpp) and is completely independent: its own path box, its
+// own Run/Stop button, its own console text, its own window layout and its own
+// font.  Everything that used to be a file-scope global in this file is now a
+// field of LuaConsoleWindow, which is what makes several windows possible.
 
 //#include "../stdafx.h"
 //#include "../resource.h"
@@ -13,49 +18,79 @@
 #include "../Sound.h"
 
 #include "../../common/vbalua.h"
+#include "../../common/LuaHost.h"
 #include "../../version.h"
 
-HWND LuaConsoleHWnd = NULL;
-HFONT hFont = NULL;
-LOGFONT LuaConsoleLogFont;
+#include <vector>
 
-struct ControlLayoutInfo
+namespace
 {
-	int controlID;
-
-	enum LayoutType // what to do when the containing window resizes
+	struct ControlLayoutInfo
 	{
-		NONE, // leave the control where it was
-		RESIZE_END, // resize the control
-		MOVE_START, // move the control
+		int controlID;
+
+		enum LayoutType // what to do when the containing window resizes
+		{
+			NONE, // leave the control where it was
+			RESIZE_END, // resize the control
+			MOVE_START, // move the control
+		};
+		LayoutType horizontalLayout;
+		LayoutType verticalLayout;
 	};
-	LayoutType horizontalLayout;
-	LayoutType verticalLayout;
-};
-struct ControlLayoutState
+
+	struct ControlLayoutState
+	{
+		int x, y, width, height;
+		bool valid;
+		ControlLayoutState() : x(0), y(0), width(0), height(0), valid(false) {}
+	};
+
+	const ControlLayoutInfo controlLayoutInfos[] = {
+		{IDC_LUACONSOLE, ControlLayoutInfo::RESIZE_END, ControlLayoutInfo::RESIZE_END},
+		{IDC_EDIT_LUAPATH, ControlLayoutInfo::RESIZE_END, ControlLayoutInfo::NONE},
+		{IDC_BUTTON_LUARUN, ControlLayoutInfo::MOVE_START, ControlLayoutInfo::NONE},
+		{IDC_BUTTON_LUASTOP, ControlLayoutInfo::MOVE_START, ControlLayoutInfo::NONE},
+	};
+	const int numControlLayoutInfos = sizeof(controlLayoutInfos) / sizeof(*controlLayoutInfos);
+
+	// One per open console window.
+	struct LuaConsoleWindow
+	{
+		HWND		 hDlg;
+		VbaLuaState *script;		// NULL until something has been run
+		HFONT		 font;			// console font, deleted with the window
+		int			 width, height;	// client size, for the resize deltas
+		ControlLayoutState layout[numControlLayoutInfos];
+	};
+
+	std::vector<LuaConsoleWindow *> s_consoles;
+
+	// The last script any window opened, offered as the default for the next
+	// window (the engine itself remembers nothing across windows).
+	std::wstring s_lastScriptPath;
+
+	LuaConsoleWindow *consoleFor(HWND hDlg)
+	{
+		if (!hDlg)
+			return NULL;
+
+		return (LuaConsoleWindow *)GetWindowLongPtr(hDlg, GWLP_USERDATA);
+	}
+
+	// The console a stopped script should update: the one it was started from.
+	HWND hwndOf(std::intptr_t handle)
+	{
+		return (HWND)handle;
+	}
+}
+
+void PrintToWindowConsole(std::intptr_t hDlgAsInt, lua_host::TextEncoding encoding, const char* str)
 {
-	int x,y,width,height;
-	bool valid;
-	ControlLayoutState() : valid(false) {}
-};
-
-static ControlLayoutInfo controlLayoutInfos [] = {
-	{IDC_LUACONSOLE, ControlLayoutInfo::RESIZE_END, ControlLayoutInfo::RESIZE_END},
-	{IDC_EDIT_LUAPATH, ControlLayoutInfo::RESIZE_END, ControlLayoutInfo::NONE},
-	{IDC_BUTTON_LUARUN, ControlLayoutInfo::MOVE_START, ControlLayoutInfo::NONE},
-	{IDC_BUTTON_LUASTOP, ControlLayoutInfo::MOVE_START, ControlLayoutInfo::NONE},
-};
-static const int numControlLayoutInfos = sizeof(controlLayoutInfos)/sizeof(*controlLayoutInfos);
-
-struct {
-	int width; int height;
-	ControlLayoutState layoutState [numControlLayoutInfos];
-} windowInfo;
-
-void PrintToWindowConsole(std::intptr_t hDlgAsInt, const char* str)
-{
-	HWND hDlg = (HWND)(std::intptr_t)hDlgAsInt;
-	HWND hConsole = GetDlgItem(hDlg, IDC_LUACONSOLE);
+	HWND hDlg = hwndOf(hDlgAsInt);
+	HWND hConsole = hDlg ? GetDlgItem(hDlg, IDC_LUACONSOLE) : NULL;
+	if (!hConsole)
+		return;
 
 	int length = GetWindowTextLength(hConsole);
 	if(length >= 250000)
@@ -67,76 +102,151 @@ void PrintToWindowConsole(std::intptr_t hDlgAsInt, const char* str)
 	}
 	SendMessage(hConsole, EM_SETSEL, length, length);
 
-	//LuaPerWindowInfo& info = LuaWindowInfo[hDlg];
-
 	{
-		// The console is a Unicode control while the Lua core, like the rest of
-		// the emulation code, works with char strings in the ANSI code page.
-		// Handing those bytes to EM_REPLACESEL directly made the control read
-		// them as UTF-16, which turned every line into garbage.
-		CString text = winWideFromAnsi(str);
+		// The console is a Unicode control while the script's output is bytes.
+		// A script whose .lua file starts with a BOM declared itself UTF-8;
+		// everything else is in the process code page, like the rest of the
+		// emulator.  Handing those bytes to EM_REPLACESEL directly made the
+		// control read them as UTF-16, which turned every line into garbage.
+		//
+		// The UTF-8 path still falls back per string: one line can mix the
+		// script's own text with a file name or an English diagnostic that the
+		// engine appended, and that part is ANSI however the file was saved.
+		CString text = (encoding == lua_host::TextEncoding::Utf8)
+			? winWideFromUtf8OrAnsi(str)
+			: winWideFromAnsi(str);
 		SendMessage(hConsole, EM_REPLACESEL, false, (LPARAM)(LPCTSTR)text);
 	}
 }
 
 void WinLuaOnStart(std::intptr_t hDlgAsInt)
 {
-	HWND hDlg = (HWND)(std::intptr_t)hDlgAsInt;
-	//LuaPerWindowInfo& info = LuaWindowInfo[hDlg];
-	//info.started = true;
-	EnableWindow(GetDlgItem(hDlg, IDC_BUTTON_LUABROWSE), false); // disable browse while running because it misbehaves if clicked in a frameadvance loop
-	EnableWindow(GetDlgItem(hDlg, IDC_BUTTON_LUASTOP), true);
-	SetWindowText(GetDlgItem(hDlg, IDC_BUTTON_LUARUN), _T("Restart"));
-	SetWindowText(GetDlgItem(hDlg, IDC_LUACONSOLE), _T("")); // clear the console
-//	Show_Genesis_Screen(HWnd); // otherwise we might never show the first thing the script draws
+	HWND hDlg = hwndOf(hDlgAsInt);
+	if (!hDlg)
+		return;
+
+	// disable browse while running because it misbehaves if clicked in a frameadvance loop
+	if (HWND browse = GetDlgItem(hDlg, IDC_BUTTON_LUABROWSE))
+		EnableWindow(browse, false);
+	if (HWND stop = GetDlgItem(hDlg, IDC_BUTTON_LUASTOP))
+		EnableWindow(stop, true);
+	if (HWND run = GetDlgItem(hDlg, IDC_BUTTON_LUARUN))
+		SetWindowText(run, _T("Restart"));
+	if (HWND console = GetDlgItem(hDlg, IDC_LUACONSOLE))
+		SetWindowText(console, _T("")); // clear the console
 }
 
 void WinLuaOnStop(std::intptr_t hDlgAsInt)
 {
-	HWND hDlg = (HWND)(std::intptr_t)hDlgAsInt;
-	//LuaPerWindowInfo& info = LuaWindowInfo[hDlg];
+	HWND hDlg = hwndOf(hDlgAsInt);
+	if (!hDlg)
+		return;
 
 	HWND prevWindow = GetActiveWindow();
-	SetActiveWindow(hDlg); // bring to front among other script/secondary windows, since a stopped script will have some message for the user that would be easier to miss otherwise
-	if(prevWindow == AfxGetMainWnd()->GetSafeHwnd()) SetActiveWindow(prevWindow);
+	// bring to front among the other script windows, since a stopped script will
+	// have some message for the user that would be easier to miss otherwise --
+	// but never for a window that is on its way out
+	if (::IsWindow(hDlg) && ::IsWindowVisible(hDlg))
+		SetActiveWindow(hDlg);
+	if (CWnd *main = AfxGetMainWnd())
+	{
+		if (prevWindow == main->GetSafeHwnd())
+			SetActiveWindow(prevWindow);
+	}
 
-	//info.started = false;
-	EnableWindow(GetDlgItem(hDlg, IDC_BUTTON_LUABROWSE), true);
-	EnableWindow(GetDlgItem(hDlg, IDC_BUTTON_LUASTOP), false);
-	SetWindowText(GetDlgItem(hDlg, IDC_BUTTON_LUARUN), _T("Run"));
-//	if(statusOK)
-//		Show_Genesis_Screen(MainWindow->getHWnd()); // otherwise we might never show the last thing the script draws
-	//if(info.closeOnStop)
-	//	PostMessage(hDlg, WM_CLOSE, 0, 0);
+	if (HWND browse = GetDlgItem(hDlg, IDC_BUTTON_LUABROWSE))
+		EnableWindow(browse, true);
+	if (HWND stop = GetDlgItem(hDlg, IDC_BUTTON_LUASTOP))
+		EnableWindow(stop, false);
+	if (HWND run = GetDlgItem(hDlg, IDC_BUTTON_LUARUN))
+		SetWindowText(run, _T("Run"));
+}
+
+HWND LuaWindowCreate(CWnd *parent)
+{
+	int index = (int)s_consoles.size();
+
+	// The index travels through the WM_INITDIALOG lParam; it is only used to
+	// stagger the windows so a new one does not land exactly on the last one.
+	HWND hDlg = ::CreateDialogParam(AfxGetResourceHandle(), MAKEINTRESOURCE(IDD_LUA),
+		parent ? parent->GetSafeHwnd() : NULL, (DLGPROC)DlgLuaScriptDialog, (LPARAM)index);
+
+	if (!hDlg)
+		return NULL;
+
+	if (::IsIconic(hDlg))
+		::ShowWindow(hDlg, SW_RESTORE);
+	::SetForegroundWindow(hDlg);
+
+	return hDlg;
+}
+
+void LuaWindowRunScript(CWnd *parent, const TCHAR *path)
+{
+	HWND hDlg = LuaWindowCreate(parent);
+	if (!hDlg)
+		return;
+
+	SetDlgItemText(hDlg, IDC_EDIT_LUAPATH, path);
+
+	// Press Run for the user, so a dropped script behaves exactly like one that
+	// was picked in the window (same "no ROM" message, same error reporting).
+	SendMessage(hDlg, WM_COMMAND, MAKEWPARAM(IDC_BUTTON_LUARUN, BN_CLICKED),
+		(LPARAM)GetDlgItem(hDlg, IDC_BUTTON_LUARUN));
+}
+
+bool LuaWindowsAny()
+{
+	return !s_consoles.empty();
+}
+
+void LuaWindowsCloseAll()
+{
+	// Copy: WM_DESTROY removes entries from the vector.
+	std::vector<LuaConsoleWindow *> consoles = s_consoles;
+	for (size_t i = 0; i < consoles.size(); ++i)
+		::PostMessage(consoles[i]->hDlg, WM_CLOSE, 0, 0);
+}
+
+bool LuaWindowStepMessage(MSG *msg)
+{
+	for (size_t i = 0; i < s_consoles.size(); ++i)
+	{
+		if (::IsDialogMessage(s_consoles[i]->hDlg, msg))
+			return true;
+	}
+
+	return false;
 }
 
 INT_PTR CALLBACK DlgLuaScriptDialog(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-	RECT r;
-	RECT r2;
-	int dx1, dy1, dx2, dy2;
-
 	switch (msg) {
 
 	case WM_INITDIALOG:
 	{
+		LuaConsoleWindow *info = new LuaConsoleWindow();
+		info->hDlg	 = hDlg;
+		info->script = NULL;
+		info->font	 = NULL;
+		SetWindowLongPtr(hDlg, GWLP_USERDATA, (LONG_PTR)info);
+		s_consoles.push_back(info);
+
 		// remove the 30000 character limit from the console control
 		SendMessage(GetDlgItem(hDlg, IDC_LUACONSOLE),EM_LIMITTEXT,0,0);
 
+		RECT r;
+		RECT r2;
 		GetWindowRect(AfxGetMainWnd()->GetSafeHwnd(), &r);
-		dx1 = (r.right - r.left) / 2;
-		dy1 = (r.bottom - r.top) / 2;
 
-		GetWindowRect(hDlg, &r2);
-		dx2 = (r2.right - r2.left) / 2;
-		dy2 = (r2.bottom - r2.top) / 2;
-
-		int windowIndex = 0;//std::find(LuaScriptHWnds.begin(), LuaScriptHWnds.end(), hDlg) - LuaScriptHWnds.begin();
+		int windowIndex = (int)lParam;
 		int staggerOffset = windowIndex * 24;
 		r.left += staggerOffset;
 		r.right += staggerOffset;
 		r.top += staggerOffset;
 		r.bottom += staggerOffset;
+
+		GetWindowRect(hDlg, &r2);
 
 		// push it away from the main window if we can
 		const int width = (r.right-r.left);
@@ -156,40 +266,42 @@ INT_PTR CALLBACK DlgLuaScriptDialog(HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 
 		RECT r3;
 		GetClientRect(hDlg, &r3);
-		windowInfo.width = r3.right - r3.left;
-		windowInfo.height = r3.bottom - r3.top;
-		for(int i = 0; i < numControlLayoutInfos; i++) {
-			ControlLayoutState& layoutState = windowInfo.layoutState[i];
-			layoutState.valid = false;
-		}
+		info->width	 = r3.right - r3.left;
+		info->height = r3.bottom - r3.top;
 
 		DragAcceptFiles(hDlg, TRUE);
-		SetDlgItemText(hDlg, IDC_EDIT_LUAPATH, winWideFromAnsi(VBAGetLuaScriptName()));
 
-		SystemParametersInfo(SPI_GETICONTITLELOGFONT, sizeof(LOGFONT), &LuaConsoleLogFont, 0); // reset with an acceptable font
+		// Offer the script the last window opened; a fresh window starts empty.
+		if (!s_lastScriptPath.empty())
+			SetDlgItemText(hDlg, IDC_EDIT_LUAPATH, s_lastScriptPath.c_str());
+
+		EnableWindow(GetDlgItem(hDlg, IDC_BUTTON_LUASTOP), false);
 		return TRUE;
 	}	break;
 
 	case WM_SIZE:
 	{
-		// resize or move controls in the window as necessary when the window is resized
+		LuaConsoleWindow *info = consoleFor(hDlg);
+		if (!info)
+			break;
 
-		//LuaPerWindowInfo& windowInfo = LuaWindowInfo[hDlg];
-		int prevDlgWidth = windowInfo.width;
-		int prevDlgHeight = windowInfo.height;
+		int prevDlgWidth  = info->width;
+		int prevDlgHeight = info->height;
 
-		int dlgWidth = LOWORD(lParam);
+		int dlgWidth  = LOWORD(lParam);
 		int dlgHeight = HIWORD(lParam);
 
-		int deltaWidth = dlgWidth - prevDlgWidth;
+		int deltaWidth	= dlgWidth - prevDlgWidth;
 		int deltaHeight = dlgHeight - prevDlgHeight;
 
 		for(int i = 0; i < numControlLayoutInfos; i++)
 		{
-			ControlLayoutInfo layoutInfo = controlLayoutInfos[i];
-			ControlLayoutState& layoutState = windowInfo.layoutState[i];
+			const ControlLayoutInfo &layoutInfo = controlLayoutInfos[i];
+			ControlLayoutState &layoutState = info->layout[i];
 
 			HWND hCtrl = GetDlgItem(hDlg,layoutInfo.controlID);
+			if (!hCtrl)
+				continue;
 
 			int x,y,width,height;
 			if(layoutState.valid)
@@ -233,8 +345,8 @@ INT_PTR CALLBACK DlgLuaScriptDialog(HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 			layoutState.valid = true;
 		}
 
-		windowInfo.width = dlgWidth;
-		windowInfo.height = dlgHeight;
+		info->width	 = dlgWidth;
+		info->height = dlgHeight;
 
 		RedrawWindow(hDlg, NULL, NULL, RDW_INVALIDATE);
 	}	break;
@@ -252,21 +364,42 @@ INT_PTR CALLBACK DlgLuaScriptDialog(HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 				{
 					TCHAR filename[MAX_PATH];
 					GetDlgItemText(hDlg, IDC_EDIT_LUAPATH, filename, MAX_PATH);
-					VBALoadLuaCode(winAnsiFromWide(filename));
+
+					LuaConsoleWindow *info = consoleFor(hDlg);
+					if (!info)
+						break;
+
+					// Run doubles as Restart: drop the old engine first, so the
+					// new load starts from a clean state (and the window keeps
+					// exactly one script).
+					if (info->script)
+					{
+						VBALuaCloseScript(info->script);
+						info->script = NULL;
+					}
+
+					s_lastScriptPath = filename;
+					info->script = VBALuaOpenScript(winAnsiFromWide(filename), (std::intptr_t)hDlg);
 				}
 				else
 				{
 					// The engine needs a game to run against, and refusing
 					// here used to be the other silent click: nothing ran and
 					// nothing said why.
-					PrintToWindowConsole((std::intptr_t)hDlg,
+					PrintToWindowConsole((std::intptr_t)hDlg, lua_host::TextEncoding::Ansi,
 					                     "No game is running - load a ROM first.\r\n");
 				}
 			}	break;
 
 			case IDC_BUTTON_LUASTOP:
 			{
-				VBALuaStop();
+				LuaConsoleWindow *info = consoleFor(hDlg);
+				if (info && info->script)
+				{
+					// Keep the object: the window still owns it, and Run has to
+					// be able to start it again.
+					VBALuaStopScript(info->script);
+				}
 			}	break;
 
 			case IDC_BUTTON_LUAEDIT:
@@ -321,21 +454,27 @@ INT_PTR CALLBACK DlgLuaScriptDialog(HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 
 			case IDC_LUACONSOLE_CHOOSEFONT:
 			{
-				CHOOSEFONT cf;
+				LuaConsoleWindow *info = consoleFor(hDlg);
+				if (!info)
+					break;
 
+				LOGFONT logFont;
+				SystemParametersInfo(SPI_GETICONTITLELOGFONT, sizeof(LOGFONT), &logFont, 0);
+
+				CHOOSEFONT cf;
 				ZeroMemory(&cf, sizeof(cf));
 				cf.lStructSize = sizeof(CHOOSEFONT);
 				cf.hwndOwner = hDlg;
-				cf.lpLogFont = &LuaConsoleLogFont;
+				cf.lpLogFont = &logFont;
 				cf.Flags = CF_SCREENFONTS | CF_INITTOLOGFONTSTRUCT;
 				if (ChooseFont(&cf)) {
-					if (hFont) {
-						DeleteObject(hFont);
-						hFont = NULL;
+					if (info->font) {
+						DeleteObject(info->font);
+						info->font = NULL;
 					}
-					hFont = CreateFontIndirect(&LuaConsoleLogFont);
-					if (hFont)
-						SendDlgItemMessage(hDlg, IDC_LUACONSOLE, WM_SETFONT, (WPARAM)hFont, 0);
+					info->font = CreateFontIndirect(&logFont);
+					if (info->font)
+						SendDlgItemMessage(hDlg, IDC_LUACONSOLE, WM_SETFONT, (WPARAM)info->font, 0);
 				}
 			}	break;
 
@@ -369,22 +508,44 @@ INT_PTR CALLBACK DlgLuaScriptDialog(HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 		break;
 
 	case WM_CLOSE: {
-		PostMessage(hDlg, WM_DESTROY, 0, 0);
+		DestroyWindow(hDlg);
+		return TRUE;
 	}	break;
 
 	case WM_DESTROY: {
-		//VBALuaStop();
-		DragAcceptFiles(hDlg, FALSE);
-		if (hFont) {
-			DeleteObject(hFont);
-			hFont = NULL;
+		LuaConsoleWindow *info = consoleFor(hDlg);
+		if (info)
+		{
+			// Closing the window closes the script: the engine must not keep a
+			// state alive whose console is gone.  WinLuaOnStop() copes with the
+			// controls already being destroyed.
+			if (info->script)
+			{
+				VBALuaCloseScript(info->script);
+				info->script = NULL;
+			}
+
+			SetWindowLongPtr(hDlg, GWLP_USERDATA, 0);
+
+			for (size_t i = 0; i < s_consoles.size(); ++i)
+			{
+				if (s_consoles[i] == info)
+				{
+					s_consoles.erase(s_consoles.begin() + i);
+					break;
+				}
+			}
+
+			if (info->font)
+				DeleteObject(info->font);
+			delete info;
 		}
-		LuaConsoleHWnd = NULL;
+
+		DragAcceptFiles(hDlg, FALSE);
 	}	break;
 
 	case WM_DROPFILES: {
 		HDROP hDrop;
-		//UINT fileNo;
 		UINT fileCount;
 		TCHAR filename[_MAX_PATH];
 

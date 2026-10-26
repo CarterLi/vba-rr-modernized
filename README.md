@@ -30,6 +30,8 @@ The short version, for the impatient:
 * Dark mode, sharp text on any monitor, and file dialogs from this decade.
 * Switch controllers work, controllers can be plugged in while the emulator runs, and cheats
   can explain themselves.
+* **As many Lua scripts as you want, each in its own window** — a HUD, a macro pad and a
+  memory watch no longer replace one another.
 * Timings, savestates, movies and Lua behaviour: unchanged, on purpose.
 
 ## Start here: which `.exe` do I run?
@@ -219,6 +221,15 @@ movie opens as fast as a ten-second one. Notes:
 * **Lua runs on LuaJIT 2.1**, so the scripts you already have keep working and the heavy ones
   run a lot faster.
 * `vba.screenshot()` takes a capture from a script.
+* **As many script windows as you like, side by side.** Each window runs its own script and
+  they no longer replace one another: **File → Lua Scripting → New Lua Script Window...**
+  opens a new one every time, and dropping a `.lua` file on the emulator opens one with that
+  script already running. A script that fails stops itself and leaves the others alone, and
+  **Close All Script Windows** closes the lot.
+* **A script can print Chinese.** Save the `.lua` file as UTF-8 **with a BOM** and `print()`,
+  error messages and pop-ups come out as written. Without a BOM the text is read in the
+  system code page, exactly as before — Lua cannot tell the two apart, so the BOM is the only
+  way to say it.
 
 ## Your existing recordings
 
@@ -272,6 +283,8 @@ The point of the whole branch, so plainly:
 * A script that did not load said nothing at all: no window, no message, the Run button
   still saying "Run". A missing file or a syntax error now names the file and the line, and
   pressing **Run** with no game loaded says so instead of doing nothing silently.
+* A script saved as UTF-8 **with a BOM** was refused with a syntax error, because Lua 5.1 has
+  no idea what a BOM is. Such a file loads now, and its Chinese prints as Chinese.
 
 **Emulation**
 
@@ -328,7 +341,8 @@ saveType=0
 * [Sync History](https://tasvideos.org/EmulatorResources/VBA/SyncHistory)
 * [Lua Scripting Functions](https://tasvideos.org/EmulatorResources/VBA/LuaScriptingFunctions)
   and [notes for this branch](documentation/lua-scripting.md) — where a script's output
-  actually goes, why it has to advance frames, and what a load error looks like
+  actually goes, why it has to advance frames, what a load error looks like, and how to get
+  Chinese out of `print()`
 * [Release notes of this branch](documentation/VBArr-modernized-changelog.txt) and the
   [Windows specific notes](README-win.txt)
 

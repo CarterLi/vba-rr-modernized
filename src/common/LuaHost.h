@@ -21,6 +21,21 @@
 
 namespace lua_host
 {
+	// ---- how a narrow string is encoded -----------------------------------
+	//
+	// Two kinds of text reach the frontend as `char *`: the engine's own
+	// literals and file names, which are in the process ANSI code page, and
+	// the strings a script produced.  A script is UTF-8 when its .lua file
+	// starts with a BOM - the only declaration of an encoding a script has -
+	// and ANSI otherwise, exactly like every other narrow string here.  A
+	// Unicode control cannot tell them apart, so everything that carries
+	// script text says which one it is.
+	enum class TextEncoding
+	{
+		Ansi, // process code page (CP_ACP)
+		Utf8  // the script file declared itself UTF-8 with a BOM
+	};
+
 	// ---- message boxes ----------------------------------------------------
 	// The Lua API exposes "ok" / "yesno" / "yesnocancel" pop-ups plus the
 	// abort/retry/ignore prompt used by the runaway-script guard. These are
@@ -46,7 +61,8 @@ namespace lua_host
 	};
 
 	MsgBoxResult messageBox(const char *text, const char *caption, MsgBoxType type,
-		bool errorIcon = false);
+		bool errorIcon = false,
+		TextEncoding encoding = TextEncoding::Ansi);
 
 	// ---- window geometry, in physical client pixels -----------------------
 	void getMouseClientPos(int &x, int &y);
@@ -65,20 +81,25 @@ namespace lua_host
 	// The frontend owns the naming scheme (ROM directory, "state1.sgm", ...).
 	std::string savestateFilename(int which);
 
-	// ---- Lua console (modeless; return 0 when the frontend has none) ------
+	// ---- Lua console (modeless) -------------------------------------------
 	//
 	// The engine owns the function pointers (info_print / info_onstart /
 	// info_onstop in lua-engine.cpp); the frontend supplies the three sinks
-	// that write into its console window. A frontend without a console
-	// returns 0 from openConsole() and leaves every sink null.
+	// that write into its console window, and the console handle itself: the
+	// window creates its console and hands the handle to VBALuaOpenScript(),
+	// so several script windows can exist at once.  A frontend without a
+	// console leaves every sink null and passes 0 as the handle.
+	//
+	// `print` is given the encoding of the script that produced `text`; the
+	// handle alone is not enough to know it, because two windows may run a
+	// UTF-8 and an ANSI script side by side.
 	struct ConsoleSinks
 	{
-		void (*print)(std::intptr_t handle, const char *text);
+		void (*print)(std::intptr_t handle, TextEncoding encoding, const char *text);
 		void (*onStart)(std::intptr_t handle);
 		void (*onStop)(std::intptr_t handle);
 	};
 
-	std::intptr_t openConsole();
 	ConsoleSinks consoleSinks();
 }
 

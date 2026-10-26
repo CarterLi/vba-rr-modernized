@@ -79,53 +79,22 @@ extern "C"
 // project settings so that SFMT.c and this file agree on the parameters.
 #include "../SFMT/SFMT.h"
 
-static sfmt_t sfmtState;
-
-static void (*info_print)(std::intptr_t uid, const char *str);
+// Console sinks.  The frontend supplies three functions that write into "the
+// console" named by a handle; the handle belongs to a script (VbaLuaState::
+// console), which is what lets several consoles exist at the same time.  The
+// encoding travels with the text because each console may be rendering a
+// script saved in a different one (see "Script text encoding" below).
+static void (*info_print)(std::intptr_t uid, lua_host::TextEncoding encoding, const char *str);
 static void (*info_onstart)(std::intptr_t uid);
 static void (*info_onstop)(std::intptr_t uid);
-static std::intptr_t	info_uid;
 
 #ifndef countof
 	#define countof(a)  (sizeof(a) / sizeof(a[0]))
 #endif
 
-static lua_State *LUA;
-
-// Are we running any code right now?
-static char *luaScriptName = NULL;
-
-// Are we running any code right now?
-static bool8 luaRunning = false;
-
-// True at the frame boundary, false otherwise.
-static bool8 frameBoundary = false;
-
-// The execution speed we're running at.
-static enum { SPEED_NORMAL, SPEED_NOTHROTTLE, SPEED_TURBO, SPEED_MAXIMUM } speedmode = SPEED_NORMAL;
-
-// Rerecord count skip mode
-static bool8 skipRerecords = false;
-
-// Used by the registry to find our functions
+// Registry keys, not per-script slots: every script owns a registry.
 static const char *frameAdvanceThread = "VBA.FrameAdvance";
 static const char *guiCallbackTable	  = "VBA.GUI";
-
-// True if there's a thread waiting to run after a run of frame-advance.
-static bool8 frameAdvanceWaiting = false;
-
-// We save our pause status in the case of a natural death.
-//static bool8 wasPaused = false;
-
-// Transparency strength. 255=opaque, 0=so transparent it's invisible
-static int transparencyModifier = 255;
-
-// Our joypads.
-static uint16 lua_joypads[4];
-static uint8  lua_joypads_used = 0;
-
-static bool8  gui_used = false;
-static uint8 *gui_data = NULL;		  // BGRA
 
 // Remap input display
 struct LuaInputDisplayRemap
@@ -133,15 +102,241 @@ struct LuaInputDisplayRemap
 	uint32 from;
 	uint32 to[10];
 };
-static LuaInputDisplayRemap lua_input_display_remap[4], lua_next_input_display_remap[4];
 
-// Protects Lua calls from going nuts.
-// We set this to a big number like 1000 and decrement it
-// over time. The script gets knifed once this reaches zero.
-static int numTries;
+// the purpose of this structure is to provide a way of
+// QUICKLY determining whether a memory address range has a hook associated with it,
+// with a bias toward fast rejection because the majority of addresses will not be hooked.
+// (it must not use any part of Lua or perform any per-script operations,
+//  otherwise it would definitely be too slow.)
+// calculating the regions when a hook is added/removed may be slow,
+// but this is an intentional tradeoff to obtain a high speed of checking during later execution
+struct TieredRegion
+{
+	template<unsigned int maxGap>
+	struct Region
+	{
+		struct Island
+		{
+			unsigned int	   start;
+			unsigned int	   end;
+			__forceinline bool Contains(unsigned int address, int size) const { return address < end && address + size > start; }
+		};
+		std::vector<Island> islands;
 
-// number of registered memory functions (1 per hooked byte)
-static unsigned int numMemHooks;
+		void Calculate(const std::vector<unsigned int> &bytes)
+		{
+			islands.clear();
+
+			unsigned int lastEnd = ~0;
+
+			std::vector<unsigned int>::const_iterator iter = bytes.begin();
+			std::vector<unsigned int>::const_iterator end  = bytes.end();
+			for (; iter != end; ++iter)
+			{
+				unsigned int addr = *iter;
+				if (addr < lastEnd || addr > lastEnd + (long long)maxGap)
+				{
+					islands.push_back(Island());
+					islands.back().start = addr;
+				}
+				islands.back(). end = addr + 1;
+				lastEnd = addr + 1;
+			}
+		}
+
+		bool Contains(unsigned int address, int size) const
+		{
+			//for (size_t i = 0, j = islands.size(); i != j; ++i)
+			for (size_t i = islands.size(); i--; )
+			{
+				if (islands[i].Contains(address, size))
+					return true;
+			}
+			return false;
+		}
+	};
+
+	Region<0xFFFFFFFF> broad;
+	Region<0x1000>	   mid;
+	Region<0>		   narrow;
+
+	void Calculate(std::vector<unsigned int> &bytes)
+	{
+		std:: sort(bytes.begin(), bytes.end());
+
+		broad.Calculate(bytes);
+		mid.Calculate(bytes);
+		narrow.Calculate(bytes);
+	}
+
+	TieredRegion()
+	{
+		std::vector <unsigned int> temp;
+		Calculate(temp);
+	}
+
+	__forceinline int NotEmpty()
+	{
+		return (int)broad.islands.size();
+	}
+
+	// note: it is illegal to call this if NotEmpty() returns 0
+	__forceinline bool Contains(unsigned int address, int size)
+	{
+		return broad.islands[0].Contains(address, size) &&
+				mid.Contains(address, size) &&
+				narrow.Contains(address, size);
+	}
+};
+
+// ---------------------------------------------------------------------------
+// VbaLuaState -- one script window
+//
+// Everything that used to be a file-scope static in this file lives here now,
+// because the emulator can run several scripts at once: each console window
+// owns one VbaLuaState, and two scripts share nothing but the emulated machine.
+//
+// What is deliberately still process-wide:
+//   * the three console sinks above: every console is served by the same three
+//     functions, they differ only in the handle they are given;
+//   * hookedRegions, the merged view of every script's memory hooks, which is
+//     what the (very hot) dispatch tests before it looks at any script;
+//   * g_luaStates.  Its order is load order, and that is also the order in
+//     which frame and gui callbacks run, so the same set of scripts produces
+//     the same sequence of callbacks on every run.
+// ---------------------------------------------------------------------------
+class VbaLuaState
+{
+public:
+	enum SpeedMode { SPEED_NORMAL, SPEED_NOTHROTTLE, SPEED_TURBO, SPEED_MAXIMUM };
+
+	// --- identity ---------------------------------------------------------
+	lua_State	 *L;			// NULL when no script is loaded
+	std::string	  scriptName;	// the file it was loaded from
+	std::intptr_t console;		// the frontend console its output goes to
+
+	// How the bytes of this script's strings should be read: UTF-8 when the
+	// file starts with a BOM, the process code page otherwise.  Set by load().
+	lua_host::TextEncoding encoding;
+
+	// --- run state --------------------------------------------------------
+	bool  running;				// callbacks are still live (see frameBoundaryStep)
+	bool  frameBoundary;		// true while inside frameBoundaryStep()
+	bool  frameAdvanceWaiting;	// a coroutine is parked at a frame advance
+	int   numTries;				// runaway guard, see VBALuaHookFunction
+	SpeedMode speedmode;
+	bool8 skipRerecords;
+
+	// --- what this script feeds the emulated machine ----------------------
+	int	   transparency;		// 255 = opaque, 0 = invisible
+	uint16 joypad[4];
+	uint8  joypadUsed;
+	LuaInputDisplayRemap inputRemap[4], nextInputRemap[4];
+
+	// --- gui canvas -------------------------------------------------------
+	bool   guiUsed;
+	uint8 *guiData;				// BGRA, allocated on the first draw
+
+	// --- memory hooks -----------------------------------------------------
+	unsigned int memHooks;		// hooked bytes, this script only
+	TieredRegion memRegions[LUAMEMHOOK_COUNT];
+
+	// --- math.random() ----------------------------------------------------
+	sfmt_t rng;
+
+	VbaLuaState();
+	~VbaLuaState();
+
+	bool load(const char *filename);
+	void stop();
+	void resetAfterStop();
+	void frameBoundaryStep();
+	void callCallbacks(LuaCallID calltype);
+	void callExitFunction();
+	void guiFrame(uint8 *screen, int pitch, int width, int height);
+
+	// The instance a lua_State belongs to, or NULL.  Coroutines work too: a
+	// thread shares the registry of the state that created it.
+	static VbaLuaState *fromLua(lua_State *L);
+};
+
+// Live scripts, in load order.
+static std::vector<VbaLuaState *> g_luaStates;
+
+// address only; used as a registry key so that no string is hashed
+static char s_luaStateKey;
+
+VbaLuaState *VbaLuaState::fromLua(lua_State *L)
+{
+	if (!L)
+		return NULL;
+
+	lua_pushlightuserdata(L, &s_luaStateKey);
+	lua_rawget(L, LUA_REGISTRYINDEX);
+	VbaLuaState *state = (VbaLuaState *)lua_touserdata(L, -1);
+	lua_pop(L, 1);
+
+	return state;
+}
+
+VbaLuaState::VbaLuaState()
+	: L(NULL), console(0), encoding(lua_host::TextEncoding::Ansi), running(false),
+	  frameBoundary(false), frameAdvanceWaiting(false), numTries(0),
+	  speedmode(SPEED_NORMAL), skipRerecords(false), transparency(255),
+	  joypadUsed(0), guiUsed(false), guiData(NULL), memHooks(0)
+{
+	memset(joypad, 0, sizeof(joypad));
+	memset(inputRemap, 0, sizeof(inputRemap));
+	memset(nextInputRemap, 0, sizeof(nextInputRemap));
+	memset(&rng, 0, sizeof(rng));
+}
+
+VbaLuaState::~VbaLuaState()
+{
+	free(guiData);
+}
+
+// The merged view of what every script is feeding the emulator this frame.
+// joypad.set() replaces the whole pad, so two scripts that both want pad 0 can
+// only be combined by or-ing their buttons together.
+static uint8 mergedLuaJoypadMask()
+{
+	uint8 mask = 0;
+
+	for (size_t i = 0; i < g_luaStates.size(); ++i)
+		mask |= g_luaStates[i]->joypadUsed;
+
+	return mask;
+}
+
+static uint16 mergedLuaJoypad(int which)
+{
+	uint16 buttons = 0;
+
+	for (size_t i = 0; i < g_luaStates.size(); ++i)
+	{
+		if (g_luaStates[i]->joypadUsed & (1 << which))
+			buttons |= g_luaStates[i]->joypad[which];
+	}
+
+	return buttons;
+}
+
+// Installed once; the sink functions themselves are the same for every console.
+static void ensureConsoleSinks()
+{
+	if (info_print)
+		return;
+
+#ifdef WIN32
+	lua_host::ConsoleSinks sinks = lua_host::consoleSinks();
+	info_print	 = sinks.print;
+	info_onstart = sinks.onStart;
+	info_onstop	 = sinks.onStop;
+#endif
+}
+
+static void CalculateMemHookRegions(LuaMemHookType hookType);
 
 // Look in inputglobal.h for macros named like BUTTON_MASK_UP to determine the order.
 static const char *button_mappings[] = {
@@ -287,15 +482,15 @@ static bool getColorIOFunc(int depth, GetColorFunc *getColor, SetColorFunc *setC
 /**
  * Resets emulator speed / pause states after script exit.
  */
-static void VBALuaOnStop(void)
+void VbaLuaState::resetAfterStop(void)
 {
-	luaRunning		 = false;
-	lua_joypads_used = 0;
-	gui_used		 = false;
+	running		= false;
+	joypadUsed	= 0;
+	guiUsed		= false;
 	for (int i = 0; i < 4; ++i)
 	{
-		lua_input_display_remap[i].from = 0;
-		lua_next_input_display_remap[i].from = 0;
+		inputRemap[i].from	   = 0;
+		nextInputRemap[i].from = 0;
 	}
 	//if (wasPaused)
 	//	systemSetPause(true);
@@ -306,14 +501,26 @@ static void VBALuaOnStop(void)
  * Returns 0 if no, 1 if yes. If yes, we also tamper with the
  * IPPU's settings for speed ourselves, so the calling code
  * need not do anything.
+ *
+ * Several scripts may disagree; the fastest mode wins, the same way the merged
+ * joypad takes every script's buttons.
  */
 int VBALuaSpeed(void)
 {
-	if (!LUA || !luaRunning)
+	VbaLuaState::SpeedMode fastest = VbaLuaState::SPEED_NORMAL;
+
+	for (size_t i = 0; i < g_luaStates.size(); ++i)
+	{
+		VbaLuaState *state = g_luaStates[i];
+		if (state->L && state->running && state->speedmode > fastest)
+			fastest = state->speedmode;
+	}
+
+	if (fastest == VbaLuaState::SPEED_NORMAL)
 		return 0;
 
 	//printf("%d\n", speedmode);
-	switch (speedmode)
+	switch (fastest)
 	{
 	/*
 	case SPEED_NORMAL:
@@ -357,28 +564,32 @@ int VBALuaSpeed(void)
 //   maximum renders no frames
 static int vba_speedmode(lua_State *L)
 {
+	VbaLuaState *state = VbaLuaState::fromLua(L);
 	const char *mode = luaL_checkstring(L, 1);
+
+	if (!state)
+		return luaL_error(L, "vba.speedmode: no script is running");
 
 	if (strcasecmp(mode, "normal") == 0)
 	{
-		speedmode = SPEED_NORMAL;
+		state->speedmode = VbaLuaState::SPEED_NORMAL;
 	}
 	else if (strcasecmp(mode, "nothrottle") == 0)
 	{
-		speedmode = SPEED_NOTHROTTLE;
+		state->speedmode = VbaLuaState::SPEED_NOTHROTTLE;
 	}
 	else if (strcasecmp(mode, "turbo") == 0)
 	{
-		speedmode = SPEED_TURBO;
+		state->speedmode = VbaLuaState::SPEED_TURBO;
 	}
 	else if (strcasecmp(mode, "maximum") == 0)
 	{
-		speedmode = SPEED_MAXIMUM;
+		state->speedmode = VbaLuaState::SPEED_MAXIMUM;
 	}
 	else
 		luaL_error(L, "Invalid mode %s to vba.speedmode", mode);
 
-	//printf("new speed mode:  %d\n", speedmode);
+	//printf("new speed mode:  %d\n", state->speedmode);
 	return 0;
 }
 
@@ -389,11 +600,14 @@ static int vba_speedmode(lua_State *L)
 //  when we break out.
 static int vba_frameadvance(lua_State *L)
 {
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+
 	// We're going to sleep for a frame-advance. Take notes.
-	if (frameAdvanceWaiting)
+	if (state && state->frameAdvanceWaiting)
 		return luaL_error(L, "can't call vba.frameadvance() from here");
 
-	frameAdvanceWaiting = true;
+	if (state)
+		state->frameAdvanceWaiting = true;
 
 	// Don't do this! The user won't like us sending their emulator out of control!
 	//	Settings.FrameAdvance = true;
@@ -411,17 +625,21 @@ static int vba_frameadvance(lua_State *L)
 //  finishes executing anwyays. In this case, the function returns immediately.
 static int vba_pause(lua_State *L)
 {
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+
 	systemSetPause(true);
-	speedmode = SPEED_NORMAL;
+	if (state)
+		state->speedmode = VbaLuaState::SPEED_NORMAL;
 
 	// Return control if we're midway through a frame. We can't pause here.
-	if (frameAdvanceWaiting)
+	if (state && state->frameAdvanceWaiting)
 	{
 		return 0;
 	}
 
 	// If it's on a frame boundary, we also yield.
-	frameAdvanceWaiting = true;
+	if (state)
+		state->frameAdvanceWaiting = true;
 	return lua_yield(L, 0);
 }
 
@@ -796,16 +1014,21 @@ static const char *toCString(lua_State *L, int idx)
 	}
 }
 
+// The encoding of everything a given script produces.  Text that cannot be
+// attributed to a script is the engine's own and therefore ANSI.
+static lua_host::TextEncoding scriptTextEncoding(const VbaLuaState *state)
+{
+	return state ? state->encoding : lua_host::TextEncoding::Ansi;
+}
+
 // replacement for luaB_print() that goes to the appropriate textbox instead of stdout
 static int print(lua_State *L)
 {
 	const char *str = toCString(L);
-
-	std::intptr_t uid = info_uid; //luaStateToUIDMap[L->l_G->mainthread];
-	//LuaContextInfo& info = GetCurrentInfo();
+	VbaLuaState *state = VbaLuaState::fromLua(L);
 
 	if (info_print)
-		info_print(uid, str);
+		info_print(state ? state->console : 0, scriptTextEncoding(state), str);
 	else
 		puts(str);
 
@@ -821,12 +1044,10 @@ static int printerror(lua_State *L, int idx)
 		idx = lua_gettop(L) + 1 + idx;
 
 	const char *str = rawToCString(L, idx);
-
-	std::intptr_t uid = info_uid; //luaStateToUIDMap[L->l_G->mainthread];
-	//LuaContextInfo& info = GetCurrentInfo();
+	VbaLuaState *state = VbaLuaState::fromLua(L);
 
 	if (info_print)
-		info_print(uid, str);
+		info_print(state ? state->console : 0, scriptTextEncoding(state), str);
 	else
 		fputs(str, stderr);
 
@@ -1042,24 +1263,81 @@ static int memory_setregister(lua_State *L)
 	return 0;
 }
 
+static void KillScriptAfterError(VbaLuaState *state)
+{
+	// A callback of this script crashed.  The old engine closed the one and only
+	// lua_State here, which is not an option any more: another script may be
+	// running, and the caller is still standing on this one.  Drop every
+	// callback the script registered instead, so it costs nothing per frame,
+	// and leave the state itself to be closed when its window goes away.
+	lua_State *L = state->L;
+	if (!L)
+		return;
+
+	lua_settop(L, 0);
+	for (int i = 0; i < LUACALL_COUNT; ++i)
+	{
+		lua_pushnil(L);
+		lua_setfield(L, LUA_REGISTRYINDEX, luaCallIDStrings[i]);
+	}
+	lua_pushnil(L);
+	lua_setfield(L, LUA_REGISTRYINDEX, guiCallbackTable);
+	lua_pushnil(L);
+	lua_setfield(L, LUA_REGISTRYINDEX, frameAdvanceThread);
+	lua_settop(L, 0);
+
+	state->resetAfterStop();
+	state->memHooks = 0;
+	for (int i = 0; i < LUAMEMHOOK_COUNT; ++i)
+		CalculateMemHookRegions((LuaMemHookType)i);
+
+	if (info_onstop)
+		info_onstop(state->console);
+}
+
 void HandleCallbackError(lua_State *L)
 {
 	// Called right after lua_pcall() returned an error, so there is no active
 	// protected frame left to rethrow into.  LuaJIT keeps lua_State opaque, so
 	// the old errfunc/errorJmp probe is gone and we always report directly.
-	{
-		lua_pushnil(LUA);
-		lua_setfield(LUA, LUA_REGISTRYINDEX, guiCallbackTable);
+	VbaLuaState *state = VbaLuaState::fromLua(L);
 
-		// Error?
-//#if (defined(WIN32) && !defined(SDL))
-//		info_print(info_uid, lua_tostring(LUA, -1)); //Clear_Sound_Buffer();
-// AfxGetApp()->m_pMainWnd->MessageBox(lua_tostring(LUA, -1), "Lua run error", MB_OK | MB_ICONSTOP);
-//#else
-//		fprintf(stderr, "Lua thread bombed out: %s\n", lua_tostring(LUA, -1));
-//#endif
-		printerror(LUA, -1);
-		VBALuaStop();
+	// The gui callback goes first: a draw function that crashed would be called
+	// again next frame, and the message box it may pop up causes a paint event
+	// which calls it once more (see the note in guiFrame).
+	lua_pushnil(L);
+	lua_setfield(L, LUA_REGISTRYINDEX, guiCallbackTable);
+
+	printerror(L, -1);
+
+	if (state)
+		KillScriptAfterError(state);
+}
+
+// One callback kind, in one script.  Calls are made with the main state of the
+// script, which is what the engine always did: the coroutine parked in
+// vba.frameadvance() keeps its own stack, so a callback can neither see nor
+// disturb it.
+void VbaLuaState::callCallbacks(LuaCallID calltype)
+{
+	const char *idstring = luaCallIDStrings[calltype];
+
+	if (!L)
+		return;
+
+	lua_settop(L, 0);
+	lua_getfield(L, LUA_REGISTRYINDEX, idstring);
+
+	int errorcode = 0;
+	if (lua_isfunction(L, -1))
+	{
+		errorcode = lua_pcall(L, 0, 0, 0);
+		if (errorcode)
+			HandleCallbackError(L);
+	}
+	else
+	{
+		lua_pop(L, 1);
 	}
 }
 
@@ -1067,197 +1345,82 @@ void CallRegisteredLuaFunctions(LuaCallID calltype)
 {
 	assert((unsigned int)calltype < (unsigned int)LUACALL_COUNT);
 
-	const char *idstring = luaCallIDStrings[calltype];
-
-	if (!LUA)
-		return;
-
-	lua_settop(LUA, 0);
-	lua_getfield(LUA, LUA_REGISTRYINDEX, idstring);
-
-	int errorcode = 0;
-	if (lua_isfunction(LUA, -1))
-	{
-		errorcode = lua_pcall(LUA, 0, 0, 0);
-		if (errorcode)
-			HandleCallbackError(LUA);
-	}
-	else
-	{
-		lua_pop(LUA, 1);
-	}
+	// load order, every time: two scripts must not be able to swap rounds
+	for (size_t i = 0; i < g_luaStates.size(); ++i)
+		g_luaStates[i]->callCallbacks(calltype);
 }
 
-// the purpose of this structure is to provide a way of
-// QUICKLY determining whether a memory address range has a hook associated with it,
-// with a bias toward fast rejection because the majority of addresses will not be hooked.
-// (it must not use any part of Lua or perform any per-script operations,
-//  otherwise it would definitely be too slow.)
-// calculating the regions when a hook is added/removed may be slow,
-// but this is an intentional tradeoff to obtain a high speed of checking during later execution
-struct TieredRegion
-{
-	template<unsigned int maxGap>
-	struct Region
-	{
-		struct Island
-		{
-			unsigned int	   start;
-			unsigned int	   end;
-			__forceinline bool Contains(unsigned int address, int size) const { return address < end && address + size > start; }
-		};
-		std::vector<Island> islands;
-
-		void Calculate(const std::vector<unsigned int> &bytes)
-		{
-			islands.clear();
-
-			unsigned int lastEnd = ~0;
-
-			std::vector<unsigned int>::const_iterator iter = bytes.begin();
-			std::vector<unsigned int>::const_iterator end  = bytes.end();
-			for (; iter != end; ++iter)
-			{
-				unsigned int addr = *iter;
-				if (addr < lastEnd || addr > lastEnd + (long long)maxGap)
-				{
-					islands.push_back(Island());
-					islands.back().start = addr;
-				}
-				islands.back(). end = addr + 1;
-				lastEnd = addr + 1;
-			}
-		}
-
-		bool Contains(unsigned int address, int size) const
-		{
-			//for (size_t i = 0, j = islands.size(); i != j; ++i)
-			for (size_t i = islands.size(); i--; )
-			{
-				if (islands[i].Contains(address, size))
-					return true;
-			}
-			return false;
-		}
-	};
-
-	Region<0xFFFFFFFF> broad;
-	Region<0x1000>	   mid;
-	Region<0>		   narrow;
-
-	void Calculate(std::vector<unsigned int> &bytes)
-	{
-		std:: sort(bytes.begin(), bytes.end());
-
-		broad.Calculate(bytes);
-		mid.Calculate(bytes);
-		narrow.Calculate(bytes);
-	}
-
-	TieredRegion()
-	{
-		std::vector <unsigned int> temp;
-		Calculate(temp);
-	}
-
-	__forceinline int NotEmpty()
-	{
-		return (int)broad.islands.size();
-	}
-
-	// note: it is illegal to call this if NotEmpty() returns 0
-	__forceinline bool Contains(unsigned int address, int size)
-	{
-		return broad.islands[0].Contains(address, size) &&
-				mid.Contains(address, size) &&
-				narrow.Contains(address, size);
-	}
-};
-
-TieredRegion hookedRegions[LUAMEMHOOK_COUNT];
+// The merged view of every script's hooks, rebuilt whenever any script adds or
+// removes one.  This is what the dispatch below tests first: one region check
+// for the common "nothing is hooked here" case, and only then a look at the
+// individual scripts.
+static TieredRegion hookedRegions[LUAMEMHOOK_COUNT];
 
 static void CalculateMemHookRegions(LuaMemHookType hookType)
 {
-	std::vector<unsigned int> hookedBytes;
-//	std::map<int, LuaContextInfo*>::iterator iter = luaContextInfo.begin();
-//	std::map<int, LuaContextInfo*>::iterator end = luaContextInfo.end();
-//	while(iter != end)
-//	{
-//		LuaContextInfo& info = *iter->second;
-		if (/*info.*/ numMemHooks)
-		{
-			lua_State *L = LUA /*info.L*/;
-			if (L)
-			{
-				lua_settop(L, 0);
-				lua_getfield(L, LUA_REGISTRYINDEX, luaMemHookTypeStrings[hookType]);
-				lua_pushnil(L);
-				while (lua_next(L, -2))
-				{
-					if (lua_isfunction(L, -1))
-					{
-						unsigned int addr = (unsigned int)lua_tointeger(L, -2);
-						hookedBytes.push_back(addr);
-					}
-					lua_pop(L, 1);
-				}
-				lua_settop(L, 0);
-			}
-		}
-//		++iter;
-//	}
-	hookedRegions[hookType].Calculate(hookedBytes);
-}
+	std::vector<unsigned int> unionBytes;
 
-static void CallRegisteredLuaMemHook_LuaMatch(unsigned int address, int size, unsigned int value, LuaMemHookType hookType)
-{
-//	std::map<int, LuaContextInfo*>::iterator iter = luaContextInfo.begin();
-//	std::map<int, LuaContextInfo*>::iterator end = luaContextInfo.end();
-//	while(iter != end)
-//	{
-//		LuaContextInfo& info = *iter->second;
-	if (/*info.*/ numMemHooks)
+	for (size_t s = 0; s < g_luaStates.size(); ++s)
 	{
-		lua_State *L = LUA /*info.L*/;
-		if (L /* && !info.panic*/)
+		VbaLuaState *state = g_luaStates[s];
+		std::vector<unsigned int> hookedBytes;
+
+		if (state->memHooks && state->L)
 		{
-#ifdef USE_INFO_STACK
-			infoStack.insert(infoStack.begin(), &info);
-			struct Scope { ~Scope(){ infoStack.erase(infoStack.begin()); } } scope;
-#endif
+			lua_State *L = state->L;
 			lua_settop(L, 0);
 			lua_getfield(L, LUA_REGISTRYINDEX, luaMemHookTypeStrings[hookType]);
-			for (int i = address; i != address + size; i++)
+			lua_pushnil(L);
+			while (lua_next(L, -2))
 			{
-				lua_rawgeti(L, -1, i);
 				if (lua_isfunction(L, -1))
 				{
-					bool wasRunning = (luaRunning != 0) /*info.running*/;
-					luaRunning /*info.running*/ = true;
-					//RefreshScriptSpeedStatus();
-					lua_pushinteger(L, address);
-					lua_pushinteger(L, size);
-					int errorcode = lua_pcall(L, 2, 0, 0);
-					luaRunning /*info.running*/ = wasRunning;
-					//RefreshScriptSpeedStatus();
-					if (errorcode)
-					{
-						HandleCallbackError(L);
-						//int uid = iter->first;
-						//HandleCallbackError(L,info,uid,true);
-					}
-					break;
+					unsigned int addr = (unsigned int)lua_tointeger(L, -2);
+					hookedBytes.push_back(addr);
 				}
-				else
-				{
-					lua_pop(L, 1);
-				}
+				lua_pop(L, 1);
 			}
 			lua_settop(L, 0);
 		}
+
+		state->memRegions[hookType].Calculate(hookedBytes);
+		unionBytes.insert(unionBytes.end(), hookedBytes.begin(), hookedBytes.end());
 	}
-//		++iter;
-//	}
+
+	hookedRegions[hookType].Calculate(unionBytes);
+}
+
+static void CallRegisteredLuaMemHook_InScript(VbaLuaState *state, unsigned int address, int size, unsigned int value, LuaMemHookType hookType)
+{
+	lua_State *L = state->L;
+	if (!L)
+		return;
+
+	lua_settop(L, 0);
+	lua_getfield(L, LUA_REGISTRYINDEX, luaMemHookTypeStrings[hookType]);
+	for (int i = address; i != address + size; i++)
+	{
+		lua_rawgeti(L, -1, i);
+		if (lua_isfunction(L, -1))
+		{
+			// A hook fires in the middle of a frame, from C code the script
+			// knows nothing about; it must not be taken for "the script died".
+			bool wasRunning = state->running;
+			state->running = true;
+			lua_pushinteger(L, address);
+			lua_pushinteger(L, size);
+			int errorcode = lua_pcall(L, 2, 0, 0);
+			state->running = wasRunning;
+			if (errorcode)
+				HandleCallbackError(L);
+			break;
+		}
+		else
+		{
+			lua_pop(L, 1);
+		}
+	}
+	lua_settop(L, 0);
 }
 
 void CallRegisteredLuaMemHook(unsigned int address, int size, unsigned int value, LuaMemHookType hookType)
@@ -1268,13 +1431,24 @@ void CallRegisteredLuaMemHook(unsigned int address, int size, unsigned int value
 	// a good amount to test is: 100000000 calls with no hook set, and another 100000000 with a hook set.
 	// (on my system that consistently took 200 ms total in the former case and 350 ms total in the latter
 	// case)
+	//
+	// The first test is against the merged map of every script, so a run with no
+	// hooks at all still costs one empty-island check and nothing else.  Only a
+	// hit pays for looking at the scripts one by one.
 	if (hookedRegions[hookType].NotEmpty())
 	{
 		//if((hookType <= LUAMEMHOOK_EXEC) && (address >= 0xE00000))
 		//	address |= 0xFF0000; // account for mirroring of RAM
 		if (hookedRegions[hookType].Contains(address, size))
-			CallRegisteredLuaMemHook_LuaMatch(address, size, value, hookType);  // something has hooked this
-																				// specific address
+		{
+			for (size_t i = 0; i < g_luaStates.size(); ++i)
+			{
+				VbaLuaState *state = g_luaStates[i];
+				if (state->memHooks && state->memRegions[hookType].NotEmpty() &&
+					state->memRegions[hookType].Contains(address, size))
+					CallRegisteredLuaMemHook_InScript(state, address, size, value, hookType);  // this script hooked that address
+			}
+		}
 	}
 }
 
@@ -1326,9 +1500,10 @@ static int memory_registerHook(lua_State *L, LuaMemHookType hookType, int defaul
 		lua_rawseti(L, -2, i);
 	}
 
-	// adjust the count of active hooks
-	//LuaContextInfo& info = GetCurrentInfo();
-	/*info.*/ numMemHooks += numFuncsAfter - numFuncsBefore;
+	// adjust the count of active hooks of this script
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+	if (state)
+		state->memHooks += numFuncsAfter - numFuncsBefore;
 
 	// re-cache regions of hooked memory across all scripts
 	CalculateMemHookRegions(hookType);
@@ -1879,8 +2054,10 @@ static int joy_get_internal(lua_State *L, bool reportUp, bool reportDown, enum L
 	}
 	else if (type == LuaJoypadType::LUAJOYPAD_LUA)
 	{
-		// Reads the overriding joypad input set by the lua engine
-		buttons = lua_joypads[which];
+		// Reads the overriding joypad input set by the lua engine.  With more
+		// than one script running that is the merged pad, i.e. what the emulator
+		// is actually going to apply.
+		buttons = mergedLuaJoypad(which);
 	}
 	else
 	{
@@ -1974,9 +2151,14 @@ static int joy_set_internal(lua_State *L, enum LuaJoypadType type)
 	}
 	else //if (type == LuaJoypadType::LUAJOYPAD_LUA)
 	{
-		// Overwrites the overriding joypad input set by the lua engine
-		lua_joypads_used |= 1 << (which);
-		buttons = &lua_joypads[which];
+		// Overwrites the overriding joypad input set by the lua engine.  Each
+		// script keeps its own pad; VBALuaUsingJoypad()/VBALuaReadJoypad() or
+		// the two together when several scripts claim the same port.
+		VbaLuaState *state = VbaLuaState::fromLua(L);
+		if (!state)
+			return luaL_error(L, "joypad.set: no script is running");
+		state->joypadUsed |= 1 << (which);
+		buttons = &state->joypad[which];
 	}
 
 	// Set up for taking control of the indicated controller
@@ -2147,7 +2329,8 @@ static int savestate_save(lua_State *L)
 
 	//	printf("saving %s\n", filename);
 	// Save states are very expensive. They take time.
-	numTries--;
+	if (VbaLuaState *state = VbaLuaState::fromLua(L))
+		state->numTries--;
 
 	bool8 retvalue = theEmulator.emuWriteState ? theEmulator.emuWriteState(filename) : false;
 	if (!retvalue)
@@ -2167,7 +2350,8 @@ static int savestate_load(lua_State *L)
 {
 	const char *filename = savestateobj2filename(L, 1);
 
-	numTries--;
+	if (VbaLuaState *state = VbaLuaState::fromLua(L))
+		state->numTries--;
 
 	//	printf("loading %s\n", filename);
 	bool8 retvalue = theEmulator.emuReadState ? theEmulator.emuReadState(filename) : false;
@@ -2217,12 +2401,16 @@ int vba_remapinputdisplay(lua_State* L)
 	else
 		which = systemGetDefaultJoypad();
 
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+	if (!state)
+		return luaL_error(L, "vba.remapinputdisplay: no script is running");
+
 	// Prepair the remapping
-	LuaInputDisplayRemap *remap = lua_input_display_remap;
+	LuaInputDisplayRemap *remap = state->inputRemap;
 
 	// If we are remapping the "next frame input display" instead
 	if (!lua_isnoneornil(L, 3) && joypad_parse_type(L, 3) == LuaJoypadType::LUAJOYPAD_PLAYBACK)
-		remap = lua_next_input_display_remap;
+		remap = state->nextInputRemap;
 
 	remap[which].from = 0;
 
@@ -2328,7 +2516,9 @@ static int movie_rerecordcounting(lua_State *L)
 	if (lua_gettop(L) == 0)
 		luaL_error(L, "no parameters specified");
 
-	skipRerecords = lua_toboolean(L, 1);
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+	if (state)
+		state->skipRerecords = lua_toboolean(L, 1) != 0;
 	return 0;
 }
 
@@ -2348,14 +2538,17 @@ static int movie_stop(lua_State *L)
 #define LUA_SCREEN_WIDTH	256
 #define LUA_SCREEN_HEIGHT	224
 
-// Common code by the gui library: make sure the screen array is ready
-static void gui_prepare(void)
+// Common code by the gui library: make sure this script's screen array is ready.
+// Every script draws on a canvas of its own, so two scripts that both draw a HUD
+// cannot erase each other's pixels; VBALuaGui() blends the canvases in load
+// order at the end of the frame.
+static void gui_prepare(VbaLuaState *state)
 {
-	if (!gui_data)
-		gui_data = (uint8 *)malloc(LUA_SCREEN_WIDTH * LUA_SCREEN_HEIGHT * 4);
-	if (!gui_used)
-		memset(gui_data, 0, LUA_SCREEN_WIDTH * LUA_SCREEN_HEIGHT * 4);
-	gui_used = true;
+	if (!state->guiData)
+		state->guiData = (uint8 *)malloc(LUA_SCREEN_WIDTH * LUA_SCREEN_HEIGHT * 4);
+	if (!state->guiUsed)
+		memset(state->guiData, 0, LUA_SCREEN_WIDTH * LUA_SCREEN_HEIGHT * 4);
+	state->guiUsed = true;
 }
 
 // pixform for lua graphics
@@ -2428,25 +2621,22 @@ static inline bool gui_checkbox(int x1, int y1, int x2, int y2)
 	return true;
 }
 
-// write a pixel to gui_data (do not check boundaries for speedup)
-static inline void gui_drawpixel_fast(int x, int y, uint32 colour)
+// write a pixel to the canvas (do not check boundaries for speedup)
+static inline void gui_drawpixel_fast(VbaLuaState *state, int x, int y, uint32 colour)
 {
-	//gui_prepare();
-	blend32((uint32 *) &gui_data[(y * LUA_SCREEN_WIDTH + x) * 4], colour);
+	blend32((uint32 *) &state->guiData[(y * LUA_SCREEN_WIDTH + x) * 4], colour);
 }
 
-// write a pixel to gui_data (check boundaries)
-static inline void gui_drawpixel_internal(int x, int y, uint32 colour)
+// write a pixel to the canvas (check boundaries)
+static inline void gui_drawpixel_internal(VbaLuaState *state, int x, int y, uint32 colour)
 {
-	//gui_prepare();
 	if (gui_check_boundary(x, y))
-		gui_drawpixel_fast(x, y, colour);
+		gui_drawpixel_fast(state, x, y, colour);
 }
 
-// draw a line on gui_data (checks boundaries)
-static void gui_drawline_internal(int x1, int y1, int x2, int y2, bool lastPixel, uint32 colour)
+// draw a line on the canvas (checks boundaries)
+static void gui_drawline_internal(VbaLuaState *state, int x1, int y1, int x2, int y2, bool lastPixel, uint32 colour)
 {
-	//gui_prepare();
 	// Note: New version of Bresenham's Line Algorithm
 	// http://groups.google.co.jp/group/rec.games.roguelike.development/browse_thread/thread/345f4c42c3b25858/29e07a3af3a450e6?show_docid=29e07a3af3a450e6
 	int swappedx = 0;
@@ -2456,7 +2646,7 @@ static void gui_drawline_internal(int x1, int y1, int x2, int y2, bool lastPixel
 	int ytemp = y1 - y2;
 	if (xtemp == 0 && ytemp == 0)
 	{
-		gui_drawpixel_internal(x1, y1, colour);
+		gui_drawpixel_internal(state, x1, y1, colour);
 		return;
 	}
 
@@ -2479,7 +2669,7 @@ static void gui_drawline_internal(int x1, int y1, int x2, int y2, bool lastPixel
 	signed char iy = y1 > y2 ? 1 : -1;
 
 	if (lastPixel)
-		gui_drawpixel_internal(x2, y2, colour);
+		gui_drawpixel_internal(state, x2, y2, colour);
 
 	if (delta_x >= delta_y)
 	{
@@ -2488,7 +2678,7 @@ static void gui_drawline_internal(int x1, int y1, int x2, int y2, bool lastPixel
 		while (x2 != x1)
 		{
 			if (error == 0 && !swappedx)
-				gui_drawpixel_internal(x2 + ix, y2, colour);
+				gui_drawpixel_internal(state, x2 + ix, y2, colour);
 			if (error >= 0)
 			{
 				if (error || (ix > 0))
@@ -2499,9 +2689,9 @@ static void gui_drawline_internal(int x1, int y1, int x2, int y2, bool lastPixel
 			}
 
 			x2 += ix;
-			gui_drawpixel_internal(x2, y2, colour);
+			gui_drawpixel_internal(state, x2, y2, colour);
 			if (error == 0 && swappedx)
-				gui_drawpixel_internal(x2, y2 + iy, colour);
+				gui_drawpixel_internal(state, x2, y2 + iy, colour);
 			error += delta_y;
 		}
 	}
@@ -2512,7 +2702,7 @@ static void gui_drawline_internal(int x1, int y1, int x2, int y2, bool lastPixel
 		while (y2 != y1)
 		{
 			if (error == 0 && !swappedy)
-				gui_drawpixel_internal(x2, y2 + iy, colour);
+				gui_drawpixel_internal(state, x2, y2 + iy, colour);
 			if (error >= 0)
 			{
 				if (error || (iy > 0))
@@ -2523,16 +2713,16 @@ static void gui_drawline_internal(int x1, int y1, int x2, int y2, bool lastPixel
 			}
 
 			y2 += iy;
-			gui_drawpixel_internal(x2, y2, colour);
+			gui_drawpixel_internal(state, x2, y2, colour);
 			if (error == 0 && swappedy)
-				gui_drawpixel_internal(x2 + ix, y2, colour);
+				gui_drawpixel_internal(state, x2 + ix, y2, colour);
 			error += delta_x;
 		}
 	}
 }
 
-// draw a rect on gui_data
-static void gui_drawbox_internal(int x1, int y1, int x2, int y2, uint32 colour)
+// draw a rect on the canvas
+static void gui_drawbox_internal(VbaLuaState *state, int x1, int y1, int x2, int y2, uint32 colour)
 {
 	if (x1 > x2)
 		std::swap(x1, x2);
@@ -2550,24 +2740,22 @@ static void gui_drawbox_internal(int x1, int y1, int x2, int y2, uint32 colour)
 	if (!gui_checkbox(x1, y1, x2, y2))
 		return;
 
-	//gui_prepare();
-	gui_drawline_internal(x1, y1, x2, y1, true, colour);
-	gui_drawline_internal(x1, y2, x2, y2, true, colour);
-	gui_drawline_internal(x1, y1, x1, y2, true, colour);
-	gui_drawline_internal(x2, y1, x2, y2, true, colour);
+	gui_drawline_internal(state, x1, y1, x2, y1, true, colour);
+	gui_drawline_internal(state, x1, y2, x2, y2, true, colour);
+	gui_drawline_internal(state, x1, y1, x1, y2, true, colour);
+	gui_drawline_internal(state, x2, y1, x2, y2, true, colour);
 }
 
-// draw a circle on gui_data
-static void gui_drawcircle_internal(int x0, int y0, int radius, uint32 colour)
+// draw a circle on the canvas
+static void gui_drawcircle_internal(VbaLuaState *state, int x0, int y0, int radius, uint32 colour)
 {
-	//gui_prepare();
 	if (radius < 0)
 		radius = -radius;
 	if (radius == 0)
 		return;
 	if (radius == 1)
 	{
-		gui_drawpixel_internal(x0, y0, colour);
+		gui_drawpixel_internal(state, x0, y0, colour);
 		return;
 	}
 
@@ -2581,10 +2769,10 @@ static void gui_drawcircle_internal(int x0, int y0, int radius, uint32 colour)
 	if (!gui_checkbox(x0 - radius, y0 - radius, x0 + radius, y0 + radius))
 		return;
 
-	gui_drawpixel_internal(x0, y0 + radius, colour);
-	gui_drawpixel_internal(x0, y0 - radius, colour);
-	gui_drawpixel_internal(x0 + radius, y0, colour);
-	gui_drawpixel_internal(x0 - radius, y0, colour);
+	gui_drawpixel_internal(state, x0, y0 + radius, colour);
+	gui_drawpixel_internal(state, x0, y0 - radius, colour);
+	gui_drawpixel_internal(state, x0 + radius, y0, colour);
+	gui_drawpixel_internal(state, x0 - radius, y0, colour);
 
 	// same pixel shouldn't be drawed twice,
 	// because each pixel has opacity.
@@ -2606,21 +2794,21 @@ static void gui_drawcircle_internal(int x0, int y0, int radius, uint32 colour)
 		f	  += ddF_x;
 		if (x < y)
 		{
-			gui_drawpixel_internal(x0 + x, y0 + y, colour);
-			gui_drawpixel_internal(x0 - x, y0 + y, colour);
-			gui_drawpixel_internal(x0 + x, y0 - y, colour);
-			gui_drawpixel_internal(x0 - x, y0 - y, colour);
-			gui_drawpixel_internal(x0 + y, y0 + x, colour);
-			gui_drawpixel_internal(x0 - y, y0 + x, colour);
-			gui_drawpixel_internal(x0 + y, y0 - x, colour);
-			gui_drawpixel_internal(x0 - y, y0 - x, colour);
+			gui_drawpixel_internal(state, x0 + x, y0 + y, colour);
+			gui_drawpixel_internal(state, x0 - x, y0 + y, colour);
+			gui_drawpixel_internal(state, x0 + x, y0 - y, colour);
+			gui_drawpixel_internal(state, x0 - x, y0 - y, colour);
+			gui_drawpixel_internal(state, x0 + y, y0 + x, colour);
+			gui_drawpixel_internal(state, x0 - y, y0 + x, colour);
+			gui_drawpixel_internal(state, x0 + y, y0 - x, colour);
+			gui_drawpixel_internal(state, x0 - y, y0 - x, colour);
 		}
 		else if (x == y)
 		{
-			gui_drawpixel_internal(x0 + x, y0 + y, colour);
-			gui_drawpixel_internal(x0 - x, y0 + y, colour);
-			gui_drawpixel_internal(x0 + x, y0 - y, colour);
-			gui_drawpixel_internal(x0 - x, y0 - y, colour);
+			gui_drawpixel_internal(state, x0 + x, y0 + y, colour);
+			gui_drawpixel_internal(state, x0 - x, y0 + y, colour);
+			gui_drawpixel_internal(state, x0 + x, y0 - y, colour);
+			gui_drawpixel_internal(state, x0 - x, y0 - y, colour);
 			break;
 		}
 		else
@@ -2628,8 +2816,8 @@ static void gui_drawcircle_internal(int x0, int y0, int radius, uint32 colour)
 	}
 }
 
-// draw fill rect on gui_data
-static void gui_fillbox_internal(int x1, int y1, int x2, int y2, uint32 colour)
+// draw fill rect on the canvas
+static void gui_fillbox_internal(VbaLuaState *state, int x1, int y1, int x2, int y2, uint32 colour)
 {
 	if (x1 > x2)
 		std::swap(x1, x2);
@@ -2644,28 +2832,26 @@ static void gui_fillbox_internal(int x1, int y1, int x2, int y2, uint32 colour)
 	if (y2 >= LUA_SCREEN_HEIGHT)
 		y2 = LUA_SCREEN_HEIGHT - 1;
 
-	//gui_prepare();
 	int ix, iy;
 	for (iy = y1; iy <= y2; iy++)
 	{
 		for (ix = x1; ix <= x2; ix++)
 		{
-			gui_drawpixel_fast(ix, iy, colour);
+			gui_drawpixel_fast(state, ix, iy, colour);
 		}
 	}
 }
 
-// fill a circle on gui_data
-static void gui_fillcircle_internal(int x0, int y0, int radius, uint32 colour)
+// fill a circle on the canvas
+static void gui_fillcircle_internal(VbaLuaState *state, int x0, int y0, int radius, uint32 colour)
 {
-	//gui_prepare();
 	if (radius < 0)
 		radius = -radius;
 	if (radius == 0)
 		return;
 	if (radius == 1)
 	{
-		gui_drawpixel_internal(x0, y0, colour);
+		gui_drawpixel_internal(state, x0, y0, colour);
 		return;
 	}
 
@@ -2679,7 +2865,7 @@ static void gui_fillcircle_internal(int x0, int y0, int radius, uint32 colour)
 	if (!gui_checkbox(x0 - radius, y0 - radius, x0 + radius, y0 + radius))
 		return;
 
-	gui_drawline_internal(x0, y0 - radius, x0, y0 + radius, true, colour);
+	gui_drawline_internal(state, x0, y0 - radius, x0, y0 + radius, true, colour);
 
 	while (true)
 	{
@@ -2699,18 +2885,18 @@ static void gui_fillcircle_internal(int x0, int y0, int radius, uint32 colour)
 
 		if (x < y)
 		{
-			gui_drawline_internal(x0 + x, y0 - y, x0 + x, y0 + y, true, colour);
-			gui_drawline_internal(x0 - x, y0 - y, x0 - x, y0 + y, true, colour);
+			gui_drawline_internal(state, x0 + x, y0 - y, x0 + x, y0 + y, true, colour);
+			gui_drawline_internal(state, x0 - x, y0 - y, x0 - x, y0 + y, true, colour);
 			if (f >= 0)
 			{
-				gui_drawline_internal(x0 + y, y0 - x, x0 + y, y0 + x, true, colour);
-				gui_drawline_internal(x0 - y, y0 - x, x0 - y, y0 + x, true, colour);
+				gui_drawline_internal(state, x0 + y, y0 - x, x0 + y, y0 + x, true, colour);
+				gui_drawline_internal(state, x0 - y, y0 - x, x0 - y, y0 + x, true, colour);
 			}
 		}
 		else if (x == y)
 		{
-			gui_drawline_internal(x0 + x, y0 - y, x0 + x, y0 + y, true, colour);
-			gui_drawline_internal(x0 - x, y0 - y, x0 - x, y0 + y, true, colour);
+			gui_drawline_internal(state, x0 + x, y0 - y, x0 + x, y0 + y, true, colour);
+			gui_drawline_internal(state, x0 - x, y0 - y, x0 - x, y0 + y, true, colour);
 			break;
 		}
 		else
@@ -2762,6 +2948,8 @@ s_colorMapping[] =
 */
 static inline bool str2colour(uint32 *colour, lua_State *L, const char *str)
 {
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+
 	if (str[0] == '#')
 	{
 		int color;
@@ -2779,8 +2967,12 @@ static inline bool str2colour(uint32 *colour, lua_State *L, const char *str)
 	{
 		if (!strnicmp(str, "rand", 4))
 		{
-			*colour = sfmt_genrand_uint32(&sfmtState) | 0xFF; //((rand()*255/RAND_MAX) << 8) | ((rand()*255/RAND_MAX) << 16) |
-											// ((rand()*255/RAND_MAX) << 24) | 0xFF;
+			// every script has its own generator, so one script calling
+			// math.randomseed() cannot shift another script's colours
+			if (state)
+				*colour = sfmt_genrand_uint32(&state->rng) | 0xFF;
+			else
+				*colour = 0xFFFFFF;
 			return true;
 		}
 
@@ -2872,11 +3064,13 @@ static inline uint32 gui_getcolour_wrapped(lua_State *L, int offset, bool hasDef
 
 static uint32 gui_getcolour(lua_State *L, int offset)
 {
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+
 	uint32 colour;
 	int	   a, r, g, b;
 
 	colour = gui_getcolour_wrapped(L, offset, false, 0);
-	a	   = ((colour & 0xff) * transparencyModifier) / 255;
+	a	   = ((colour & 0xff) * state->transparency) / 255;
 	if (a > 255)
 		a = 255;
 	b = (colour >> 8) & 0xff;
@@ -2887,6 +3081,8 @@ static uint32 gui_getcolour(lua_State *L, int offset)
 
 static uint32 gui_optcolour(lua_State *L, int offset, uint32 defaultColour)
 {
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+
 	uint32 colour;
 	int	   a, r, g, b;
 	uint8  defA, defB, defG, defR;
@@ -2895,7 +3091,7 @@ static uint32 gui_optcolour(lua_State *L, int offset, uint32 defaultColour)
 	defaultColour = (defR << 24) | (defG << 16) | (defB << 8) | defA;
 
 	colour = gui_getcolour_wrapped(L, offset, true, defaultColour);
-	a	   = ((colour & 0xff) * transparencyModifier) / 255;
+	a	   = ((colour & 0xff) * state->transparency) / 255;
 	if (a > 255)
 		a = 255;
 	b = (colour >> 8) & 0xff;
@@ -2907,6 +3103,8 @@ static uint32 gui_optcolour(lua_State *L, int offset, uint32 defaultColour)
 // gui.drawpixel(x,y,colour)
 static int gui_drawpixel(lua_State *L)
 {
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+
 	int x = (int)luaL_checkinteger(L, 1);
 	int y = (int)luaL_checkinteger(L, 2);
 
@@ -2914,9 +3112,9 @@ static int gui_drawpixel(lua_State *L)
 
 	//	if (!gui_check_boundary(x, y))
 	//		luaL_error(L,"bad coordinates");
-	gui_prepare();
+	gui_prepare(state);
 
-	gui_drawpixel_internal(x, y, colour);
+	gui_drawpixel_internal(state, x, y, colour);
 
 	return 0;
 }
@@ -2924,6 +3122,8 @@ static int gui_drawpixel(lua_State *L)
 // gui.drawline(x1,y1,x2,y2,color,skipFirst)
 static int gui_drawline(lua_State *L)
 {
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+
 	int	   x1, y1, x2, y2;
 	uint32 color;
 	x1	  = (int)luaL_checkinteger(L, 1);
@@ -2933,9 +3133,9 @@ static int gui_drawline(lua_State *L)
 	color = gui_optcolour(L, 5, LUA_BUILD_PIXEL(255, 255, 255, 255));
 	int skipFirst = lua_toboolean(L, 6);
 
-	gui_prepare();
+	gui_prepare(state);
 
-	gui_drawline_internal(x2, y2, x1, y1, !skipFirst, color);
+	gui_drawline_internal(state, x2, y2, x1, y1, !skipFirst, color);
 
 	return 0;
 }
@@ -2943,6 +3143,8 @@ static int gui_drawline(lua_State *L)
 // gui.drawbox(x1, y1, x2, y2, fillcolor, outlinecolor)
 static int gui_drawbox(lua_State *L)
 {
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+
 	int	   x1, y1, x2, y2;
 	uint32 fillcolor;
 	uint32 outlinecolor;
@@ -2959,11 +3161,11 @@ static int gui_drawbox(lua_State *L)
 	if (y1 > y2)
 		std::swap(y1, y2);
 
-	gui_prepare();
+	gui_prepare(state);
 
-	gui_drawbox_internal(x1, y1, x2, y2, outlinecolor);
+	gui_drawbox_internal(state, x1, y1, x2, y2, outlinecolor);
 	if ((x2 - x1) >= 2 && (y2 - y1) >= 2)
-		gui_fillbox_internal(x1 + 1, y1 + 1, x2 - 1, y2 - 1, fillcolor);
+		gui_fillbox_internal(state, x1 + 1, y1 + 1, x2 - 1, y2 - 1, fillcolor);
 
 	return 0;
 }
@@ -2971,6 +3173,8 @@ static int gui_drawbox(lua_State *L)
 // gui.drawcircle(x0, y0, radius, colour)
 static int gui_drawcircle(lua_State *L)
 {
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+
 	int	   x, y, r;
 	uint32 colour;
 
@@ -2979,9 +3183,9 @@ static int gui_drawcircle(lua_State *L)
 	r	   = (int)luaL_checkinteger(L, 3);
 	colour = gui_getcolour(L, 4);
 
-	gui_prepare();
+	gui_prepare(state);
 
-	gui_drawcircle_internal(x, y, r, colour);
+	gui_drawcircle_internal(state, x, y, r, colour);
 
 	return 0;
 }
@@ -2989,6 +3193,8 @@ static int gui_drawcircle(lua_State *L)
 // gui.fillbox(x1, y1, x2, y2, colour)
 static int gui_fillbox(lua_State *L)
 {
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+
 	int	   x1, y1, x2, y2;
 	uint32 colour;
 
@@ -3003,12 +3209,12 @@ static int gui_fillbox(lua_State *L)
 	//
 	//	if (!gui_check_boundary(x2, y2))
 	//		luaL_error(L,"bad coordinates");
-	gui_prepare();
+	gui_prepare(state);
 
 	if (!gui_checkbox(x1, y1, x2, y2))
 		return 0;
 
-	gui_fillbox_internal(x1, y1, x2, y2, colour);
+	gui_fillbox_internal(state, x1, y1, x2, y2, colour);
 
 	return 0;
 }
@@ -3016,6 +3222,8 @@ static int gui_fillbox(lua_State *L)
 // gui.fillcircle(x0, y0, radius, colour)
 static int gui_fillcircle(lua_State *L)
 {
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+
 	int	   x, y, r;
 	uint32 colour;
 
@@ -3024,9 +3232,9 @@ static int gui_fillcircle(lua_State *L)
 	r	   = (int)luaL_checkinteger(L, 3);
 	colour = gui_getcolour(L, 4);
 
-	gui_prepare();
+	gui_prepare(state);
 
-	gui_fillcircle_internal(x, y, r, colour);
+	gui_fillcircle_internal(state, x, y, r, colour);
 
 	return 0;
 }
@@ -3185,10 +3393,12 @@ static int gui_gdscreenshot(lua_State *L)
 // however, it can be convenient to be able to globally modify the drawing transparency
 static int gui_setopacity(lua_State *L)
 {
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+
 	double opacF = luaL_checknumber(L, 1);
-	transparencyModifier = (int)(opacF * 255);
-	if (transparencyModifier < 0)
-		transparencyModifier = 0;
+	state->transparency = (int)(opacF * 255);
+	if (state->transparency < 0)
+		state->transparency = 0;
 	return 0;
 }
 
@@ -3198,10 +3408,12 @@ static int gui_setopacity(lua_State *L)
 //  0 = solid,
 static int gui_transparency(lua_State *L)
 {
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+
 	double trans = luaL_checknumber(L, 1);
-	transparencyModifier = (int)((4.0 - trans) / 4.0 * 255);
-	if (transparencyModifier < 0)
-		transparencyModifier = 0;
+	state->transparency = (int)((4.0 - trans) / 4.0 * 255);
+	if (state->transparency < 0)
+		state->transparency = 0;
 	return 0;
 }
 
@@ -3306,7 +3518,7 @@ static const uint32 Small_Font_Data[] =
 	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
 };
 
-static void PutTextInternal(const char *str, int len, short x, short y, int color, int backcolor)
+static void PutTextInternal(VbaLuaState *state, const char *str, int len, short x, short y, int color, int backcolor)
 {
 	int Opac	 = (color >> 24) & 0xFF;
 	int backOpac = (backcolor >> 24) & 0xFF;
@@ -3357,8 +3569,8 @@ static void PutTextInternal(const char *str, int len, short x, short y, int colo
 				{
 					//int xdraw = max(0,min(LUA_SCREEN_WIDTH - 1,x+x2));
 					//int ydraw = max(0,min(LUA_SCREEN_HEIGHT - 1,y+y2));
-					//gui_drawpixel_fast(xdraw, ydraw, color);
-					gui_drawpixel_internal(x + x2, y + y2, color);
+					//gui_drawpixel_fast(state, xdraw, ydraw, color);
+					gui_drawpixel_internal(state, x + x2, y + y2, color);
 				}
 				else if (backOpac)
 				{
@@ -3380,8 +3592,8 @@ draw_outline:
 					{
 						//int xdraw = max(0,min(LUA_SCREEN_WIDTH - 1,x+x2));
 						//int ydraw = max(0,min(LUA_SCREEN_HEIGHT - 1,y+y2));
-						//gui_drawpixel_fast(xdraw, ydraw, backcolor);
-						gui_drawpixel_internal(x + x2, y + y2, backcolor);
+						//gui_drawpixel_fast(state, xdraw, ydraw, backcolor);
+						gui_drawpixel_internal(state, x + x2, y + y2, backcolor);
 					}
 				}
 			}
@@ -3402,14 +3614,14 @@ static int strlinelen(const char *string)
 	return (int)(s - string);
 }
 
-static void LuaDisplayString(const char *string, int y, int x, uint32 color, uint32 outlineColor)
+static void LuaDisplayString(VbaLuaState *state, const char *string, int y, int x, uint32 color, uint32 outlineColor)
 {
 	if (!string)
 		return;
 
-	gui_prepare();
+	gui_prepare(state);
 
-	PutTextInternal(string, (int)strlen(string), x, y, color, outlineColor);
+	PutTextInternal(state, string, (int)strlen(string), x, y, color, outlineColor);
 
 	/*
 	const char* ptr = string;
@@ -3442,7 +3654,7 @@ static void LuaDisplayString(const char *string, int y, int x, uint32 color, uin
 		int x2 = min(max(x,xl),xh);
 		int y2 = min(max(y,yl),yh);
 
-		PutTextInternal(ptr,len,x2,y2,color,outlineColor);
+		PutTextInternal(state, ptr,len,x2,y2,color,outlineColor);
 
 		ptr += len + skip;
 		y += 8;
@@ -3457,6 +3669,8 @@ static void LuaDisplayString(const char *string, int y, int x, uint32 color, uin
 //  main HUD.
 static int gui_text(lua_State *L)
 {
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+
 	//extern int font_height;
 	const char *msg;
 	int			x, y;
@@ -3472,9 +3686,9 @@ static int gui_text(lua_State *L)
 	colour		 = gui_optcolour(L, 4, LUA_BUILD_PIXEL(255, 255, 255, 255));
 	borderColour = gui_optcolour(L, 5, LUA_BUILD_PIXEL(255, 0, 0, 0));
 
-	gui_prepare();
+	gui_prepare(state);
 
-	LuaDisplayString(msg, y, x, colour, borderColour);
+	LuaDisplayString(state, msg, y, x, colour, borderColour);
 
 	return 0;
 }
@@ -3486,6 +3700,8 @@ static int gui_text(lua_State *L)
 // example: gui.gdoverlay(gd.createFromPng("myimage.png"):gdStr())
 static int gui_gdoverlay(lua_State *L)
 {
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+
 	int argCount = lua_gettop(L);
 
 	int xStartDst = 0;
@@ -3533,7 +3749,7 @@ static int gui_gdoverlay(lua_State *L)
 		height	  = (int)luaL_checkinteger(L, index++);
 	}
 
-	int alphaMul = transparencyModifier;
+	int alphaMul = state->transparency;
 	if (lua_isnumber(L, index))
 		alphaMul = (int)(alphaMul * lua_tonumber(L, index++));
 	if (alphaMul <= 0)
@@ -3622,7 +3838,7 @@ static int gui_gdoverlay(lua_State *L)
 		height = LUA_SCREEN_HEIGHT - yStartDst;
 	if (width <= 0 || height <= 0)
 		return 0;  // out of screen or invalid size
-	gui_prepare();
+	gui_prepare(state);
 
 	const uint8 *pix = (const uint8 *)(&ptr[yStartSrc * pitch + (xStartSrc * (trueColor ? 4 : 1))]);
 	int			 bytesToNextLine = pitch - (width * (trueColor ? 4 : 1));
@@ -3632,7 +3848,7 @@ static int gui_gdoverlay(lua_State *L)
 		{
 			for (int x = xStartDst; x < width + xStartDst && x < LUA_SCREEN_WIDTH; x++, pix += 4)
 			{
-				gui_drawpixel_fast(x, y, LUA_BUILD_PIXEL(opacMap[pix[0]], pix[1], pix[2], pix[3]));
+				gui_drawpixel_fast(state, x, y, LUA_BUILD_PIXEL(opacMap[pix[0]], pix[1], pix[2], pix[3]));
 			}
 		}
 	}
@@ -3642,7 +3858,7 @@ static int gui_gdoverlay(lua_State *L)
 		{
 			for (int x = xStartDst; x < width + xStartDst && x < LUA_SCREEN_WIDTH; x++, pix++)
 			{
-				gui_drawpixel_fast(x, y, LUA_BUILD_PIXEL(pal[*pix].a, pal[*pix].r, pal[*pix].g, pal[*pix].b));
+				gui_drawpixel_fast(state, x, y, LUA_BUILD_PIXEL(pal[*pix].a, pal[*pix].r, pal[*pix].g, pal[*pix].b));
 			}
 		}
 	}
@@ -3708,7 +3924,8 @@ int gui_popup(lua_State *L)
 
 	lua_host::checkFullscreen();
 	systemSoundClearBuffer();
-	lua_host::MsgBoxResult result = lua_host::messageBox(message, "Lua Script Pop-up", t);
+	lua_host::MsgBoxResult result = lua_host::messageBox(
+		message, "Lua Script Pop-up", t, false, scriptTextEncoding(VbaLuaState::fromLua(L)));
 
 	lua_settop(L, 1);
 
@@ -4355,12 +4572,11 @@ static int sound_get(lua_State *L)
 }
 
 // same as math.random, but uses SFMT instead of C rand()
-// FIXME: this function doesn't care multi-instance,
-
 //		original math.random either though (Lua 5.1)
 static int sfmt_random(lua_State *L)
 {
-	lua_Number r = (lua_Number) sfmt_genrand_real2(&sfmtState);
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+	lua_Number r = state ? (lua_Number) sfmt_genrand_real2(&state->rng) : 0.0;
 	switch (lua_gettop(L))
 	{ // check number of arguments
 	case 0:
@@ -4394,11 +4610,12 @@ static int sfmt_random(lua_State *L)
 }
 
 // same as math.randomseed, but uses SFMT instead of C srand()
-// FIXME: this function doesn't care multi-instance,
 //		  original math.randomseed either though (Lua 5.1)
 static int sfmt_randomseed(lua_State *L)
 {
-	sfmt_init_gen_rand(&sfmtState, (uint32_t)luaL_checkint(L, 1));
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+	if (state)
+		sfmt_init_gen_rand(&state->rng, (uint32_t)luaL_checkint(L, 1));
 	return 0;
 }
 
@@ -4617,7 +4834,12 @@ static int bitbit(lua_State *L)
 // The function called periodically to ensure Lua doesn't run amok.
 static void VBALuaHookFunction(lua_State *L, lua_Debug *dbg)
 {
-	if (numTries-- == 0)
+	VbaLuaState *state = VbaLuaState::fromLua(L);
+
+	if (!state)
+		return;
+
+	if (state->numTries-- == 0)
 	{
 		int kill = 0;
 
@@ -4637,7 +4859,7 @@ static void VBALuaHookFunction(lua_State *L, lua_Debug *dbg)
 		}
 		else if (ret == lua_host::MsgBoxResult::Retry)
 		{
-			numTries = 3000;
+			state->numTries = 3000;
 		}
 
 #else
@@ -4658,7 +4880,7 @@ static void VBALuaHookFunction(lua_State *L, lua_Debug *dbg)
 
 			if (buffer[0] == 'l' || buffer[0] == 'L')
 			{
-				numTries = 3000;
+				state->numTries = 3000;
 				break;
 			}
 
@@ -4669,11 +4891,11 @@ static void VBALuaHookFunction(lua_State *L, lua_Debug *dbg)
 		if (kill == 1)
 		{
 			luaL_error(L, "Killed by user request.");
-			VBALuaOnStop();
+			state->resetAfterStop();
 		}
 
 		// kill the debug hook if answered no.
-		if (numTries <= 0)
+		if (state->numTries <= 0)
 			lua_sethook(L, NULL, 0, 0);
 	}
 }
@@ -4860,39 +5082,50 @@ static const struct luaL_Reg avilib[] = {
 	{ NULL,			NULL		   }
 };
 
-void CallExitFunction(void)
+void VbaLuaState::callExitFunction(void)
 {
-	if (!LUA)
+	if (!L)
 		return;
 
-	lua_settop(LUA, 0);
-	lua_getfield(LUA, LUA_REGISTRYINDEX, luaCallIDStrings[LUACALL_BEFOREEXIT]);
+	lua_settop(L, 0);
+	lua_getfield(L, LUA_REGISTRYINDEX, luaCallIDStrings[LUACALL_BEFOREEXIT]);
 
 	int errorcode = 0;
-	if (lua_isfunction(LUA, -1))
+	if (lua_isfunction(L, -1))
 	{
-		errorcode = lua_pcall(LUA, 0, 0, 0);
+		errorcode = lua_pcall(L, 0, 0, 0);
 	}
 
 	if (errorcode)
-		HandleCallbackError(LUA);
+		HandleCallbackError(L);
 }
 
-void VBALuaFrameBoundary(void)
+void CallExitFunction(void)
+{
+	for (size_t i = 0; i < g_luaStates.size(); ++i)
+		g_luaStates[i]->callExitFunction();
+}
+
+void VbaLuaState::frameBoundaryStep(void)
 {
 	//	printf("Lua Frame\n");
 
-	lua_joypads_used = 0;
-
-	// HA!
-	if (!LUA || !luaRunning)
+	if (!L || !running)
 		return;
 
 	// Our function needs calling
-	lua_settop(LUA, 0);
-	lua_getfield(LUA, LUA_REGISTRYINDEX, frameAdvanceThread);
+	lua_settop(L, 0);
+	lua_getfield(L, LUA_REGISTRYINDEX, frameAdvanceThread);
 
-	lua_State *thread = lua_tothread(LUA, 1);
+	lua_State *thread = lua_tothread(L, 1);
+
+	if (!thread)
+	{
+		// No coroutine left (the script died earlier); nothing to resume.
+		lua_settop(L, 0);
+		resetAfterStop();
+		return;
+	}
 
 	// Lua calling C must know that we're busy inside a frame boundary
 	frameBoundary		= true;
@@ -4909,24 +5142,18 @@ void VBALuaFrameBoundary(void)
 	else if (result != 0)
 	{
 		// Done execution by bad causes
-		VBALuaOnStop();
-		lua_pushnil(LUA);
-		lua_setfield(LUA, LUA_REGISTRYINDEX, frameAdvanceThread);
-		lua_pushnil(LUA);
-		lua_setfield(LUA, LUA_REGISTRYINDEX, guiCallbackTable);
+		resetAfterStop();
+		lua_pushnil(L);
+		lua_setfield(L, LUA_REGISTRYINDEX, frameAdvanceThread);
+		lua_pushnil(L);
+		lua_setfield(L, LUA_REGISTRYINDEX, guiCallbackTable);
 
 		// Error?
-//#if (defined(WIN32) && !defined(SDL))
-//		info_print(info_uid, lua_tostring(thread, -1)); //Clear_Sound_Buffer();
-// AfxGetApp()->m_pMainWnd->MessageBox(lua_tostring(thread, -1), "Lua run error", MB_OK | MB_ICONSTOP);
-//#else
-//		fprintf(stderr, "Lua thread bombed out: %s\n", lua_tostring(thread, -1));
-//#endif
 		printerror(thread, -1);
 	}
 	else
 	{
-		VBALuaOnStop();
+		resetAfterStop();
 		printf("Script died of natural causes.\n");
 	}
 
@@ -4936,40 +5163,113 @@ void VBALuaFrameBoundary(void)
 
 	if (!frameAdvanceWaiting)
 	{
-		VBALuaOnStop();
+		resetAfterStop();
 	}
 }
 
+void VBALuaFrameBoundary(void)
+{
+	// A new frame: nobody has claimed a joypad yet.  This has to happen for
+	// every script, including the ones that are stopped, or a script that died
+	// mid-frame would keep holding buttons down.
+	for (size_t i = 0; i < g_luaStates.size(); ++i)
+		g_luaStates[i]->joypadUsed = 0;
+
+	for (size_t i = 0; i < g_luaStates.size(); ++i)
+		g_luaStates[i]->frameBoundaryStep();
+}
+
+// ---------------------------------------------------------------------------
+// Script text encoding
+//
+// A script's strings reach a Unicode control as bytes, so the console can only
+// decode them if it knows what encoding the .lua file was written in.  A BOM is
+// the one place that answer is stated: UTF-8 with a BOM is read as UTF-8, and
+// everything else is read in the process code page, which is what this program
+// assumes for every other narrow string as well.
+//
+// Guessing is deliberately not attempted.  A .lua file has no other marker and
+// the bytes alone cannot decide the question - "中文" in GBK is a legal UTF-8
+// sequence too - so a heuristic would turn some scripts into garbage instead of
+// leaving them exactly as they behaved before UTF-8 was supported.
+// ---------------------------------------------------------------------------
+
+static bool readWholeFile(const char *filename, std::string &bytes)
+{
+	FILE *f = fopen(filename, "rb");
+	if (!f)
+		return false;
+
+	char   buffer[8192];
+	size_t got;
+	while ((got = fread(buffer, 1, sizeof(buffer), f)) > 0)
+		bytes.append(buffer, got);
+
+	bool ok = (ferror(f) == 0);
+	fclose(f);
+	return ok;
+}
+
+// The only declaration of a script's encoding there is: a UTF-8 BOM.  The
+// loader drops it, because Lua 5.1 does not skip one and would try to parse it
+// as source text.
+static bool hasUtf8Bom(const std::string &bytes)
+{
+	return bytes.size() >= 3 && (unsigned char)bytes[0] == 0xEF &&
+		   (unsigned char)bytes[1] == 0xBB && (unsigned char)bytes[2] == 0xBF;
+}
+
+// luaL_loadfile() is Lua 5.1's: it skips a leading '#' line but has no idea
+// what a BOM is, so a UTF-8 file written by an editor that adds one fails with
+// "unexpected symbol near '\239'".  Such a file is loaded from the bytes read
+// above, with the BOM dropped.
+static int loadScriptFile(lua_State *L, const char *filename, const std::string *bytesWithBom)
+{
+	if (!bytesWithBom)
+		return luaL_loadfile(L, filename);
+
+	const char *text = bytesWithBom->c_str() + 3;
+	size_t	    size = bytesWithBom->size() - 3;
+
+	// Same as luaL_loadfile: a first line starting with '#' is a comment.
+	if (size > 0 && text[0] == '#')
+	{
+		while (size > 0 && *text != '\n')
+		{
+			++text;
+			--size;
+		}
+	}
+
+	// '@' makes Lua report errors against the file name, which is exactly what
+	// luaL_loadfile() passes to luaL_loadbuffer() as well.
+	lua_pushfstring(L, "@%s", filename);
+	std::string chunkName = lua_tostring(L, -1);
+	lua_pop(L, 1);
+
+	return luaL_loadbuffer(L, text, size, chunkName.c_str());
+}
+
 /**
-* Loads and runs the given Lua script.
+* Loads and runs the given Lua script into this state.
 * The emulator MUST be paused for this function to be
 * called. Otherwise, all frame boundary assumptions go out the window.
 *
-* Returns true on success, false on failure.
+* Returns true on success, false on failure.  The reason travels through the
+* console sinks, so a broken file is reported in the window that asked for it.
 */
-int VBALoadLuaCode(const char *filename)
+bool VbaLuaState::load(const char *filename)
 {
 	if (!DemandLua())
 	{
-		return 0;
+		return false;
 	}
 
-	static bool sfmtInitialized = false;
-	if (!sfmtInitialized)
-	{
-		sfmt_init_gen_rand(&sfmtState, (uint32_t)time(NULL));
-		sfmtInitialized = true;
-	}
+	// Restarting a script: close the old engine first.
+	if (L)
+		stop();
 
-	if (filename != luaScriptName)
-	{
-		if (luaScriptName)
-			free(luaScriptName);
-		luaScriptName = strdup(filename);
-	}
-
-	//stop any lua we might already have had running
-	VBALuaStop();
+	scriptName = filename;
 
 	// Set current directory from filename (for dofile)
 	char  dir[_MAX_PATH];
@@ -4985,108 +5285,117 @@ int VBALoadLuaCode(const char *filename)
 		chdir(dir);
 	}
 
-	if (!LUA)
+	if (!L)
 	{
-		LUA = lua_open();
-		luaL_openlibs(LUA);
+		L = lua_open();
+		luaL_openlibs(L);
 
-		luaL_register(LUA, "emu", vbalib); // added for better cross-emulator compatibility
-		luaL_register(LUA, "vba", vbalib); // kept for backward compatibility
-		luaL_register(LUA, "memory", memorylib);
-		luaL_register(LUA, "joypad", joypadlib);
-		luaL_register(LUA, "savestate", savestatelib);
-		luaL_register(LUA, "movie", movielib);
-		luaL_register(LUA, "gui", guilib);
-		luaL_register(LUA, "input", inputlib);
-		luaL_register(LUA, "sound", soundlib);
-		luaL_register(LUA, "bit", bit_funcs); // LuaBitOp library
-		luaL_register(LUA, "avi", avilib); // workaround for enhanced video encoding
-		lua_settop(LUA, 0); // clean the stack, because each call to luaL_register leaves a table on top
+		luaL_register(L, "emu", vbalib); // added for better cross-emulator compatibility
+		luaL_register(L, "vba", vbalib); // kept for backward compatibility
+		luaL_register(L, "memory", memorylib);
+		luaL_register(L, "joypad", joypadlib);
+		luaL_register(L, "savestate", savestatelib);
+		luaL_register(L, "movie", movielib);
+		luaL_register(L, "gui", guilib);
+		luaL_register(L, "input", inputlib);
+		luaL_register(L, "sound", soundlib);
+		luaL_register(L, "bit", bit_funcs); // LuaBitOp library
+		luaL_register(L, "avi", avilib); // workaround for enhanced video encoding
+		lua_settop(L, 0); // clean the stack, because each call to luaL_register leaves a table on top
 
 		// register a few utility functions outside of libraries (in the global namespace)
-		lua_register(LUA, "print", print);
-		lua_register(LUA, "tostring", tostring);
-		lua_register(LUA, "addressof", addressof);
-		lua_register(LUA, "copytable", copytable);
+		lua_register(L, "print", print);
+		lua_register(L, "tostring", tostring);
+		lua_register(L, "addressof", addressof);
+		lua_register(L, "copytable", copytable);
 
 		// old bit operation functions
-		lua_register(LUA, "AND", bit_band);
-		lua_register(LUA, "OR", bit_bor);
-		lua_register(LUA, "XOR", bit_bxor);
-		lua_register(LUA, "SHIFT", bit_bshift_emulua);
-		lua_register(LUA, "BIT", bitbit);
+		lua_register(L, "AND", bit_band);
+		lua_register(L, "OR", bit_bor);
+		lua_register(L, "XOR", bit_bxor);
+		lua_register(L, "SHIFT", bit_bshift_emulua);
+		lua_register(L, "BIT", bitbit);
 
-		luabitop_validate(LUA);
+		luabitop_validate(L);
 
-		lua_pushstring(LUA, "math");
-		lua_gettable(LUA, LUA_GLOBALSINDEX);
-		lua_pushcfunction(LUA, sfmt_random);
-		lua_setfield(LUA, -2, "random");
-		lua_pushcfunction(LUA, sfmt_randomseed);
-		lua_setfield(LUA, -2, "randomseed");
-		lua_settop(LUA, 0);
+		lua_pushstring(L, "math");
+		lua_gettable(L, LUA_GLOBALSINDEX);
+		lua_pushcfunction(L, sfmt_random);
+		lua_setfield(L, -2, "random");
+		lua_pushcfunction(L, sfmt_randomseed);
+		lua_setfield(L, -2, "randomseed");
+		lua_settop(L, 0);
 
 		// push arrays for storing hook functions in
 		for (int i = 0; i < LUAMEMHOOK_COUNT; i++)
 		{
-			lua_newtable(LUA);
-			lua_setfield(LUA, LUA_REGISTRYINDEX, luaMemHookTypeStrings[i]);
+			lua_newtable(L);
+			lua_setfield(L, LUA_REGISTRYINDEX, luaMemHookTypeStrings[i]);
 		}
+
+		// The registry knows which instance this engine belongs to; that is how
+		// the C functions above find "their" script again (VbaLuaState::fromLua).
+		lua_pushlightuserdata(L, &s_luaStateKey);
+		lua_pushlightuserdata(L, this);
+		lua_rawset(L, LUA_REGISTRYINDEX);
 	}
 
-	// The console has to be in place before the file is read, not after.
-	// A file that cannot be opened or does not compile is reported through
-	// info_print, and with the console not created yet that report went to
-	// stderr - which a windowed program has nowhere to put, so a broken
-	// script looked exactly like a script that does nothing.  The console
-	// must also survive the failure, so info_onstart() (which clears it) is
-	// still only called once the script has loaded.
-#ifdef WIN32
-	lua_host::ConsoleSinks console = lua_host::consoleSinks();
-	info_print = console.print;
-	info_onstart = console.onStart;
-	info_onstop = console.onStop;
-	info_uid = lua_host::openConsole();
-#else
-	info_print = NULL;
-	info_onstart = NULL;
-	info_onstop = NULL;
-#endif
+	// The console exists before the file is read, not after: a file that cannot
+	// be opened or does not compile is reported through info_print, and without
+	// a console that report goes to stderr - which a windowed program has
+	// nowhere to put, so a broken script looked exactly like a script that does
+	// nothing.  The console must also survive the failure, so info_onstart()
+	// (which clears it) is still only called once the script has loaded.
+	ensureConsoleSinks();
+
+	// Read the file once, before anything can be printed: its BOM decides both
+	// how the script's strings have to be decoded and whether the loader can
+	// use luaL_loadfile() at all.  A file that cannot be read is left to
+	// luaL_loadfile(), which reports it the usual way.
+	std::string scriptBytes;
+	bool		hasBom = false;
+	encoding = lua_host::TextEncoding::Ansi;
+	if (readWholeFile(filename, scriptBytes) && hasUtf8Bom(scriptBytes))
+	{
+		hasBom	 = true;
+		encoding = lua_host::TextEncoding::Utf8;
+	}
 
 	// We make our thread NOW because we want it at the bottom of the stack.
 	// If all goes wrong, we let the garbage collector remove it.
-	lua_State *thread = lua_newthread(LUA);
+	lua_State *thread = lua_newthread(L);
 
 	// Load the data
-	int result = luaL_loadfile(LUA, filename);
+	int result = loadScriptFile(L, filename, hasBom ? &scriptBytes : NULL);
 
 	if (result)
 	{
 		// The message names the file and the line, or says that the file
 		// could not be opened at all.
-		printerror(LUA, -1);
+		printerror(L, -1);
 
 		// Wipe the stack. Our thread
-		lua_settop(LUA, 0);
-		return 0; // Oh shit.
+		lua_settop(L, 0);
+		return false; // Oh shit.
 	}
 
 	// Get our function into it
-	lua_xmove(LUA, thread, 1);
+	lua_xmove(L, thread, 1);
 
 	// Save the thread to the registry. This is why I make the thread FIRST.
-	lua_setfield(LUA, LUA_REGISTRYINDEX, frameAdvanceThread);
+	lua_setfield(L, LUA_REGISTRYINDEX, frameAdvanceThread);
 
 	// Initialize settings
-	luaRunning = true;
-	skipRerecords = false;
-	numMemHooks = 0;
-	transparencyModifier = 255; // opaque
-	lua_joypads_used = 0; // not used
+	sfmt_init_gen_rand(&rng, (uint32_t)time(NULL));
+	running			 = true;
+	skipRerecords	 = false;
+	memHooks		 = 0;
+	transparency	 = 255; // opaque
+	joypadUsed		 = 0; // not used
 	for (int i = 0; i < 4; ++i)
 	{
-		lua_input_display_remap[i].from = 0;
-		lua_next_input_display_remap[i].from = 0;
+		inputRemap[i].from	   = 0;
+		nextInputRemap[i].from = 0;
 	}
 	//wasPaused = systemIsPaused();
 	//systemSetPause(false);
@@ -5095,10 +5404,10 @@ int VBALoadLuaCode(const char *filename)
 	lua_sethook(thread, VBALuaHookFunction, LUA_MASKCOUNT, 10000);
 
 	if (info_onstart)
-		info_onstart(info_uid);
+		info_onstart(console);
 
 	// And run it right now. :)
-	VBALuaFrameBoundary();
+	frameBoundaryStep();
 	extern int textMethod;
 	if (textMethod == 0)
 	{
@@ -5107,42 +5416,18 @@ int VBALoadLuaCode(const char *filename)
 	}
 
 	// We're done.
-	return 1;
+	return true;
 }
 
-/**
-* Equivalent to repeating the last VBALoadLuaCode() call.
-*/
-int VBAReloadLuaCode(void)
+void VbaLuaState::stop(void)
 {
-	if (!luaScriptName)
-	{
-		systemScreenMessage("There's no script to reload.");
-		return 0;
-	}
-	else
-		return VBALoadLuaCode(luaScriptName);
-}
-
-/**
-* Terminates a running Lua script by killing the whole Lua engine.
-*
-* Always safe to call, except from within a lua call itself (duh).
-*
-*/
-void VBALuaStop(void)
-{
-	if (!DemandLua())
-		return;
-
-	//already killed
-	if (!LUA)
+	if (!L)
 		return;
 
 	//execute the user's shutdown callbacks
-	CallExitFunction();
+	callExitFunction();
 
-	/*info.*/ numMemHooks = 0;
+	memHooks = 0;
 	for (int i = 0; i < LUAMEMHOOK_COUNT; i++)
 		CalculateMemHookRegions((LuaMemHookType)i);
 
@@ -5153,22 +5438,128 @@ void VBALuaStop(void)
 #endif
 
 	if (info_onstop)
-		info_onstop(info_uid);
+		info_onstop(console);
 
-	//lua_gc(LUA,LUA_GCCOLLECT,0);
-	lua_close(LUA); // this invokes our garbage collectors for us
-	LUA = NULL;
-	VBALuaOnStop();
+	//lua_gc(L,LUA_GCCOLLECT,0);
+	lua_close(L); // this invokes our garbage collectors for us
+	L = NULL;
+	resetAfterStop();
+}
+
+// ---------------------------------------------------------------------------
+// The public, per-script entry points the frontend uses.  One script window
+// owns one VbaLuaState; nothing here touches any other script.
+// ---------------------------------------------------------------------------
+VbaLuaState *VBALuaOpenScript(const char *filename, std::intptr_t console)
+{
+	ensureConsoleSinks();
+
+	VbaLuaState *state = new VbaLuaState();
+	state->console	   = console;
+
+	// In the list before it runs: anything the script registers on its first
+	// frame (memory hooks, callbacks) must find it there.
+	g_luaStates.push_back(state);
+
+	if (!state->load(filename))
+	{
+		VBALuaCloseScript(state);
+		return NULL;
+	}
+
+	return state;
+}
+
+void VBALuaStopScript(VbaLuaState *state)
+{
+	if (state)
+		state->stop();
+}
+
+void VBALuaCloseScript(VbaLuaState *state)
+{
+	if (!state)
+		return;
+
+	state->stop();
+
+	for (size_t i = 0; i < g_luaStates.size(); ++i)
+	{
+		if (g_luaStates[i] == state)
+		{
+			g_luaStates.erase(g_luaStates.begin() + i);
+			break;
+		}
+	}
+
+	delete state;
+}
+
+const char *VBALuaScriptName(VbaLuaState *state)
+{
+	return state ? state->scriptName.c_str() : NULL;
+}
+
+int VBALuaScriptRunning(VbaLuaState *state)
+{
+	return (state && state->L) ? 1 : 0;
 }
 
 /**
-* Returns true if there is a Lua script running.
+* Equivalent to repeating the last VBALoadLuaCode() call, for every script that
+* has a name.  Scripts that fail to load keep their console message and are
+* closed, exactly like a failed load from the window.
+*/
+int VBAReloadLuaCode(void)
+{
+	int reloaded = 0;
+
+	// Copy the list: a failed reload closes its state, which edits g_luaStates.
+	std::vector<VbaLuaState *> states = g_luaStates;
+	for (size_t i = 0; i < states.size(); ++i)
+	{
+		VbaLuaState *state = states[i];
+		if (state->scriptName.empty())
+			continue;
+
+		std::string name = state->scriptName;
+		if (state->load(name.c_str()))
+			reloaded++;
+	}
+
+	if (!reloaded)
+		systemScreenMessage("There's no script to reload.");
+
+	return reloaded;
+}
+
+/**
+* Terminates every running Lua script.  The windows stay open; their Run button
+* goes back to "Run" so the script can be started again.
+*
+* Always safe to call, except from within a lua call itself (duh).
+*/
+void VBALuaStop(void)
+{
+	// Copy: a stop can drop callbacks that close another window in theory.
+	std::vector<VbaLuaState *> states = g_luaStates;
+	for (size_t i = 0; i < states.size(); ++i)
+		states[i]->stop();
+}
+
+/**
+* Returns true if any script is loaded.
 *
 */
 int VBALuaRunning(void)
 {
-	// FIXME: return false when no callback functions are registered.
-	return (int) (LUA != NULL); // should return true if callback functions are active.
+	for (size_t i = 0; i < g_luaStates.size(); ++i)
+	{
+		if (g_luaStates[i]->L)
+			return 1;
+	}
+
+	return 0;
 }
 
 /**
@@ -5180,7 +5571,8 @@ int VBALuaUsingJoypad(int which)
 {
 	if (which < 0 || which > 3)
 		which = systemGetDefaultJoypad();
-	return lua_joypads_used & (1 << which);
+
+	return mergedLuaJoypadMask() & (1 << which);
 }
 
 /**
@@ -5189,6 +5581,10 @@ int VBALuaUsingJoypad(int which)
 *
 * <del>This function must not be called more than once per frame. </del>Ideally exactly once
 * per frame (if VBALuaUsingJoypad says it's safe to do so)
+*
+* With several scripts the pads are or-ed together: joypad.set() replaces the
+* whole pad, so a script that does not mention a button must not clear it for
+* another script that does.
 */
 int VBALuaReadJoypad(int which)
 {
@@ -5196,7 +5592,7 @@ int VBALuaReadJoypad(int which)
 		which = systemGetDefaultJoypad();
 
 	//lua_joypads_used &= ~(1 << which);
-	return lua_joypads[which];
+	return mergedLuaJoypad(which);
 }
 
 /**
@@ -5208,7 +5604,15 @@ int VBALuaRemappingInputDisplay(int which)
 {
 	if (which < 0 || which > 3)
 		which = systemGetDefaultJoypad();
-	return LUA && (lua_input_display_remap[which].from || lua_next_input_display_remap[which].from);
+
+	for (size_t i = 0; i < g_luaStates.size(); ++i)
+	{
+		VbaLuaState *state = g_luaStates[i];
+		if (state->L && (state->inputRemap[which].from || state->nextInputRemap[which].from))
+			return 1;
+	}
+
+	return 0;
 }
 
 /**
@@ -5216,59 +5620,79 @@ int VBALuaRemappingInputDisplay(int which)
 *
 * Range is 0 through 3
 * Input/returned values are in the platform-specific raw format
+*
+* The first script that remaps the pad wins; two scripts remapping the same pad
+* into different layouts has no sensible answer.
 */
 int VBALuaRemapInputDisplay(int which, int input, enum LuaJoypadType padtype)
 {
-	int output = 0;
-
 	if (which < 0 || which > 3)
 		which = systemGetDefaultJoypad();
 
-	LuaInputDisplayRemap *remap = lua_input_display_remap;
-	if (padtype == LuaJoypadType::LUAJOYPAD_PLAYBACK)
-		remap = lua_next_input_display_remap;
-
-	for (int i = 0; i < 10; ++i)
+	for (size_t s = 0; s < g_luaStates.size(); ++s)
 	{
-		if ((input & remap[which].from & (1 << i)) != 0)
-			output |= remap[which].to[i];
-		else
-			output |= input & (1 << i);
+		VbaLuaState *state = g_luaStates[s];
+		if (!state->L)
+			continue;
+
+		LuaInputDisplayRemap *remap = (padtype == LuaJoypadType::LUAJOYPAD_PLAYBACK)
+			? state->nextInputRemap : state->inputRemap;
+		if (!remap[which].from)
+			continue;
+
+		int output = 0;
+		for (int i = 0; i < 10; ++i)
+		{
+			if ((input & remap[which].from & (1 << i)) != 0)
+				output |= remap[which].to[i];
+			else
+				output |= input & (1 << i);
+		}
+
+		return output;
 	}
 
-	return output;
+	return input;
 }
 
 /**
 * If this function returns true, the movie code should NOT increment
 * the rerecord count for a load-state.
 *
-* This function will not return true if a script is not running.
+* This function will not return true if no script is running.
 */
 bool8 VBALuaRerecordCountSkip(void)
 {
 	// FIXME: return true if (there are any active callback functions && skipRerecords)
-	return LUA && luaRunning && skipRerecords;
+	for (size_t i = 0; i < g_luaStates.size(); ++i)
+	{
+		VbaLuaState *state = g_luaStates[i];
+		if (state->L && state->running && state->skipRerecords)
+			return true;
+	}
+
+	return false;
 }
 
 /**
 * Given a screen with the indicated resolution,
-* draw the current GUI onto it.
+* draw the current GUI of every script onto it.
 */
-void VBALuaGui(uint8 *screen, int pitch, int width, int height)
+void VbaLuaState::guiFrame(uint8 *screen, int pitch, int width, int height)
 {
-	if (!LUA /* || !luaRunning*/)
+	if (!L)
 		return;
 
 	// First, check if we're being called by anybody
-	lua_getfield(LUA, LUA_REGISTRYINDEX, guiCallbackTable);
+	lua_settop(L, 0);
+	lua_getfield(L, LUA_REGISTRYINDEX, guiCallbackTable);
 
-	if (lua_isfunction(LUA, -1))
+	if (lua_isfunction(L, -1))
 	{
 		// We call it now
 		numTries = 1000;
 
-		int ret = lua_pcall(LUA, 0, 0, 0);
+		int ret = lua_pcall(L, 0, 0, 0);
 		if (ret != 0)
 		{
 			// This is grounds for trashing the function
@@ -5276,26 +5700,20 @@ void VBALuaGui(uint8 *screen, int pitch, int width, int height)
 			//		 otherwise the messagebox will cause a paint event which causes a weird
 			//		 infinite call sequence that makes Snes9x silently exit with error code 3,
 			//		 if a Lua GUI function crashes. (nitsuja)
-			lua_pushnil(LUA);
-			lua_setfield(LUA, LUA_REGISTRYINDEX, guiCallbackTable);
+			lua_pushnil(L);
+			lua_setfield(L, LUA_REGISTRYINDEX, guiCallbackTable);
 
-//#if (defined(WIN32) && !defined(SDL))
-//			info_print(info_uid, lua_tostring(LUA, -1)); //AfxGetApp()->m_pMainWnd->MessageBox(lua_tostring(LUA, -1), "Lua Error
-// in GUI function", MB_OK);
-//#else
-//			fprintf(stderr, "Lua error in gui.register function: %s\n", lua_tostring(LUA, -1));
-//#endif
-			printerror(LUA, -1);
+			printerror(L, -1);
 		}
 	}
 
 	// And wreak the stack
-	lua_settop(LUA, 0);
+	lua_settop(L, 0);
 
-	if (!gui_used)
+	if (!guiUsed)
 		return;
 
-	gui_used = false;
+	guiUsed = false;
 
 	//if (width > LUA_SCREEN_WIDTH)
 	//	width = LUA_SCREEN_WIDTH;
@@ -5312,16 +5730,16 @@ void VBALuaGui(uint8 *screen, int pitch, int width, int height)
 		uint8 *scr = &screen[y * pitch];
 		for (int x = 0; x < width; x++, scr += systemColorDepth / 8)
 		{
-			const uint8 gui_alpha = gui_data[(y * LUA_SCREEN_WIDTH + x) * 4 + 3];
+			const uint8 gui_alpha = guiData[(y * LUA_SCREEN_WIDTH + x) * 4 + 3];
 			if (gui_alpha == 0)
 			{
 				// do nothing
 				continue;
 			}
 
-			const uint8 gui_red	  = gui_data[(y * LUA_SCREEN_WIDTH + x) * 4 + 2];
-			const uint8 gui_green = gui_data[(y * LUA_SCREEN_WIDTH + x) * 4 + 1];
-			const uint8 gui_blue  = gui_data[(y * LUA_SCREEN_WIDTH + x) * 4];
+			const uint8 gui_red	  = guiData[(y * LUA_SCREEN_WIDTH + x) * 4 + 2];
+			const uint8 gui_green = guiData[(y * LUA_SCREEN_WIDTH + x) * 4 + 1];
+			const uint8 gui_blue  = guiData[(y * LUA_SCREEN_WIDTH + x) * 4];
 			int			red, green, blue;
 
 			if (gui_alpha == 255)
@@ -5348,19 +5766,29 @@ void VBALuaGui(uint8 *screen, int pitch, int width, int height)
 	return;
 }
 
+void VBALuaGui(uint8 *screen, int pitch, int width, int height)
+{
+	// load order: a script started later draws on top of the ones before it
+	for (size_t i = 0; i < g_luaStates.size(); ++i)
+		g_luaStates[i]->guiFrame(screen, pitch, width, height);
+}
+
 void VBALuaClearGui(void)
 {
-	gui_used = false;
+	// Every canvas is consumed and cleared by guiFrame(); this only matters for
+	// a frame in which nobody drew.
+	for (size_t i = 0; i < g_luaStates.size(); ++i)
+		g_luaStates[i]->guiUsed = false;
 }
 
 lua_State *VBAGetLuaState()
 {
-	return LUA;
+	return g_luaStates.empty() ? NULL : g_luaStates[0]->L;
 }
 
-char *VBAGetLuaScriptName()
+const char *VBAGetLuaScriptName()
 {
-	return luaScriptName;
+	return g_luaStates.empty() ? NULL : g_luaStates[0]->scriptName.c_str();
 }
 
 // The engine the scripts run on is the lua51.dll next to the exe, delay loaded,

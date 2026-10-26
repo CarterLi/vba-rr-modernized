@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 enum LuaCallID
 {
 	LUACALL_BEFOREEMULATION,
@@ -45,8 +47,24 @@ enum LuaJoypadType
 
 // Just forward function declarations
 
+// One script window owns one VbaLuaState.  The frontend creates it, runs it and
+// closes it; the engine keeps the list of live instances and each of the
+// emulator-facing functions below walks that list in load order.  Two scripts
+// therefore run side by side without sharing a lua_State, a callback slot, a
+// joypad or a canvas.
+class VbaLuaState;
+
+// Load and start a script.  console is the frontend handle its output goes to
+// (0 when the frontend has no console).  Returns NULL when the engine is
+// missing or the file cannot be read or does not compile; the reason has
+// already been written to that console.
+VbaLuaState *VBALuaOpenScript(const char *filename, std::intptr_t console);
+void VBALuaStopScript(VbaLuaState *state);
+void VBALuaCloseScript(VbaLuaState *state);   // stop + free
+const char *VBALuaScriptName(VbaLuaState *state);
+int VBALuaScriptRunning(VbaLuaState *state);
+
 void VBALuaFrameBoundary();
-int VBALoadLuaCode(const char *filename);
 int VBAReloadLuaCode();
 void VBALuaStop();
 int VBALuaRunning();
@@ -61,7 +79,7 @@ bool8 VBALuaRerecordCountSkip();
 void VBALuaGui(uint8 *screen, int ppl, int width, int height);
 void VBALuaClearGui();
 
-char* VBAGetLuaScriptName();
+const char* VBAGetLuaScriptName();
 
 // The engine scripts run on and the file it was loaded from.  The version is
 // read out of the engine itself rather than out of the headers the emulator was

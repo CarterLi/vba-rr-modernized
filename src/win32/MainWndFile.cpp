@@ -911,29 +911,19 @@ void MainWnd::OnUpdateFileSlotDisplayModificationTime(CCmdUI *pCmdUI)
 
 void MainWnd::OnFileLuaOpen()
 {
-
-	if (!LuaConsoleHWnd)
-	{
-		LuaConsoleHWnd = ::CreateDialog(AfxGetResourceHandle(), MAKEINTRESOURCE(IDD_LUA), AfxGetMainWnd()->GetSafeHwnd(), (DLGPROC)DlgLuaScriptDialog);
-	}
-	else
-	{
-		if (::IsIconic(LuaConsoleHWnd))
-			::ShowWindow(LuaConsoleHWnd, SW_RESTORE);
-		::SetForegroundWindow(LuaConsoleHWnd);
-	}
+	// Every call opens another window; each one owns its own script.
+	LuaWindowCreate(this);
 }
 
 void MainWnd::OnUpdateFileLuaOpen(CCmdUI *pCmdUI)
 {
-	pCmdUI->SetCheck(LuaConsoleHWnd != NULL);
+	pCmdUI->SetCheck(FALSE);
 	pCmdUI->Enable(true);
 }
 
 void MainWnd::OnFileLuaCloseAll()
 {
-	if (LuaConsoleHWnd)
-		::PostMessage(LuaConsoleHWnd, WM_CLOSE, 0, 0);
+	LuaWindowsCloseAll();
 }
 
 void MainWnd::OnFileLuaReload()
@@ -993,6 +983,6 @@ void MainWnd::OnUpdateFileRamWatch(CCmdUI *pCmdUI)
 
 void MainWnd::OnUpdateFileLuaCloseAll(CCmdUI *pCmdUI)
 {
-	pCmdUI->Enable(LuaConsoleHWnd != NULL);
+	pCmdUI->Enable(LuaWindowsAny());
 }
 

@@ -38,7 +38,7 @@ namespace
 namespace lua_host
 {
 	MsgBoxResult messageBox(const char *text, const char *caption, MsgBoxType type,
-		bool errorIcon)
+		bool errorIcon, TextEncoding encoding)
 	{
 		UINT flags;
 		switch (type)
@@ -60,12 +60,18 @@ namespace lua_host
 		if (errorIcon)
 			flags |= MB_ICONERROR;
 
+		// The box is a script's own text when it comes through gui.popup(), so
+		// it is in the encoding of that script's file; the caption is ours.
+		CString textW = (encoding == TextEncoding::Utf8)
+			? winWideFromUtf8OrAnsi(text) : winWideFromAnsi(text);
+		CString captionW = winWideFromAnsi(caption);
+
 		int ret;
 		CWnd *wnd = mainWnd();
 		if (wnd && wnd->GetSafeHwnd())
-			ret = wnd->MessageBox(winWideFromAnsi(text), winWideFromAnsi(caption), flags);
+			ret = wnd->MessageBox(textW, captionW, flags);
 		else
-			ret = ::MessageBox(NULL, winWideFromAnsi(text), winWideFromAnsi(caption), flags);
+			ret = ::MessageBox(NULL, textW, captionW, flags);
 
 		switch (ret)
 		{
@@ -141,17 +147,6 @@ namespace lua_host
 	{
 		CString name = winGetSavestateFilename(theApp.gameFilename, which);
 		return std::string(winAnsiFromWide(name).GetString());
-	}
-
-	std::intptr_t openConsole()
-	{
-		if (!LuaConsoleHWnd)
-		{
-			CWnd *wnd = mainWnd();
-			LuaConsoleHWnd = ::CreateDialog(AfxGetResourceHandle(), MAKEINTRESOURCE(IDD_LUA),
-				wnd ? wnd->GetSafeHwnd() : NULL, (DLGPROC)DlgLuaScriptDialog);
-		}
-		return (std::intptr_t)LuaConsoleHWnd;
 	}
 
 	ConsoleSinks consoleSinks()

@@ -1448,7 +1448,7 @@ BOOL MainWnd::PreTranslateMessage(MSG *pMsg)
 			TranslateAccelerator(RamWatchHWnd, RamWatchAccels, pMsg);
 		return TRUE;
 	}
-	else if (LuaConsoleHWnd && ::IsDialogMessage(LuaConsoleHWnd, pMsg))
+	else if (LuaWindowStepMessage(pMsg))
 	{
 		return TRUE;
 	}
@@ -1803,14 +1803,9 @@ void MainWnd::OnDropFiles(HDROP hDropInfo)
 					return;
 			}
 
-			if (VBALoadLuaCode(winAnsiFromWide(szFile)))
-			{
-				// success, there is nothing to do
-			}
-			else
-			{
-				// Errors are displayed by the Lua code.
-			}
+			// A dropped .lua file gets a console window of its own and runs
+			// there; it must not replace whatever another window is running.
+			LuaWindowRunScript(this, szFile);
 		}
 		else if (_tcsicmp(ext, _T(".vbm")) == 0)
 		{

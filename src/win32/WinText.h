@@ -22,6 +22,13 @@
 extern CString winWideFromAnsi(const char *text);
 extern CString winWideFromAnsi(const std::string &text);
 
+// UTF-8 -> TCHAR, but only when the bytes really are UTF-8; anything else is
+// read as ANSI instead.  This is what a Lua script's output needs, because a
+// single string can mix the two: the script's own text comes out of the .lua
+// file (UTF-8 if it is), while a file name or an English diagnostic appended
+// to it comes from the core in the process code page.
+extern CString winWideFromUtf8OrAnsi(const char *text);
+
 // TCHAR -> ANSI.  Characters the code page cannot represent become '?'.
 // The returned buffer is only valid until the end of the expression that
 // created it, which is what the core-facing calls need.
