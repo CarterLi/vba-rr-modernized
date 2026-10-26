@@ -1,6 +1,6 @@
 # AVI 导出链路分析，以及接原生 MFT / D3D12 视频编码的可行性
 
-分析对象：`C:/Users/zhang/vba-rerecording`
+分析对象：本仓库（VBA 1.7.2 rerecording 分支）
 涉及文件：`src/win32/AVIWrite.{h,cpp}`、`src/win32/WinSystem.cpp`、`src/win32/MainWndTools.cpp`、
 `src/win32/DirectSound.cpp`、`src/win32/XAudio2Sound.cpp`、`src/common/Util.cpp`
 日期：2026-10-25
@@ -94,7 +94,7 @@ systemRecordAviFrame(width, height)                    WinSystem.cpp:428
 ## 2. 决定选型的四条硬约束
 
 1. **`_WIN32_WINNT` 还是 `0x0501`，README 明确写了"Nothing is imported statically"**
-   （`README.md:565-579`）。可选组件一律 `LoadLibrary` + `GetProcAddress`：
+   （见 `README.md` 的 Requirements 一节）。可选组件一律 `LoadLibrary` + `GetProcAddress`：
    D3D9/D3D11/DDraw/DSound/dinput8/XAudio2/wgpu 全这么接的，WIC 连 IID 都自己 `DEFINE_GUID`
    以免把 `windowscodecs.dll` 写进导入表（`ImageWrite.cpp:15-24`）。
    ⇒ **MF 也必须动态加载**（`mfplat.dll` / `mfreadwrite.dll`），否则 XP-flavoured 源码构建直接起不来。

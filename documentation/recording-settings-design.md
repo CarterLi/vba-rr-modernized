@@ -1,6 +1,6 @@
 # 录制设置：先选编码器，由编码器决定容器和扩展名
 
-分析对象：`C:/Users/zhang/vba-rerecording`
+分析对象：本仓库（VBA 1.7.2 rerecording 分支）
 前置文档：`documentation/avi-recording-encode.md`（现状链路 + MFT/D3D12 可行性）
 日期：2026-10-25
 
@@ -260,7 +260,7 @@ for (GUID codec : kVideoCodecs) {
 
 ### 4.3 MF 的动态加载
 
-按 README 的"Nothing is imported statically"（`README.md:565-572`）和
+按 README 的"Nothing is imported statically"（见 `README.md` 的 Requirements 一节）和
 `Direct3D11.cpp:73` 的写法，写一个 `MFLoader`：
 
 | DLL | 函数 |
@@ -434,7 +434,7 @@ struct RecordParams {
 所以"只允许 D3D11 渲染器"没有必要——用户用 GDI 也能享受编码链内部的 GPU 通路。
 需要自己建 D3D11 设备的代价是：多一个设备（`D3D11_CREATE_DEVICE_VIDEO_SUPPORT`）、
 多一条 device-removed 的失败路径，而且 `MFCreateDXGIDeviceManager` 是 **Win8+**——
-Win7 上这条路不存在，只能走 CPU（Win7 本来也在支持范围内，`README.md:573`）。
+Win7 上这条路不存在，只能走 CPU（Win7 本来也在支持范围内，见 `README.md` 的 Requirements 一节）。
 
 ### 9.3 如果真去录渲染器的 back buffer
 
@@ -675,7 +675,7 @@ summary.Format(_T("%s (%s) - %s - %d kHz %s"),
 | 8 | `soundQuality == 4`（11025 Hz）经 AAC | 录 10 秒看时长 |
 | 9 | ARM64 上 `mfh264enc.dll` 是否存在 | `ls C:\Windows\System32\mfh264enc.dll` + 在 ARM64 上跑 |
 | 10 | VP MFT 在本机能否 RGB32→NV12 | 喂 RGB32 出 MP4，肉眼验颜色（BT.601 vs BT.709） |
-| 11 | 对话框版面 | `~/.workbuddy/scratch/dlgshot.c`（`LoadLibraryEx(..., LOAD_LIBRARY_AS_DATAFILE)` + `CreateDialogIndirectParamW` + `PrintWindow`） |
+| 11 | 对话框版面 | `dlgshot.c`（`LoadLibraryEx(..., LOAD_LIBRARY_AS_DATAFILE)` + `CreateDialogIndirectParamW` + `PrintWindow`） |
 | 12 | 子菜单里的加速键文本 | `CAcceleratorManager::UpdateMenu` 会递归进子菜单（`AcceleratorManager.cpp:430-433`），所以理论上覆盖到了；开中文界面实际看一眼 Tools → Legacy AVI Recording 的文字即可 |
 | 13 | 丢帧后音画是否还同步 | 用 6x captureScaled + 软编强制丢帧录 30 秒，播放器里看音画偏移；MP4 时间戳应连续跳格而不是复制帧 |
 | 14 | 编码线程真的没抢 CPU | 录制时开 `showSpeed`，对比录制前后 `systemSpeed`；再用 Process Explorer 看两个线程的 CPU 占用 |
@@ -1008,7 +1008,7 @@ AV1 的 `sequence_header` 里 `color_description_present_flag = 0`（连
 
 ### 19.5 验证（x64，本机）
 
-`colorprobe`（`~/.workbuddy/scratch/colorprobe.cpp`，直接链 `MFVideoWriter.obj`）
+`colorprobe`（`colorprobe.cpp`，探针不入库，直接链 `MFVideoWriter.obj`）
 录 60 帧 8 色竖条，四条路径 —— H.264 硬件 / H.264 软件 / HEVC / AV1 —— 现在都是：
 
 ```
