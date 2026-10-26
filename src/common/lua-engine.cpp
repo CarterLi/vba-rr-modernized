@@ -4577,8 +4577,14 @@ static int sound_get(lua_State *L)
 	return 1;
 }
 
-// same as math.random, but uses SFMT instead of C rand()
-//		original math.random either though (Lua 5.1)
+// math.random()/math.randomseed() are replaced rather than extended, so that a
+// script gets the same numbers whichever lua51.dll is in place: stock Lua 5.1
+// builds both on the C library's rand(), which hands out 15 bits on MSVC
+// (RAND_MAX is 32767) - math.random(1, 100000) can only ever return one of
+// 32767 values - while LuaJIT has a good generator of its own, but a different
+// one.  SFMT gives 32 bits out of a period of 2^19937-1, and its state lives in
+// the script (VbaLuaState::rng), so a math.randomseed() in one script cannot
+// shift another script's sequence, nor another script's gui "rand" colour.
 static int sfmt_random(lua_State *L)
 {
 	VbaLuaState *state = VbaLuaState::fromLua(L);
@@ -4615,8 +4621,7 @@ static int sfmt_random(lua_State *L)
 	return 1;
 }
 
-// same as math.randomseed, but uses SFMT instead of C srand()
-//		  original math.randomseed either though (Lua 5.1)
+// same as math.randomseed, but seeds SFMT instead of the C library's generator
 static int sfmt_randomseed(lua_State *L)
 {
 	VbaLuaState *state = VbaLuaState::fromLua(L);
