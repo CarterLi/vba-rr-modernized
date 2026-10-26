@@ -141,6 +141,7 @@ Horizontal offset of the text from the left edge, in pixels (0-9999).	文字距�
 Vertical offset of the text from the bottom edge, in pixels (0-9999).	文字距离下边缘的垂直偏移，单位为像素（0-9999）。
 Failed to load library %s	无法加载库 %s
 Failed to get locale information	无法获取区域设置信息
+The language module was built for a different version of this program and cannot be loaded.\n\nUpdate the language files to match this build, or remove the module to use the built-in English.	语言模块是为其他版本的程序构建的，无法加载。\n\n请更新语言文件以匹配当前版本，或删除该模块以使用内置英文。
 Select cheat list name	选择金手指列表名称
 Gameboy Advance_*.bin;*.agb;*.gba;*.bios;*.zip;*.z;*.gz;*.tar_All Files_*.*__	Game Boy Advance_*.bin;*.agb;*.gba;*.bios;*.zip;*.z;*.gz;*.tar_所有文件_*.*__
 All Gameboy / Gameboy Advance_*.bin;*.agb;*.gba;*.mb;*.elf;*.gb;*.sgb;*.cgb;*.gbc;*.zip;*.z;*.gz;*.7z;*.rar;*.lzma;*.bz2;*.bzip2;*.tar_All GB / GBA (uncompressed only)_*.bin;*.agb;*.gba;*.mb;*.elf;*.gb;*.sgb;*.cgb;*.gbc_Gameboy Advance (uncompressed only)_*.bin;*.agb;*.gba_Gameboy (uncompressed only)_*.gb;*.sgb;*.cgb;*.gbc_Archive Files_*.zip;*.z;*.gz;*.7z;*.rar;*.lzma;*.bz2;*.bzip2;*.tar_All Files_*.*__	所有 Game Boy / Game Boy Advance_*.bin;*.agb;*.gba;*.mb;*.elf;*.gb;*.sgb;*.cgb;*.gbc;*.zip;*.z;*.gz;*.7z;*.rar;*.lzma;*.bz2;*.bzip2;*.tar_所有 GB / GBA（仅未压缩）_*.bin;*.agb;*.gba;*.mb;*.elf;*.gb;*.sgb;*.cgb;*.gbc_Game Boy Advance（仅未压缩）_*.bin;*.agb;*.gba_Game Boy（仅未压缩）_*.gb;*.sgb;*.cgb;*.gbc_压缩包文件_*.zip;*.z;*.gz;*.7z;*.rar;*.lzma;*.bz2;*.bzip2;*.tar_所有文件_*.*__

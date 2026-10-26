@@ -1315,6 +1315,7 @@ call "$(ProjectDir)defaultconfig\CopyWgpu.bat" "$(Platform)" "$(OutDir)"</Comman
     <ClInclude Include="..\src\win32\7zip\7zipstreams.h" />
     <ClInclude Include="..\src\win32\7zip\OpenArchive.h" />
     <ClInclude Include="..\src\win32\resource.h" />
+    <ClInclude Include="..\src\win32\vba_l10n_version.h" />
     <ClInclude Include="..\src\win32\upscalers\NIS_Config.h" />
     <ClInclude Include="..\src\win32\upscalers\UpscalerFsr.h" />
   </ItemGroup>

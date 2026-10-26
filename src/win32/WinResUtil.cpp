@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "resource.h"
 #include "WinResUtil.h"
 #include "Dialogs/FileDlg.h"
 #include "../common/ImageWrite.h"
@@ -10,6 +11,37 @@ static HINSTANCE winResGetInstance(LPCTSTR resType, LPCTSTR resName)
 {
 	// TODO: make language DLL first
 	return AfxFindResourceHandle(resName, resType);
+}
+
+// The version is a string table entry, not a version resource: it is written
+// by the resource script that also carries the strings, and the translated
+// script has its own copy of the value.  LoadString works on a module handle
+// whether the module was loaded normally or as a data file.
+CString winResLoadL10nVersion(HINSTANCE module)
+{
+	TCHAR buffer[96];
+
+	const int length = /**/ ::LoadString(module, IDS_L10N_VERSION,
+	                                     buffer, (int)_countof(buffer));
+	if (length <= 0)
+		return CString();
+
+	return CString(buffer, length);
+}
+
+bool winResL10nVersionMatches(HINSTANCE module)
+{
+	// AfxGetResourceHandle() may already be a language module when the user
+	// switches language, so the executable's own value has to be read from
+	// AfxGetInstanceHandle().
+	const CString expected = winResLoadL10nVersion(AfxGetInstanceHandle());
+	const CString actual   = winResLoadL10nVersion(module);
+
+	// An old module has no value and neither has an executable built before
+	// this check existed.  Neither can be trusted to be in step, so both are
+	// refused rather than falling back to a module that may be incomplete.
+	return !expected.IsEmpty() && !actual.IsEmpty() &&
+	       expected.CompareNoCase(actual) == 0;
 }
 
 UCHAR *winResGetResource(LPCTSTR resType, LPCTSTR resName)

@@ -5,6 +5,13 @@
 #include "GdiConfig.h"
 #include "OpenGLConfig.h"
 #include "WgpuConfig.h"
+
+// The SHA-256 of this file, written by lang/chs/make_rc.py.  It is the value
+// the executable carries as IDS_L10N_VERSION and compares with the one a
+// language module carries before loading it.  Keeping it in a header means
+// the value is part of the build without a build step that has to run first.
+#include "vba_l10n_version.h"
+
 #define APSTUDIO_READONLY_SYMBOLS
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -2907,6 +2914,7 @@ BEGIN
     IDS_TEXT_MARGIN_BOTTOM_TIP "Vertical offset of the text from the bottom edge, in pixels (0-9999)."
     IDS_FAILED_TO_LOAD_LIBRARY "Failed to load library %s"
     IDS_FAILED_TO_GET_LOCINFO "Failed to get locale information"
+    IDS_LANGUAGE_MODULE_MISMATCH "The language module was built for a different version of this program and cannot be loaded.\n\nUpdate the language files to match this build, or remove the module to use the built-in English."
     IDS_SELECT_CHEAT_LIST_NAME "Select cheat list name"
     IDS_FILTER_BIOS         "Gameboy Advance_*.bin;*.agb;*.gba;*.bios;*.zip;*.z;*.gz;*.tar_All Files_*.*__"
     IDS_FILTER_ROM          "All Gameboy / Gameboy Advance_*.bin;*.agb;*.gba;*.mb;*.elf;*.gb;*.sgb;*.cgb;*.gbc;*.zip;*.z;*.gz;*.7z;*.rar;*.lzma;*.bz2;*.bzip2;*.tar_All GB / GBA (uncompressed only)_*.bin;*.agb;*.gba;*.mb;*.elf;*.gb;*.sgb;*.cgb;*.gbc_Gameboy Advance (uncompressed only)_*.bin;*.agb;*.gba_Gameboy (uncompressed only)_*.gb;*.sgb;*.cgb;*.gbc_Archive Files_*.zip;*.z;*.gz;*.7z;*.rar;*.lzma;*.bz2;*.bzip2;*.tar_All Files_*.*__"
@@ -3153,6 +3161,24 @@ BEGIN
     DEFPUSHBUTTON   "&OK",IDOK,128,94,50,16
     PUSHBUTTON      "Cancel",ID_CANCEL,238,270,55,14
     LISTBOX         IDC_LIST1,4,4,173,87,LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_TABSTOP
+END
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Language module version
+//
+// The SHA-256 of this file as make_rc.py saw it when it generated the
+// translations.  A language module carries the value of the script it was
+// generated from, and VBA::winLoadLanguage refuses a module whose value
+// differs: it was made for another revision of the English resources and may
+// be missing strings, controls or whole dialogs this build expects.  The
+// value for the executable comes from vba_l10n_version.h; a translation keeps
+// the value written into its generated script, so rebuilding it after vba.rc
+// changed does not make it pass.
+//
+STRINGTABLE
+BEGIN
+    IDS_L10N_VERSION VBA_L10N_VERSION
 END
 
 #endif    // English (United States) resources

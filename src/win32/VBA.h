@@ -304,6 +304,7 @@ public:
 	int			 languageOption;
 	CString		 languageName;
 	HINSTANCE	 languageModule;
+	bool		 languageVersionMismatch;
 	int			 renderedFrames;
 	Input *		 input;
 	int			 joypadDefault;

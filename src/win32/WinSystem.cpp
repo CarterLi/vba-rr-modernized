@@ -597,7 +597,14 @@ int systemScreenCapture(int captureNumber)
 static void winShowSystemMessage(const CString &text)
 {
 	systemSoundClearBuffer();
-	AfxGetApp()->m_pMainWnd->MessageBox(text, winResLoadString(IDS_ERROR), MB_OK | MB_ICONERROR);
+
+	// A language module is loaded from loadSettings, before the main window
+	// exists, so a message about it can arrive while m_pMainWnd is still
+	// null.  Use a null owner in that case instead of dereferencing it.
+	HWND owner = AfxGetApp()->m_pMainWnd != NULL
+	             ? AfxGetApp()->m_pMainWnd->GetSafeHwnd() : NULL;
+	/**/ ::MessageBox(owner, text, winResLoadString(IDS_ERROR),
+	                  MB_OK | MB_ICONERROR);
 }
 
 // Wide form, used by the Win32 layer.  The format and the arguments are both

@@ -331,6 +331,14 @@
 #define IDS_VBMEDITOR_TIP_FRAMENO      322
 #define IDS_VBMEDITOR_TIME             323
 #define IDS_LUA_ABOUT_TITLE            324
+// Version of the English resource script a build was made from.  A language
+// module carries the same value; see winResL10nVersionMatches in
+// WinResUtil.cpp.  The value itself comes from vba_l10n_version.h, which
+// make_rc.py generates.
+#define IDS_L10N_VERSION               325
+// Shown when a language module was found but carries a different resource
+// version, so it is refused instead of showing a half translated UI.
+#define IDS_LANGUAGE_MODULE_MISMATCH   326
 #define IDR_MENU                        401
 #define IDR_ACCELERATOR                 405
 #define IDR_GB_PRINTER                  406

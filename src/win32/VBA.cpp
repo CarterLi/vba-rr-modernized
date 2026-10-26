@@ -586,6 +586,7 @@ VBA::VBA() : emulator(::theEmulator)
 	threadPriority			= 2;
 	languageOption			= 0;
 	languageModule			= NULL;
+	languageVersionMismatch	= false;
 	languageName			= "";
 	renderedFrames			= 0;
 	input					= NULL;
@@ -2261,10 +2262,31 @@ void VBA::updatePriority()
 }
 
 
+// The two ways a language module can fail to load look the same to the
+// caller, but only one of them is worth explaining: a missing file is the
+// ordinary state of a build without translations, a module that exists but
+// was made for another revision of the resources is a mismatch that the user
+// can fix by updating the language files.
+static void winLanguageLoadFailed(bool versionMismatch, const CString &languageName)
+{
+	if (versionMismatch)
+		systemMessage(IDS_LANGUAGE_MODULE_MISMATCH,
+		              _T("The language module was built for a different version of this program and cannot be loaded.\n\n")
+		              _T("Update the language files to match this build, or remove the module to use the built-in English."));
+	else
+		systemMessage(IDS_FAILED_TO_LOAD_LIBRARY,
+		              _T("Failed to load library %s"),
+		              (LPCTSTR)languageName);
+}
+
+
 void VBA::winSetLanguageOption(int option, bool force)
 {
 	if (((option == languageOption) && option != 2) && !force)
 		return;
+
+	languageVersionMismatch = false;
+
 	switch (option)
 	{
 	case 0:
@@ -2295,7 +2317,11 @@ void VBA::winSetLanguageOption(int option, bool force)
 		// that ships without translations, not an error: fall back to the
 		// resources in the executable and say nothing about it.  Complaining
 		// here would put a message on screen at every start of every such
-		// build on a non English Windows.
+		// build on a non English Windows.  A module that exists but was built
+		// for another revision is different: it was found and rejected, so
+		// say why the UI is about to fall back to English.
+		if (l == NULL && languageVersionMismatch)
+			winLanguageLoadFailed(true, languageName);
 		if (languageModule != NULL)
 			/**/ ::FreeLibrary(languageModule);
 		languageModule = l;
@@ -2318,9 +2344,7 @@ void VBA::winSetLanguageOption(int option, bool force)
 				HINSTANCE l = winLoadLanguage(languageName);
 				if (l == NULL)
 				{
-					systemMessage(IDS_FAILED_TO_LOAD_LIBRARY,
-					              "Failed to load library %s",
-					              languageName);
+					winLanguageLoadFailed(languageVersionMismatch, languageName);
 					return;
 				}
 				AfxSetResourceHandle(l);
@@ -2336,9 +2360,7 @@ void VBA::winSetLanguageOption(int option, bool force)
 			HINSTANCE l = winLoadLanguage(languageName);
 			if (l == NULL)
 			{
-				systemMessage(IDS_FAILED_TO_LOAD_LIBRARY,
-				              "Failed to load library %s",
-				              languageName);
+				winLanguageLoadFailed(languageVersionMismatch, languageName);
 				return;
 			}
 			AfxSetResourceHandle(l);
@@ -2374,9 +2396,30 @@ HINSTANCE VBA::winLoadLanguage(LPCTSTR name)
 			buffer2[2] = 0;
 			buffer.Format(_T("vba_%s.dll"), buffer2);
 
-			return /**/ ::LoadLibrary(buffer);
+			l = /**/ ::LoadLibrary(buffer);
 		}
 	}
+
+	// A module made from another revision of the English resources may be
+	// missing strings, controls or whole dialogs this build expects.  Refuse
+	// it and let the caller fall back to the executable's English rather than
+	// put an incomplete translation on screen.
+	if (l != NULL && !winResL10nVersionMatches(l))
+	{
+		languageVersionMismatch = true;
+
+		const CString actual   = winResLoadL10nVersion(l);
+		const CString expected = winResLoadL10nVersion(AfxGetInstanceHandle());
+
+		winlog(_T("Language module %s rejected: resource version %s, expected %s\n"),
+		       (LPCTSTR)buffer,
+		       actual.IsEmpty() ? _T("(missing)") : (LPCTSTR)actual,
+		       expected.IsEmpty() ? _T("(missing)") : (LPCTSTR)expected);
+
+		/**/ ::FreeLibrary(l);
+		return NULL;
+	}
+
 	return l;
 }
 
