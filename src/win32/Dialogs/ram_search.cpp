@@ -107,6 +107,49 @@ static unsigned int s_maxItemIndex = 0; // max currently valid item index, the l
                                         // end of the list so we need to know this to ignore those attempts
 static int			s_prevSelCount = -1;
 
+// search region restriction
+//
+// The first item of the drop-down is always "unlimited", then the regions of
+// the cartridge type that is currently running follow.  A restricted search
+// only enumerates the selected hardware address range in ResetMemoryRegions(),
+// so the mirror and ROM handling there keeps working as before.
+struct RamSearchRegionInfo
+{
+	HWAddressType start; // first hardware address in the region
+	HWAddressType end;   // one past the last hardware address in the region
+	const TCHAR *label;
+};
+
+static const RamSearchRegionInfo s_gbaRamSearchRegions[] =
+{
+	{ 0x00000000, 0x00004000, _T("00 - BIOS (16 KB)") },
+	{ 0x02000000, 0x02040000, _T("02 - WRAM (256 KB)") },
+	{ 0x03000000, 0x03008000, _T("03 - IWRAM (32 KB)") },
+	{ 0x04000000, 0x04000400, _T("04 - I/O (1 KB)") },
+	{ 0x05000000, 0x05000400, _T("05 - Palette (1 KB)") },
+	{ 0x06000000, 0x06018000, _T("06 - VRAM (96 KB)") },
+	{ 0x07000000, 0x07000400, _T("07 - OAM (1 KB)") },
+	{ 0x0E000000, 0x0E010000, _T("0E - SRAM (64 KB)") },
+};
+
+static const RamSearchRegionInfo s_gbRamSearchRegions[] =
+{
+	{ 0x00008000, 0x0000A000, _T("8/9 - VRAM (8 KB)") },
+	{ 0x0000A000, 0x0000C000, _T("A/B - SRAM (8 KB)") },
+	{ 0x0000C000, 0x0000E000, _T("C/D - WRAM (8 KB)") },
+	{ 0x0000FE00, 0x00010000, _T("FE/FF - OAM/I-O/HRAM (512 B)") },
+};
+
+static const RamSearchRegionInfo *s_ramSearchRegions = NULL;
+static int		  s_ramSearchRegionCount		= 0;
+static int		  s_ramSearchRegionSelection = 0; // combo box index, 0 is "unlimited"
+static HWAddressType s_ramSearchRegionStart		= 0;
+static HWAddressType s_ramSearchRegionEnd		= 0; // 0 means the whole memory map
+static HWND		  s_ramSearchRegionTip		 = NULL;
+static CString	  s_ramSearchRegionTipText;
+static HFONT	  s_ramSearchHelpFont		 = NULL;
+static BOOL		  s_ramSearchHelpFontOwned	 = FALSE;
+
 HWND RamSearchHWnd;
 #define hWnd AfxGetMainWnd()->GetSafeHwnd()
 // The dialog templates and the column names live in whichever module holds the
@@ -136,6 +179,47 @@ static int		  s_undoType = 0; // 0 means can't undo, 1 means can undo, 2 means c
 void RamSearchSaveUndoStateIfNotTooBig(HWND hDlg);
 static const int tooManyRegionsForUndo = 10000;
 
+static const int regionSearchGranularity = 0x100; // if this is too small, we'll waste time (in this function only), but if
+                                                  // any region in RAM isn't evenly divisible by this, we might crash.
+
+static void FinishMemoryRegion(HWAddressType hwRegionStart, u8 *regionStart, u8 *regionEnd)
+{
+	if (!regionStart || !regionEnd)
+		return;
+
+	// check to see if it mirrors an existing one (in which case we discard it)
+	bool discard = false;
+	for (MemoryList::iterator iter = s_activeMemoryRegions.begin(); iter != s_activeMemoryRegions.end(); ++iter)
+	{
+		MemoryRegion &region = *iter;
+		if (region.softwareAddress == regionStart)
+		{
+			unsigned int size = (unsigned int)(regionSearchGranularity + (regionEnd - regionStart));
+			if (size <= region.size)
+			{
+				discard = true;
+			}
+			else
+			{
+				hwRegionStart += region.size;
+				regionStart	  += region.size;
+			}
+			break;
+		}
+	}
+
+	// don't include ROM in our RAM search (it's too huge)
+	if (regionStart == rom || regionStart == gbRom)
+		discard = true;
+
+	// create the region
+	if (!discard)
+	{
+		MemoryRegion region = { hwRegionStart, unsigned(regionSearchGranularity + (regionEnd - regionStart)), regionStart };
+		s_activeMemoryRegions.push_back(region);
+	}
+}
+
 void ResetMemoryRegions()
 {
 	systemSoundClearBuffer();
@@ -145,48 +229,26 @@ void ResetMemoryRegions()
 
 	// use HardwareToSoftwareAddress to figure out what all the possible memory regions are,
 	// split up wherever there's a discontinuity in the address in our software RAM.
-	static const int regionSearchGranularity = 0x100; // if this is too small, we'll waste time (in this function only), but if
-	                                                  // any region in RAM isn't evenly divisible by this, we might crash.
+	HWAddressType scanStart = 0;
+	HWAddressType scanEnd	= 0x10000000;
+	if (s_ramSearchRegionEnd)
+	{
+		// The selected region is a contiguous hardware address range, so there
+		// is no need to walk the whole 28-bit address space for it.
+		scanStart = s_ramSearchRegionStart;
+		scanEnd	  = s_ramSearchRegionEnd;
+	}
+
 	HWAddressType	 hwRegionStart = 0;
 	u8 *regionStart = NULL;
 	u8 *regionEnd	= NULL;
-	for (HWAddressType addr = 0; addr != 0x10000000 + regionSearchGranularity; addr += regionSearchGranularity)
+	for (HWAddressType addr = scanStart; addr < scanEnd; addr += regionSearchGranularity)
 	{
 		u8 *swAddr = HardwareToSoftwareAddress(addr);
 		if (regionEnd && swAddr != regionEnd + regionSearchGranularity)
 		{
 			// hit end of region
-			// check to see if it mirrors an existing one (in which case we discard it)
-			bool discard = false;
-			for (MemoryList::iterator iter = s_activeMemoryRegions.begin(); iter != s_activeMemoryRegions.end(); ++iter)
-			{
-				MemoryRegion &region = *iter;
-				if (region.softwareAddress == regionStart)
-				{
-					unsigned int size = (unsigned int)(regionSearchGranularity + (regionEnd - regionStart));
-					if (size <= region.size)
-					{
-						discard = true;
-					}
-					else
-					{
-						hwRegionStart += region.size;
-						regionStart	  += region.size;
-					}
-					break;
-				}
-			}
-
-			// don't include ROM in our RAM search (it's too huge)
-			if (regionStart == rom || regionStart == gbRom)
-				discard = true;
-
-			// create the region
-			if (!discard)
-			{
-				MemoryRegion region = { hwRegionStart, unsigned(regionSearchGranularity + (regionEnd - regionStart)), regionStart };
-				s_activeMemoryRegions.push_back(region);
-			}
+			FinishMemoryRegion(hwRegionStart, regionStart, regionEnd);
 
 			hwRegionStart = 0;
 			regionStart	  = NULL;
@@ -208,6 +270,10 @@ void ResetMemoryRegions()
 			}
 		}
 	}
+	// The scan used to run one block past the end of the address space so the
+	// last region would be flushed by the loop itself.  A restricted scan ends
+	// at the selected range instead, so flush it here.
+	FinishMemoryRegion(hwRegionStart, regionStart, regionEnd);
 
 	int nextVirtualIndex = 0;
 	for (MemoryList::iterator iter = s_activeMemoryRegions.begin(); iter != s_activeMemoryRegions.end(); ++iter)
@@ -1170,6 +1236,12 @@ void ResetResults()
 
 void CloseRamWindows() //Close the Ram Search & Watch windows when rom closes
 {
+	// the region names depend on the cartridge type, so a new game starts
+	// from the unrestricted search again
+	s_ramSearchRegionSelection = 0;
+	s_ramSearchRegionStart	   = 0;
+	s_ramSearchRegionEnd	   = 0;
+
 	ResetWatches();
 	ResetResults();
 	if (RamSearchHWnd)
@@ -1488,6 +1560,131 @@ static BOOL SelectingByKeyboard()
 	return (a | b | c | d) & 0x80;
 }
 
+static void SetRamSearchRegionFilter(int selection)
+{
+	s_ramSearchRegionSelection = selection;
+	s_ramSearchRegionStart	   = 0;
+	s_ramSearchRegionEnd	   = 0;
+	if (selection > 0 && selection <= s_ramSearchRegionCount)
+	{
+		const RamSearchRegionInfo &region = s_ramSearchRegions[selection - 1];
+		s_ramSearchRegionStart			  = region.start;
+		s_ramSearchRegionEnd			  = region.end;
+	}
+}
+
+static void InitRamSearchRegionControl(HWND hDlg)
+{
+	if (systemCartridgeType == IMAGE_GB)
+	{
+		s_ramSearchRegions	   = s_gbRamSearchRegions;
+		s_ramSearchRegionCount = sizeof(s_gbRamSearchRegions) / sizeof(s_gbRamSearchRegions[0]);
+	}
+	else
+	{
+		s_ramSearchRegions	   = s_gbaRamSearchRegions;
+		s_ramSearchRegionCount = sizeof(s_gbaRamSearchRegions) / sizeof(s_gbaRamSearchRegions[0]);
+	}
+
+	HWND combo = GetDlgItem(hDlg, IDC_C_RAMREGION);
+	SendMessage(combo, CB_RESETCONTENT, 0, 0);
+
+	// the "unlimited" entry is the default and has to follow the UI language
+	CString unlimited = winResLoadString(IDS_RAM_SEARCH_REGION_UNLIMITED);
+	SendMessage(combo, CB_ADDSTRING, 0, (LPARAM)(LPCTSTR)unlimited);
+	for (int i = 0; i < s_ramSearchRegionCount; i++)
+		SendMessage(combo, CB_ADDSTRING, 0, (LPARAM)s_ramSearchRegions[i].label);
+
+	int selection = s_ramSearchRegionSelection;
+	if (selection < 0 || selection > s_ramSearchRegionCount)
+		selection = 0;
+	SendMessage(combo, CB_SETCURSEL, selection, 0);
+	SetRamSearchRegionFilter(selection);
+}
+
+static void InitRamSearchRegionHelp(HWND hDlg)
+{
+	CString tip = winResLoadString(systemCartridgeType == IMAGE_GB
+	                               ? IDS_RAM_SEARCH_REGION_GB_TIP
+	                               : IDS_RAM_SEARCH_REGION_GBA_TIP);
+
+	// The RC compiler turns \n into a line feed.  A tooltip control wants CRLF
+	// between the lines, so normalize it here instead of duplicating the
+	// difference in every resource script.
+	tip.Replace(_T("\r\n"), _T("\n"));
+	tip.Replace(_T("\n"), _T("\r\n"));
+
+	s_ramSearchRegionTip = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL,
+	                                      WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+	                                      CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+	                                      hDlg, NULL, hInst, NULL);
+	if (!s_ramSearchRegionTip)
+		return;
+
+	SendMessage(s_ramSearchRegionTip, TTM_SETMAXTIPWIDTH, 0, 560);
+
+	TOOLINFO toolInfo;
+	memset(&toolInfo, 0, sizeof(toolInfo));
+	toolInfo.cbSize	 = sizeof(toolInfo);
+	toolInfo.uFlags	 = TTF_IDISHWND | TTF_SUBCLASS;
+	toolInfo.hwnd	 = hDlg;
+	toolInfo.uId	 = (UINT_PTR)GetDlgItem(hDlg, IDC_C_RAMREGION_HELP);
+	toolInfo.lpszText = const_cast<LPTSTR>((LPCTSTR)tip);
+	SendMessage(s_ramSearchRegionTip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo);
+	SendMessage(s_ramSearchRegionTip, TTM_ACTIVATE, TRUE, 0);
+}
+
+static void InitRamSearchHelpFont(HWND hDlg)
+{
+	if (s_ramSearchHelpFont)
+		return;
+
+	LOGFONT lf;
+	HFONT	baseFont = (HFONT)SendMessage(hDlg, WM_GETFONT, 0, 0);
+	if (baseFont && GetObject(baseFont, sizeof(lf), &lf) == sizeof(lf))
+	{
+		lf.lfWeight			   = FW_BOLD;
+		s_ramSearchHelpFont	   = CreateFontIndirect(&lf);
+		s_ramSearchHelpFontOwned = (s_ramSearchHelpFont != NULL);
+	}
+	if (!s_ramSearchHelpFont)
+		s_ramSearchHelpFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+}
+
+static void DrawRamSearchRegionHelpIcon(const DRAWITEMSTRUCT *drawItem)
+{
+	HDC	 hdc = drawItem->hDC;
+	RECT rc	 = drawItem->rcItem;
+
+	// the dialog background shows through the corners of the round icon
+	FillRect(hdc, &rc, GetSysColorBrush(COLOR_BTNFACE));
+
+	int size = rc.bottom - rc.top;
+	if (rc.right - rc.left < size)
+		size = rc.right - rc.left;
+	int left   = rc.left + (rc.right - rc.left - size) / 2;
+	int top	   = rc.top + (rc.bottom - rc.top - size) / 2;
+	int right  = left + size;
+	int bottom = top + size;
+
+	HBRUSH circle	= CreateSolidBrush((drawItem->itemState & ODS_SELECTED) ? RGB(0, 84, 166) : RGB(0, 120, 215));
+	HBRUSH oldBrush = (HBRUSH)SelectObject(hdc, circle);
+	HPEN   oldPen	= (HPEN)SelectObject(hdc, GetStockObject(NULL_PEN));
+	Ellipse(hdc, left, top, right, bottom);
+	SelectObject(hdc, oldPen);
+	SelectObject(hdc, oldBrush);
+	DeleteObject(circle);
+
+	SetBkMode(hdc, TRANSPARENT);
+	SetTextColor(hdc, RGB(255, 255, 255));
+	HFONT oldFont = NULL;
+	if (s_ramSearchHelpFont)
+		oldFont = (HFONT)SelectObject(hdc, s_ramSearchHelpFont);
+	DrawText(hdc, _T("?"), -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+	if (oldFont)
+		SelectObject(hdc, oldFont);
+}
+
 LRESULT CALLBACK RamSearchProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	static int watchIndex = 0;
@@ -1500,6 +1697,11 @@ LRESULT CALLBACK RamSearchProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lPara
 
 		SetWindowPos(hDlg, NULL, regQueryDwordValue(_T("ramSearchX"), 0), regQueryDwordValue(_T("ramSearchY"),
 		                                                                                 0), NULL, NULL, SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW);
+
+		InitRamSearchRegionControl(hDlg);
+		InitRamSearchRegionHelp(hDlg);
+		InitRamSearchHelpFont(hDlg);
+
 		switch (rs_o)
 		{
 		case '<':
@@ -1715,6 +1917,16 @@ LRESULT CALLBACK RamSearchProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lPara
 		}
 	}   break;
 
+	case WM_DRAWITEM:
+	{
+		LPDRAWITEMSTRUCT drawItem = (LPDRAWITEMSTRUCT)lParam;
+		if (drawItem->CtlID == IDC_C_RAMREGION_HELP)
+		{
+			DrawRamSearchRegionHelpIcon(drawItem);
+			return TRUE;
+		}
+	}   break;
+
 	case WM_COMMAND:
 	{
 		int rv = false;
@@ -1749,6 +1961,22 @@ LRESULT CALLBACK RamSearchProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lPara
 			//CompactAddrs();
 			signal_new_size();
 			{ rv = true; break; }
+		case IDC_C_RAMREGION:
+			if (HIWORD(wParam) == CBN_SELCHANGE)
+			{
+				int selection = (int)SendDlgItemMessage(hDlg, IDC_C_RAMREGION, CB_GETCURSEL, 0, 0);
+				SetRamSearchRegionFilter(selection);
+
+				// rebuilding the region list is what applies the restriction,
+				// and a search from the previous region no longer makes sense
+				reset_address_info();
+				ListView_SetItemState(GetDlgItem(hDlg, IDC_RAMLIST), -1, 0, LVIS_SELECTED);
+				ListView_SetSelectionMark(GetDlgItem(hDlg, IDC_RAMLIST), 0);
+				RefreshRamListSelectedCountControlStatus(hDlg);
+				InvalidateRect(GetDlgItem(hDlg, IDC_RAMLIST), NULL, TRUE);
+				rv = true;
+			}
+			break;
 //				case IDC_ENDIAN:
 ////					littleEndian = !littleEndian;
 ////					signal_new_size();
@@ -2126,6 +2354,18 @@ invalid_field:
 		break;
 	case WM_DESTROY:
 		RamSearchHWnd = NULL;
+		if (s_ramSearchRegionTip)
+		{
+			DestroyWindow(s_ramSearchRegionTip);
+			s_ramSearchRegionTip = NULL;
+		}
+		if (s_ramSearchHelpFont)
+		{
+			if (s_ramSearchHelpFontOwned)
+				DeleteObject(s_ramSearchHelpFont);
+			s_ramSearchHelpFont	   = NULL;
+			s_ramSearchHelpFontOwned = FALSE;
+		}
 //			theApp.modelessCheatDialogIsOpen = false;
 //			return true;
 		break;

@@ -1423,7 +1423,10 @@ STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_MINIMIZEBOX | WS_POPUP | WS_
 CAPTION " RAM Search"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
-    CONTROL         "",IDC_RAMLIST,"SysListView32",LVS_REPORT | LVS_SHOWSELALWAYS | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP,9,9,214,151,WS_EX_CLIENTEDGE
+    LTEXT           "Search &region:",IDC_STATIC,9,12,52,8
+    COMBOBOX        IDC_C_RAMREGION,64,10,126,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "",IDC_C_RAMREGION_HELP,"Button",BS_OWNERDRAW | WS_TABSTOP,194,9,12,12
+    CONTROL         "",IDC_RAMLIST,"SysListView32",LVS_REPORT | LVS_SHOWSELALWAYS | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP,9,26,214,134,WS_EX_CLIENTEDGE
     PUSHBUTTON      "&Search",IDC_C_SEARCH,226,9,52,16
     PUSHBUTTON      "&Add Cheat",IDC_C_ADDCHEAT,226,145,52,16
     PUSHBUTTON      "&Watch",IDC_C_WATCH,226,127,52,16
@@ -3029,6 +3032,9 @@ BEGIN
     IDS_RAM_SEARCH_RESULTS  "%d result(s) (%d region(s))"
     IDS_RAM_SEARCH_UNDO     "&Undo"
     IDS_RAM_SEARCH_REDO     "&Redo"
+    IDS_RAM_SEARCH_REGION_UNLIMITED "Unlimited"
+    IDS_RAM_SEARCH_REGION_GBA_TIP "00 - BIOS: 16 KB system boot code and BIOS calls, normally read-only.\n02 - WRAM: 256 KB board work RAM, where most game data lives.\n03 - IWRAM: 32 KB fast CPU-internal work RAM for the stack and variables.\n04 - I/O: 1 KB hardware registers (keys, timers, DMA, sound and so on).\n05 - Palette: 1 KB palette RAM for background and sprite colors.\n06 - VRAM: 96 KB video RAM for tiles, maps and bitmaps.\n07 - OAM: 1 KB object attribute memory for sprite positions and attributes.\n0E - SRAM: 64 KB save RAM (battery or flash), depending on the cartridge."
+    IDS_RAM_SEARCH_REGION_GB_TIP "8/9 - VRAM: 8 KB video RAM for tiles and tile maps.\nA/B - SRAM: 8 KB cartridge save RAM (battery).\nC/D - WRAM: 8 KB work RAM for game variables and the stack.\nFE/FF - OAM/I-O/HRAM: 512 B sprite attributes, hardware registers and high RAM."
 END
 /////////////////////////////////////////////////////////////////////////////
 //

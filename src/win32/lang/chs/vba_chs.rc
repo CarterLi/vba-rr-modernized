@@ -39,7 +39,7 @@ LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
 // resources and may be missing strings, controls or whole dialogs.  An
 // unchanged vba.rc keeps the value, so the version changes only when the
 // English resources do.
-#define VBA_L10N_VERSION "c498df09929043d684cc0d8cfc42798c9fcb35e1d77b45656bdacc6fb2994d13"
+#define VBA_L10N_VERSION "8fcc968a8a18c9e91de65de2f388fdd54ae5011c9ad316602d94242e3fc6b4e0"
 
 // The About box shows the application icon; its dialog template lives here,
 // so the icon has to be here too or the control comes up empty.
@@ -1249,7 +1249,10 @@ STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_MINIMIZEBOX | WS_POPUP | WS_
 CAPTION " RAM 搜索"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
-    CONTROL         "",IDC_RAMLIST,"SysListView32",LVS_REPORT | LVS_SHOWSELALWAYS | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP,9,9,214,151,WS_EX_CLIENTEDGE
+    LTEXT           "搜索区域(&R)：",IDC_STATIC,9,12,52,8
+    COMBOBOX        IDC_C_RAMREGION,64,10,126,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "",IDC_C_RAMREGION_HELP,"Button",BS_OWNERDRAW | WS_TABSTOP,194,9,12,12
+    CONTROL         "",IDC_RAMLIST,"SysListView32",LVS_REPORT | LVS_SHOWSELALWAYS | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP,9,26,214,134,WS_EX_CLIENTEDGE
     PUSHBUTTON      "搜索(&S)",IDC_C_SEARCH,226,9,52,16
     PUSHBUTTON      "添加(&A)",IDC_C_ADDCHEAT,226,145,52,16
     PUSHBUTTON      "监视(&W)",IDC_C_WATCH,226,127,52,16
@@ -2375,6 +2378,9 @@ BEGIN
     IDS_RAM_SEARCH_RESULTS  "%d 个结果（%d 个区域）"
     IDS_RAM_SEARCH_UNDO     "撤销(&U)"
     IDS_RAM_SEARCH_REDO     "重做(&R)"
+    IDS_RAM_SEARCH_REGION_UNLIMITED "不限制"
+    IDS_RAM_SEARCH_REGION_GBA_TIP "00 - BIOS：16 KB 系统引导代码与 BIOS 调用，通常只读。\n02 - WRAM：256 KB 主板工作内存，大多数游戏数据都在这里。\n03 - IWRAM：32 KB CPU 内部工作内存，速度快，用于堆栈和变量。\n04 - I/O：1 KB 硬件寄存器（按键、定时器、DMA、声音等）。\n05 - Palette：1 KB 调色板内存，保存背景和精灵的颜色。\n06 - VRAM：96 KB 视频内存，保存图块、地图和位图。\n07 - OAM：1 KB 对象属性内存，保存精灵的位置和属性。\n0E - SRAM：64 KB 存档内存（电池存档或 Flash），视卡带而定。"
+    IDS_RAM_SEARCH_REGION_GB_TIP "8/9 - VRAM：8 KB 视频内存，保存图块和图块地图。\nA/B - SRAM：8 KB 卡带存档内存（电池存档）。\nC/D - WRAM：8 KB 工作内存，保存游戏变量和堆栈。\nFE/FF - OAM/I-O/HRAM：512 B 精灵属性、硬件寄存器和高位内存。"
 END
 
 STRINGTABLE

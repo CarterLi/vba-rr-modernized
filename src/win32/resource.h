@@ -339,6 +339,13 @@
 // Shown when a language module was found but carries a different resource
 // version, so it is refused instead of showing a half translated UI.
 #define IDS_LANGUAGE_MODULE_MISMATCH   326
+
+// RAM Search region restriction: the first item of the drop-down, and the
+// help text next to it, which depends on whether a GBA or a GB cartridge is
+// running.
+#define IDS_RAM_SEARCH_REGION_UNLIMITED 327
+#define IDS_RAM_SEARCH_REGION_GBA_TIP  328
+#define IDS_RAM_SEARCH_REGION_GB_TIP   329
 #define IDR_MENU                        401
 #define IDR_ACCELERATOR                 405
 #define IDR_GB_PRINTER                  406
@@ -1339,6 +1346,8 @@
 #define IDC_C_WATCH_REMOVE              43403
 #define IDC_C_WATCH_UP                  43404
 #define IDC_C_WATCH_SEPARATE            43405
+#define IDC_C_RAMREGION                 43406
+#define IDC_C_RAMREGION_HELP            43407
 #define IDC_PROMPT_TEXT                 43410
 #define IDC_PROMPT_TEXT2                43411
 #define IDC_PROMPT_EDIT                 43412
