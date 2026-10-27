@@ -38,7 +38,9 @@ extern HWND RamWatchHWnd;
 extern HACCEL RamWatchAccels;
 
 bool InsertWatch(const AddressWatcher& Watch, const char *Comment);
-bool InsertWatch(const AddressWatcher& Watch, HWND parent=NULL); // asks user for comment
+// Opens the watch dialog with Address/Size/Type already filled in, so the user
+// only has to type a note.  Used when the caller already knows what to watch.
+bool AddWatchFromTemplate(const AddressWatcher& Watch, HWND parent=NULL);
 void Update_RAM_Watch();
 bool Load_Watches(bool clear, const char* filename);
 void RWAddRecentFile(const char *filename);

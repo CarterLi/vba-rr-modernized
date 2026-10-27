@@ -99,82 +99,6 @@ bool InsertWatch(const AddressWatcher& Watch, const char *Comment)
 	return true;
 }
 
-LRESULT CALLBACK PromptWatchNameProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam) //Gets the description of a watched address
-{
-	RECT r;
-	RECT r2;
-	int dx1, dy1, dx2, dy2;
-
-	switch(uMsg)
-	{
-		case WM_INITDIALOG:
-			//Clear_Sound_Buffer();
-
-			GetWindowRect(hWnd, &r);
-			dx1 = (r.right - r.left) / 2;
-			dy1 = (r.bottom - r.top) / 2;
-
-			GetWindowRect(hDlg, &r2);
-			dx2 = (r2.right - r2.left) / 2;
-			dy2 = (r2.bottom - r2.top) / 2;
-
-			//SetWindowPos(hDlg, NULL, max(0, r.left + (dx1 - dx2)), max(0, r.top + (dy1 - dy2)), NULL, NULL, SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW);
-			SetWindowPos(hDlg, NULL, r.left, r.top, NULL, NULL, SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW);
-			_tcscpy(Str_Tmp,_T("Enter a name for this RAM address."));
-			SendDlgItemMessage(hDlg,IDC_PROMPT_TEXT,WM_SETTEXT,0,(LPARAM)Str_Tmp);
-			_tcscpy(Str_Tmp,_T(""));
-			SendDlgItemMessage(hDlg,IDC_PROMPT_TEXT2,WM_SETTEXT,0,(LPARAM)Str_Tmp);
-			return true;
-			break;
-
-		case WM_COMMAND:
-			switch(LOWORD(wParam))
-			{
-				case IDOK:
-				{
-					GetDlgItemText(hDlg,IDC_PROMPT_EDIT,Str_Tmp,80);
-					InsertWatch(rswatches[WatchCount],winAnsiFromWide(Str_Tmp));
-					EndDialog(hDlg, true);
-					return true;
-					break;
-				}
-				case ID_CANCEL:
-				case IDCANCEL:
-					EndDialog(hDlg, false);
-					return false;
-					break;
-			}
-			break;
-
-		case WM_CLOSE:
-			EndDialog(hDlg, false);
-			return false;
-			break;
-	}
-
-	return false;
-}
-
-bool InsertWatch(const AddressWatcher& Watch, HWND parent)
-{
-	if(!VerifyWatchNotAlreadyAdded(Watch))
-		return false;
-
-	if(!parent)
-		parent = RamWatchHWnd;
-	if(!parent)
-		parent = hWnd;
-
-	int prevWatchCount = WatchCount;
-
-	rswatches[WatchCount] = Watch;
-	rswatches[WatchCount].CurValue = GetCurrentValue(rswatches[WatchCount]);
-	systemSoundClearBuffer();
-	DialogBox(hInst, MAKEINTRESOURCE(IDD_PROMPT), parent, (DLGPROC) PromptWatchNameProc);
-
-	return WatchCount > prevWatchCount;
-}
-
 void Update_RAM_Watch()
 {
 	BOOL watchChanged[MAX_WATCH_COUNT] = {0};
@@ -679,6 +603,11 @@ LRESULT CALLBACK EditWatchProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lPara
 			//SetWindowPos(hDlg, NULL, max(0, r.left + (dx1 - dx2)), max(0, r.top + (dy1 - dy2)), NULL, NULL, SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW);
 			SetWindowPos(hDlg, NULL, r.left, r.top, NULL, NULL, SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW);
 			index = (int)lParam;
+			// index == WatchCount means there is no watch there yet: the caller
+			// filled the slot in with what it wants watched, so this is an "add"
+			// and not an "edit".
+			if (index >= WatchCount)
+				SetWindowText(hDlg, winResLoadString(IDS_ADD_WATCH));
 			_stprintf(Str_Tmp,_T("%08X"),rswatches[index].Address);
 			SetDlgItemText(hDlg,IDC_EDIT_COMPAREADDRESS,Str_Tmp);
 			if (rswatches[index].comment != NULL)
@@ -803,8 +732,35 @@ LRESULT CALLBACK EditWatchProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lPara
 	return false;
 }
 
+bool AddWatchFromTemplate(const AddressWatcher& Watch, HWND parent)
+{
+	if (!parent)
+		parent = RamWatchHWnd;
+	if (!parent)
+		parent = hWnd;
 
+	if (WatchCount >= MAX_WATCH_COUNT)
+		return false;
 
+	if (!VerifyWatchNotAlreadyAdded(Watch))
+	{
+		// That check already brings the watch window forward, but when it was
+		// in front anyway the click looked like it did nothing at all, so say
+		// what happened instead of closing silently.
+		CString message;
+		message.Format(winResLoadString(IDS_WATCH_ALREADY_EXISTS), Watch.Address);
+		MessageBox(parent, message, winResLoadString(IDS_RAM_WATCH), MB_OK | MB_ICONINFORMATION);
+		return false;
+	}
+
+	// The dialog reads and writes the slot it is given, so the watch is staged
+	// at WatchCount: on OK it becomes the next entry, on cancel nothing moved.
+	rswatches[WatchCount] = Watch;
+	rswatches[WatchCount].comment = NULL;
+	rswatches[WatchCount].CurValue = GetCurrentValue(rswatches[WatchCount]);
+	systemSoundClearBuffer();
+	return DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_EDITWATCH), parent, (DLGPROC)EditWatchProc, (LPARAM)WatchCount) != 0;
+}
 
 void RamWatchEnableCommand(HWND hDlg, HMENU hMenu, UINT uIDEnableItem, bool enable)
 {

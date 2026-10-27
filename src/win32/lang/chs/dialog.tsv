@@ -309,7 +309,7 @@ Output Console	输出控制台
 Script File	脚本文件
 Edit	编辑
  RAM Search	 RAM 搜索
-&Watch	监视(&W)
+Add &Watch	添加监视(&W)
 &Eliminate	排除(&E)
 Comparison Operator	比较运算符
 Less Than	小于
@@ -335,10 +335,10 @@ Data Size	数据大小
 2 bytes	2 字节
 4 bytes	4 字节
 Check Misaligned	检查未对齐
-&Clear Change Counts	清除变更计数(&C)
+&Clear Changes	清除变更(&C)
 &Undo	撤销(&U)
 Is	是
- Edit Watch	 ​编辑监视项
+ Edit Watch	 编辑监视项
 Data Type	数据类型
 &1 byte	&1 字节
 &2 bytes	&2 字节
@@ -348,11 +348,11 @@ Data Type	数据类型
 Duplic&ate	复制(&A)
 Add &Cheat	添加(&C)
 &Memory	内存(&M)
+View &Memory	查看内存(&M)
 Watches	监视
 Separator	分隔符
-Input Prompt	输入提示
 Choose File	选择文件
-&Add Cheat	添加(&A)
+&Add Cheat	添加金手指(&A)
 &Search	搜索(&S)
 &Signed	有符号(&S)
 Close	关闭

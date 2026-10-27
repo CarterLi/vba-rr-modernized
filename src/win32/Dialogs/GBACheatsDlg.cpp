@@ -921,8 +921,11 @@ void AddCheat::DoDataExchange(CDataExchange*pDX)
 
 BEGIN_MESSAGE_MAP(AddCheat, CDialog)
 //{{AFX_MSG_MAP(AddCheat)
-ON_BN_CLICKED(ID_OK, OnOk)
-ON_BN_CLICKED(ID_CANCEL, OnCancel)
+// IDOK/IDCANCEL and not the custom ID_OK/ID_CANCEL the template used to carry:
+// the buttons were off the dialog, so nothing ever pressed them, and only the
+// standard ids make Enter and Esc do the same thing as the buttons.
+ON_BN_CLICKED(IDOK, OnOk)
+ON_BN_CLICKED(IDCANCEL, OnCancel)
 ON_CONTROL_RANGE(BN_CLICKED, IDC_SIGNED, IDC_HEXADECIMAL, OnNumberType)
 ON_CONTROL_RANGE(BN_CLICKED, IDC_SIZE_8, IDC_SIZE_32, OnSizeType)
 //}}AFX_MSG_MAP
@@ -993,16 +996,6 @@ BOOL AddCheat::OnInitDialog()
 	}
 
 	m_enabled.SetCheck(initialEnabled ? BST_CHECKED : BST_UNCHECKED);
-
-	if (editIndex < 0 && address != 0)
-	{
-		GetDlgItem(IDC_SIZE_8)->EnableWindow(FALSE);
-		GetDlgItem(IDC_SIZE_16)->EnableWindow(FALSE);
-		GetDlgItem(IDC_SIZE_32)->EnableWindow(FALSE);
-		GetDlgItem(IDC_HEXADECIMAL)->EnableWindow(FALSE);
-		GetDlgItem(IDC_UNSIGNED)->EnableWindow(FALSE);
-		GetDlgItem(IDC_SIGNED)->EnableWindow(FALSE);
-	}
 
 	if (editIndex >= 0)
 		SetWindowText(winResLoadString(IDS_EDIT_CHEAT));

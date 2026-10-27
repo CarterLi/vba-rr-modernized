@@ -145,10 +145,12 @@ static int		  s_ramSearchRegionCount		= 0;
 static int		  s_ramSearchRegionSelection = 0; // combo box index, 0 is "unlimited"
 static HWAddressType s_ramSearchRegionStart		= 0;
 static HWAddressType s_ramSearchRegionEnd		= 0; // 0 means the whole memory map
-static HWND		  s_ramSearchRegionTip		 = NULL;
-static CString	  s_ramSearchRegionTipText;
-static HFONT	  s_ramSearchHelpFont		 = NULL;
-static BOOL		  s_ramSearchHelpFontOwned	 = FALSE;
+// A tooltip control keeps the pointer it is handed, so the texts it shows have
+// to outlive the dialog setup - hence one static string per tool.
+static HWND    s_ramSearchTooltip = NULL;
+static CString s_ramSearchTooltipText[2];
+static HFONT   s_ramSearchHelpFont      = NULL;
+static BOOL    s_ramSearchHelpFontOwned = FALSE;
 
 HWND RamSearchHWnd;
 #define hWnd AfxGetMainWnd()->GetSafeHwnd()
@@ -1143,7 +1145,6 @@ bool IsHardwareAddressValid(HWAddressType address)
 int	 ResultCount		 = 0;
 bool AutoSearch			 = false;
 bool AutoSearchAutoRetry = false;
-LRESULT CALLBACK PromptWatchNameProc(HWND, UINT, WPARAM, LPARAM);
 void UpdatePossibilities(int rs_possible, int regions);
 
 void CompactAddrs()
@@ -1296,9 +1297,14 @@ void RefreshRamListSelectedCountControlStatus(HWND hDlg)
 	{
 		if (selCount < 2 || s_prevSelCount < 2)
 		{
-			EnableWindow(GetDlgItem(hDlg, IDC_C_WATCH), (WatchCount < MAX_WATCH_COUNT) ? TRUE : FALSE);
-			EnableWindow(GetDlgItem(hDlg, IDC_C_ADDCHEAT), (selCount >= 1) ? TRUE : FALSE);
-			EnableWindow(GetDlgItem(hDlg, IDC_C_VIEWMEMORY), (selCount >= 1) ? TRUE : FALSE);
+			// "Add watch" opens a dialog for the single selected row, so it needs
+			// a selection like the buttons below it.  "Add cheat" and "View
+			// memory" work on one address at a time - the first one would open a
+			// dialog per selected row, the second only ever looks at one - so
+			// they stay off until exactly one row is selected.
+			EnableWindow(GetDlgItem(hDlg, IDC_C_WATCH), (selCount >= 1 && WatchCount < MAX_WATCH_COUNT) ? TRUE : FALSE);
+			EnableWindow(GetDlgItem(hDlg, IDC_C_ADDCHEAT), (selCount == 1) ? TRUE : FALSE);
+			EnableWindow(GetDlgItem(hDlg, IDC_C_VIEWMEMORY), (selCount == 1) ? TRUE : FALSE);
 			EnableWindow(GetDlgItem(hDlg, IDC_C_ELIMINATE), (selCount >= 1) ? TRUE : FALSE);
 		}
 		s_prevSelCount = selCount;
@@ -1602,36 +1608,43 @@ static void InitRamSearchRegionControl(HWND hDlg)
 	SetRamSearchRegionFilter(selection);
 }
 
-static void InitRamSearchRegionHelp(HWND hDlg)
+static void AddRamSearchTooltip(HWND hDlg, int controlId, CString& storage, int stringId)
 {
-	CString tip = winResLoadString(systemCartridgeType == IMAGE_GB
-	                               ? IDS_RAM_SEARCH_REGION_GB_TIP
-	                               : IDS_RAM_SEARCH_REGION_GBA_TIP);
+	storage = winResLoadString(stringId);
 
 	// The RC compiler turns \n into a line feed.  A tooltip control wants CRLF
 	// between the lines, so normalize it here instead of duplicating the
 	// difference in every resource script.
-	tip.Replace(_T("\r\n"), _T("\n"));
-	tip.Replace(_T("\n"), _T("\r\n"));
-
-	s_ramSearchRegionTip = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL,
-	                                      WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
-	                                      CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-	                                      hDlg, NULL, hInst, NULL);
-	if (!s_ramSearchRegionTip)
-		return;
-
-	SendMessage(s_ramSearchRegionTip, TTM_SETMAXTIPWIDTH, 0, 560);
+	storage.Replace(_T("\r\n"), _T("\n"));
+	storage.Replace(_T("\n"), _T("\r\n"));
 
 	TOOLINFO toolInfo;
 	memset(&toolInfo, 0, sizeof(toolInfo));
-	toolInfo.cbSize	 = sizeof(toolInfo);
-	toolInfo.uFlags	 = TTF_IDISHWND | TTF_SUBCLASS;
-	toolInfo.hwnd	 = hDlg;
-	toolInfo.uId	 = (UINT_PTR)GetDlgItem(hDlg, IDC_C_RAMREGION_HELP);
-	toolInfo.lpszText = const_cast<LPTSTR>((LPCTSTR)tip);
-	SendMessage(s_ramSearchRegionTip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo);
-	SendMessage(s_ramSearchRegionTip, TTM_ACTIVATE, TRUE, 0);
+	toolInfo.cbSize	  = sizeof(toolInfo);
+	toolInfo.uFlags	  = TTF_IDISHWND | TTF_SUBCLASS;
+	toolInfo.hwnd	  = hDlg;
+	toolInfo.uId	  = (UINT_PTR)GetDlgItem(hDlg, controlId);
+	toolInfo.lpszText = const_cast<LPTSTR>((LPCTSTR)storage);
+	SendMessage(s_ramSearchTooltip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo);
+}
+
+static void InitRamSearchTooltips(HWND hDlg)
+{
+	s_ramSearchTooltip = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL,
+	                                    WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+	                                    CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+	                                    hDlg, NULL, hInst, NULL);
+	if (!s_ramSearchTooltip)
+		return;
+
+	SendMessage(s_ramSearchTooltip, TTM_SETMAXTIPWIDTH, 0, 560);
+
+	AddRamSearchTooltip(hDlg, IDC_C_RAMREGION_HELP, s_ramSearchTooltipText[0],
+	                    systemCartridgeType == IMAGE_GB ? IDS_RAM_SEARCH_REGION_GB_TIP
+	                                                    : IDS_RAM_SEARCH_REGION_GBA_TIP);
+	AddRamSearchTooltip(hDlg, IDC_C_AUTOSEARCH, s_ramSearchTooltipText[1], IDS_RAM_SEARCH_AUTOSEARCH_TIP);
+
+	SendMessage(s_ramSearchTooltip, TTM_ACTIVATE, TRUE, 0);
 }
 
 static void InitRamSearchHelpFont(HWND hDlg)
@@ -1699,7 +1712,7 @@ LRESULT CALLBACK RamSearchProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lPara
 		                                                                                 0), NULL, NULL, SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW);
 
 		InitRamSearchRegionControl(hDlg);
-		InitRamSearchRegionHelp(hDlg);
+		InitRamSearchTooltips(hDlg);
 		InitRamSearchHelpFont(hDlg);
 
 		switch (rs_o)
@@ -2220,8 +2233,11 @@ invalid_field:
 				tempWatch.WrongEndian = 0;         //Replace when I get little endian working
 				tempWatch.comment	  = NULL;
 
+				// One row: ask for the note in the watch dialog, which already
+				// knows the address, size and type from the row itself.  Several
+				// rows: no note to ask for, so they all go in unnamed.
 				if (selCount == 1)
-					inserted |= InsertWatch(tempWatch, hDlg);
+					inserted |= AddWatchFromTemplate(tempWatch, hDlg);
 				else
 					inserted |= InsertWatch(tempWatch, "");
 
@@ -2354,10 +2370,10 @@ invalid_field:
 		break;
 	case WM_DESTROY:
 		RamSearchHWnd = NULL;
-		if (s_ramSearchRegionTip)
+		if (s_ramSearchTooltip)
 		{
-			DestroyWindow(s_ramSearchRegionTip);
-			s_ramSearchRegionTip = NULL;
+			DestroyWindow(s_ramSearchTooltip);
+			s_ramSearchTooltip = NULL;
 		}
 		if (s_ramSearchHelpFont)
 		{

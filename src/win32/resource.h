@@ -346,6 +346,16 @@
 #define IDS_RAM_SEARCH_REGION_UNLIMITED 327
 #define IDS_RAM_SEARCH_REGION_GBA_TIP  328
 #define IDS_RAM_SEARCH_REGION_GB_TIP   329
+// Caption of the watch dialog when the watch does not exist yet, which is the
+// case for every watch added from the RAM search.
+#define IDS_ADD_WATCH                  330
+// Tooltip of the RAM search "Autosearch" check box: what it does and how to
+// use it, which the two-word label does not say.
+#define IDS_RAM_SEARCH_AUTOSEARCH_TIP  331
+// Shown when a watch is added for an address that is already watched, with the
+// same size and type: the click would otherwise do nothing at all.
+#define IDS_RAM_WATCH                  332
+#define IDS_WATCH_ALREADY_EXISTS       333
 #define IDR_MENU                        401
 #define IDR_ACCELERATOR                 405
 #define IDR_GB_PRINTER                  406
@@ -403,7 +413,6 @@
 #define IDD_RAMSEARCH                   561
 #define IDD_EDITWATCH                   562
 #define IDD_RAMWATCH                    563
-#define IDD_PROMPT                      564
 #define IDD_CHEAT_EXPLAIN               565
 #define IDC_R0                          1000
 #define IDC_R1                          1001
