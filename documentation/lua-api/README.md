@@ -1,29 +1,37 @@
-# Lua API 的类型定义（Lua Language Server）
+# Type definitions for the Lua API (Lua Language Server)
 
-`vba.lua` 是给 [Lua Language Server](https://luals.github.io/) 用的 `---@meta`
-定义文件：装上之后，写 VBA-RR 的脚本时 `vba.`/`memory.`/`gui.` 会有补全、参数名和
-返回值类型，写错参数类型或用了不存在的函数会当场标出来。
+`vba.lua` is a `---@meta` definition file for the
+[Lua Language Server](https://luals.github.io/): once installed, scripts written
+for VBA-RR get completion, parameter names and return types for
+`vba.`/`memory.`/`gui.`, and a wrong parameter type or a call to a function that
+does not exist is flagged on the spot.
 
-它不参与模拟器构建，也不会被模拟器加载。它的唯一作用是告诉编辑器
-`src/common/lua-engine.cpp` 里那个 Lua 状态到底有什么。
+It is not part of the emulator build and is never loaded by the emulator. Its
+only job is to tell the editor what the Lua state in
+`src/common/lua-engine.cpp` actually contains.
 
 ```lua
 ---@meta
 ```
 
-这个分支的脚本引擎是 **LuaJIT 2.1**：`lua51.dll` 在 `win32/lib/{x86,x64,arm64}/`，
-构建时原样拷到 exe 旁边，语言层面仍是 Lua 5.1，另外多了 LuaJIT 的
-`bit`、`jit`、`ffi`。手工把原版 Lua 5.1 的 `lua51.dll` 换上去也能跑（5.1 的 ABI 就是
-LuaJIT 实现的那套），只是那三样没有了。
+The script engine in this branch is **LuaJIT 2.1**: `lua51.dll` lives in
+`win32/lib/{x86,x64,arm64}/` and is copied unchanged next to the exe at build
+time. The language is Lua 5.1 plus LuaJIT's extensions
+(<https://luajit.org/extensions.html>): some syntax backported from Lua 5.2 and
+5.3, some of LuaJIT's own, and the `bit`, `jit` and `ffi` modules. LuaJIT 2.1
+supports `goto` but not `//`. Dropping a stock Lua 5.1 `lua51.dll` in its place
+also works (the 5.1 ABI is the one LuaJIT implements); you just lose all of
+that.
 
-## 装法
+## Installation
 
-编辑器认两种位置：**库目录**（`workspace.library`，对所有打开的文件生效）和**工作区
-里任意一个 .lua 文件**（只对该工作区生效）。推荐库目录，因为 `vba.lua` 本身不需要被
-当成脚本。
+The editor knows two locations: a **library directory** (`workspace.library`,
+applies to every open file) and **any .lua file in the workspace** (applies to
+that workspace only). The library directory is recommended, because `vba.lua`
+itself does not need to be treated as a script.
 
-**A. 跟着脚本走（推荐）** —— 把 `vba.lua` 放进脚本目录下的一个子目录，脚本目录里加
-`.luarc.json`：
+**A. Alongside the scripts (recommended)** — put `vba.lua` in a subdirectory of
+the script directory and add a `.luarc.json` there:
 
 ```
 C:\path\to\lua\
@@ -40,8 +48,8 @@ C:\path\to\lua\
 }
 ```
 
-**B. 全局装一次** —— 在 VS Code 的 `settings.json` 里给绝对路径，之后任何目录的脚本
-都有提示：
+**B. Install once globally** — give an absolute path in VS Code's
+`settings.json` and scripts in any directory get completions:
 
 ```json
 {
@@ -50,128 +58,154 @@ C:\path\to\lua\
 }
 ```
 
-**C. 直接拷到脚本旁边** —— 把 `vba.lua` 和脚本放同一个目录，再在这个目录里放
-`{"runtime.version": "LuaJIT"}`。能用，但那个目录里的所有 .lua 都会被当成同一个
-工作区，脚本之间互相可见。
+**C. Copy it next to the script** — put `vba.lua` in the same directory as the
+script and add `{"runtime.version": "LuaJIT"}` there. It works, but every .lua
+file in that directory is treated as one workspace, so the scripts can see each
+other.
 
-> `runtime.version` 选 **LuaJIT**，和随附的 `lua51.dll` 对齐——这样 `bit.`、`jit.` 才有
-> 提示。换成了原版 Lua 5.1 的 dll 就改成 **Lua 5.1**（此时 `bit` 不存在，编辑器也会这么
-> 认为）。别选 5.2+：那会放行 `goto`、`//`、`&`、`|` 这些模拟器跑不了的语法。
+> Pick **LuaJIT** for `runtime.version`, matching the bundled `lua51.dll`, so
+> that `bit.` and `jit.` get completions. If you swapped in a stock Lua 5.1 DLL,
+> use **Lua 5.1** instead (`bit` does not exist there, and the editor will know
+> that too). Avoid Lua 5.3+: it would allow `//`, which LuaJIT does not
+> implement. (`goto` is fine — LuaJIT 2.1 supports it.)
 
-## 覆盖范围
+## Coverage
 
-`vba.lua` 描述的是**这个分支实际注册的东西**，和 `lua-engine.cpp` 末尾的 `luaL_Reg`
-表一一对应：
+`vba.lua` describes **what this branch actually registers**, one-to-one with the
+`luaL_Reg` tables at the end of `lua-engine.cpp`:
 
-| 表 | 项数 | 说明 |
+| Table | Entries | Notes |
 | --- | --- | --- |
-| `emu` / `vba` | 20 | 同一张表，`vba` 是旧名字 |
-| `memory` | 45 | 含 `gbrom*` 一组只读 GB ROM 的函数和全部别名 |
-| `gui` | 26 | 画布固定 256x224 |
+| `emu` / `vba` | 20 | the same table, `vba` is the old name |
+| `memory` | 45 | includes the read-only `gbrom*` group and all aliases |
+| `gui` | 26 | canvas is fixed at 256x224 |
 | `movie` | 15 | |
 | `joypad` | 8 | |
 | `savestate` | 3 | |
 | `avi` | 3 | |
 | `input` | 2 | |
 | `sound` | 1 | |
-| 全局函数 | 7 | `AND` `OR` `XOR` `SHIFT` `BIT` `addressof` `copytable` |
+| Global functions | 7 | `AND` `OR` `XOR` `SHIFT` `BIT` `addressof` `copytable` |
 
-`bit` 不在这个文件里：它由引擎提供（LuaJIT 自带，原版 Lua 5.1 没有），`vba.lua` 不去
-声明别人的库。`print` 和 `tostring` 同理，Lua 5.1 的标准库定义已经声明过（签名相同，
-行为不同，见下面差异表），只把它们的行为写在文件末尾的注释里。
+`bit` is not in this file: the engine provides it (LuaJIT ships it; a stock
+Lua 5.1 does not), and `vba.lua` does not declare other people's libraries.
+`print` and `tostring` are the same story: the Lua 5.1 standard library
+definitions already declare them (same signature, different behaviour, see the
+difference table below), so only their behaviour is written in the comments at
+the end of the file.
 
-## 和 TASVideos 文档不一致的地方
+## Where it differs from the TASVideos documentation
 
-上游文档（<https://tasvideos.org/EmulatorResources/VBA/LuaScriptingFunctions>）描述的是
-一般语义，下面这些是这个分支的实际行为，`vba.lua` 按实际行为写：
+The upstream documentation
+(<https://tasvideos.org/EmulatorResources/VBA/LuaScriptingFunctions>) describes
+the general semantics; the following is what this branch actually does, and
+`vba.lua` follows the actual behaviour:
 
-| 项 | 文档 | 这个分支 |
+| Item | Documentation | This branch |
 | --- | --- | --- |
-| `memory.readbyterange` | 返回 string | 返回**数组表**，`t[1]` 是 `address` 处的字节（`lua_createtable` + `lua_rawseti`）；`length` 为负时从 `address+length` 开始往后读 |
-| `vba.speedmode` | 没有 | 有（`normal`/`nothrottle`/`turbo`/`maximum`），已接到帧跳过与节流，见下面一段 |
-| `gui.fillbox` `gui.fillcircle` `gui.drawcircle` | 没有 | 已注册，见下面一段 |
-| `joypad.get/set` 的 port | 可省略，默认 0 | **必填**（`luaL_checkinteger(L, 1)`），0 表示默认手柄，1-4 是四个口 |
-| `memory.register*` 的回调 | `function()` | 收到 `(address, size)` 两个参数，一个钩子覆盖一段地址时能分辨是哪一字节 |
-| `movie.author()` / `movie.name()` | 无电影时 nil | 无电影时返回 `""`（`movie.mode()` 才是 nil） |
-| 颜色的数字形式 | — | `0xRRGGBBAA`，**alpha 在低字节**，和 `"#RRGGBBAA"` 字符串同序 |
-| `gui.parsecolor` 的 alpha | — | 会被当前的 `gui.opacity`/`gui.transparency` 缩放后再返回 |
-| `gui` 画布 | 239 高 | 256x224（`LUA_SCREEN_WIDTH/HEIGHT`），超出部分直接丢弃 |
-| `gui.getpixel` | — | 读的是**画面**，不是 gui 画布，越界返回 `0,0,0` |
-| `vba.message` | "显示在屏幕上" | 状态栏可见时**只**进状态栏，画面一个字都不画；画面上用的内置点阵字体只有 ASCII，含非 ASCII 的整行跳过 |
-| `input.get()` | — | 只在 Windows 前端有实现，别的平台返回空表 |
-| `math.random` / `math.randomseed` | C `rand()` | SFMT，**每个脚本一个生成器**。原版 Lua 5.1 的 `rand()` 在 MSVC 上只有 15 位（`RAND_MAX` 32767），`math.random(1, 100000)` 最多只能返回 32767 个值；签名不变，所以这里没有重新声明 |
-| `bit` 库 | “bitop 模块的全部函数” | 就是 LuaJIT 的 `bit`；引擎不再自带一份 LuaBitOp，原版 Lua 5.1 的 dll 下没有 `bit` |
+| `memory.readbyterange` | returns a string | returns an **array table**, `t[1]` is the byte at `address` (`lua_createtable` + `lua_rawseti`); a negative `length` starts reading at `address+length` and goes forward |
+| `vba.speedmode` | absent | present (`normal`/`nothrottle`/`turbo`/`maximum`), wired into frame skipping and throttling, see the paragraph below |
+| `gui.fillbox` `gui.fillcircle` `gui.drawcircle` | absent | registered, see the paragraph below |
+| port of `joypad.get/set` | optional, defaults to 0 | **required** (`luaL_checkinteger(L, 1)`); 0 is the default pad, 1-4 are the other ports |
+| callback of `memory.register*` | `function()` | receives `(address, size)`, so a hook covering a range can tell which byte changed |
+| `movie.author()` / `movie.name()` | nil when there is no movie | `""` when there is no movie (`movie.mode()` is the one that returns nil) |
+| numeric form of a colour | — | `0xRRGGBBAA`, **alpha in the low byte**, same order as the `"#RRGGBBAA"` string |
+| alpha of `gui.parsecolor` | — | scaled by the current `gui.opacity`/`gui.transparency` before it is returned |
+| `gui` canvas | 239 pixels high | 256x224 (`LUA_SCREEN_WIDTH/HEIGHT`), anything outside is dropped |
+| `gui.getpixel` | — | reads the **picture**, not the gui canvas; out of bounds returns `0,0,0` |
+| `vba.message` | "displayed on screen" | when the status bar is visible it goes **only** to the status bar and nothing is drawn on the picture; the built-in bitmap font on the picture is ASCII only, so a whole line containing non-ASCII is skipped |
+| `input.get()` | — | only implemented in the Windows frontend; other platforms return an empty table |
+| `math.random` / `math.randomseed` | C `rand()` | SFMT, **one generator per script**. `rand()` in a stock Lua 5.1 built with MSVC has only 15 bits (`RAND_MAX` 32767), so `math.random(1, 100000)` can return at most 32767 values; the signature is unchanged, so it is not redeclared here |
+| `bit` library | "all functions of the bitop module" | it is LuaJIT's `bit`; the engine no longer carries its own LuaBitOp, and a stock Lua 5.1 DLL has no `bit` |
 
-文档没写但确实存在的：`emu` 这个别名、`memory.registerread`、`memory.gbrom*`、
-`memory.gbromreadbyterange`、`vba.registerrun/registerclose/registerloading/
-registerloaded/registersaving/registersaved`、`vba.screenshot`、
-`vba.remapinputdisplay`、`movie.framecount`、`sound.get`、`avi.pause/resume`。
+Present but undocumented: the `emu` alias, `memory.registerread`,
+`memory.gbrom*`, `memory.gbromreadbyterange`,
+`vba.registerrun/registerclose/registerloading/registerloaded/registersaving/registersaved`,
+`vba.screenshot`, `vba.remapinputdisplay`, `movie.framecount`, `sound.get`,
+`avi.pause/resume`.
 
-三个多出来的 `gui` 绘图函数：
+The three extra `gui` drawing functions:
 
 ```lua
-gui.drawcircle(x, y, radius, color)        -- 空心圆，中点算法
-gui.fillbox(x1, y1, x2, y2, color)         -- 纯填充矩形，没有边框
-gui.fillcircle(x, y, radius, color)        -- 实心圆
+gui.drawcircle(x, y, radius, color)        -- hollow circle, midpoint algorithm
+gui.fillbox(x1, y1, x2, y2, color)         -- solid rectangle, no outline
+gui.fillcircle(x, y, radius, color)        -- solid circle
 ```
 
-它们的 C 实现一直在（`gui_drawcircle`/`gui_fillbox`/`gui_fillcircle`），但 2026-10-26
-之前没有登记进 `guilib`，等于调不到；现在登记了。名字沿用 Snes9x 的 `gui` 库（VBA 的
-这一套就是从那儿来的），TASVideos 的 VBA 页面从来没有列过它们，所以不算“和文档不一致”。
+Their C implementations have always existed
+(`gui_drawcircle`/`gui_fillbox`/`gui_fillcircle`), but before 2026-10-26 they
+were not registered in `guilib`, so they could not be called; now they are. The
+names come from Snes9x's `gui` library (VBA's set originated there), and the
+TASVideos VBA page never listed them, so they do not count as a "difference
+from the documentation".
 
-`vba.speedmode(mode)` 现在**已注册**（`normal` / `nothrottle` / `turbo` / `maximum`）。
-它原来是个空操作：`vba_speedmode()` 写得对，但没有任何东西读 `state->speedmode`，
-`VBALuaSpeed()` 全工程无人调用、里面还留着 `assert(false)`。现在：
+`vba.speedmode(mode)` is now **registered** (`normal` / `nothrottle` / `turbo` /
+`maximum`). It used to be a no-op: `vba_speedmode()` was written correctly, but
+nothing read `state->speedmode`, `VBALuaSpeed()` was called from nowhere in the
+project and still contained `assert(false)`. Now:
 
-- `VBALuaSpeed()` 返回「要跳几帧」（-1 = 没有脚本要求；0 = 不跳；9 = 快进键的比例；
-  `0x7FFFFFFF` = 一帧都不画），多个脚本取最快的那个。
-- `systemFramesToSkip()` 消费它：录音中 / 必须绘制的帧仍然优先，其余情况下和用户设置取
-  `max`，所以按住快进键照样更快。
-- `systemFrame()` 与两个音频后端（DirectSound / XAudio2）在脚本拿走速度时不再按实时时钟
-  节流——**这条是必须的**：同步开着的时候，声音缓冲区就是节流器，只改跳帧数根本不提速。
-- 多个脚本同时要求速度时**取最快的那个**（`normal` < `nothrottle` < `turbo` < `maximum`），
-  和手柄按位或、画布按载入顺序叠是同一条规矩；某个脚本停止、自然结束、或被重新 Run 时，
-  它自己那份要求就撤销（重新 Run 会把 `speedmode` 复位成 `normal`），不会卡在高速上下不来。
-- 已知限制：vsync 开着时 `nothrottle` 仍被刷新率卡住（`Present(1)`），`turbo`/`maximum`
-  不受影响（本来就不按刷新率出帧）。
+- `VBALuaSpeed()` returns "how many frames to skip" (-1 = no script asked;
+  0 = skip none; 9 = the fast-forward key's ratio; `0x7FFFFFFF` = draw no frames
+  at all), and with several scripts the fastest one wins.
+- `systemFramesToSkip()` consumes it: frames that are recording / must be drawn
+  still take priority, and otherwise it takes the `max` with the user's setting,
+  so holding the fast-forward key is still faster.
+- `systemFrame()` and both audio backends (DirectSound / XAudio2) no longer
+  throttle against the wall clock while a script has taken the speed — **this
+  is required**: with sync on, the sound buffer is the throttle, and only
+  changing the frame-skip count does not speed anything up.
+- When several scripts ask for a speed at once, **the fastest one wins**
+  (`normal` < `nothrottle` < `turbo` < `maximum`), the same rule as bitwise-ORing
+  the pads and stacking the canvases in load order; when a script stops, ends on
+  its own, or is Run again, its own request is withdrawn (Run again resets
+  `speedmode` to `normal`), so it cannot get stuck at high speed.
+- Known limitation: with vsync on, `nothrottle` is still capped by the refresh
+  rate (`Present(1)`); `turbo`/`maximum` are unaffected (they never produced
+  frames at the refresh rate in the first place).
 
-## 装好之后是什么样
+## What it looks like once installed
 
 ```lua
 local function hud()
-  -- gui.text 的第三个参数是 any（内部走 tostring），颜色可以是名字/数字/表
+  -- gui.text's third argument is any (internally goes through tostring);
+  -- the colour can be a name/number/table
   gui.text(4, 4, "frame " .. vba.framecount(), "yellow", { r = 0, g = 0, b = 0 })
 
-  local pad = joypad.get(0)        -- VbaButtonTable，pad.A / pad.B / pad.start ...
+  local pad = joypad.get(0)        -- VbaButtonTable, pad.A / pad.B / pad.start ...
   if pad.A then
-    memory.writeword(0x02037368, 0x1234)   -- 参数类型是 integer，写字符串会标红
+    memory.writeword(0x02037368, 0x1234)   -- the parameter type is integer; a string is flagged
   end
 end
 
 gui.register(hud)
 
 vba.registerbefore(function()
-  local bytes = memory.readbyterange(0x02000000, 4)  -- integer[]，不是 string
+  local bytes = memory.readbyterange(0x02000000, 4)  -- integer[], not string
   print("first byte", bytes[1])
 end)
 
 while true do vba.frameadvance() end
 ```
 
-## 维护
+## Maintenance
 
-改 `lua-engine.cpp` 里的 `luaL_Reg` 表（加/删/改名一个函数）之后，必须同步改
-`vba.lua`，然后跑一次：
+After changing a `luaL_Reg` table in `lua-engine.cpp` (adding, removing or
+renaming a function), you must update `vba.lua` to match, then run:
 
 ```
 python documentation/lua-api/check_api.py
 ```
 
-它从 `lua-engine.cpp` 里抽出各 `luaL_Reg` 表的函数名（跳过被注释掉的项）和
-`lua_register` 的全局名，与 `vba.lua` 里声明的名字逐表对比，任何一边多了或少了都
-返回非零退出码并打印差集。和 `src/win32/lang/make_rc.py --check` 是同一个套路。
+It extracts the function names of each `luaL_Reg` table from `lua-engine.cpp`
+(skipping commented-out entries) and the global names from `lua_register`,
+compares them table by table with the names declared in `vba.lua`, and exits
+non-zero printing the difference if either side has one too many or too few. It
+is the same approach as `src/win32/lang/make_rc.py --check`.
 
-`vba.lua` 本身是合法 Lua（`luajit -e "assert(loadfile('vba.lua'))"` 能过），但注解
-写得对不对只能靠 `lua-language-server --check` 看：把 `vba.lua` 放进一个工作区，写
-一个故意用错参数的脚本，确认它会报 `param-type-mismatch` / `undefined-field`；
-`---@meta` 文件自己不参与诊断，所以“文件里没告警”不能当成注解正确的证据。
+`vba.lua` is itself valid Lua (`luajit -e "assert(loadfile('vba.lua'))"` passes),
+but whether the annotations are correct can only be checked with
+`lua-language-server --check`: put `vba.lua` in a workspace, write a script that
+deliberately uses the wrong parameter types, and confirm that it reports
+`param-type-mismatch` / `undefined-field`; a `---@meta` file does not
+participate in diagnostics itself, so "no warnings in the file" is not evidence
+that the annotations are correct.

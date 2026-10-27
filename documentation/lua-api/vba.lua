@@ -12,11 +12,12 @@
 -- disagrees with this build, this file follows the build; the differences are
 -- listed in `documentation/lua-api/README.md`.
 --
--- The engine is LuaJIT 2.1, shipped as `lua51.dll` next to the exe, so the
--- language is Lua 5.1: no goto, no `//`, no integer division - but LuaJIT's
--- `bit`, `jit` and `ffi` are there too.  A stock Lua 5.1 DLL can be dropped in
--- its place, which is why nothing below is typed against a LuaJIT extension;
--- set the runtime to match the DLL you actually run.
+-- The engine is LuaJIT 2.1, shipped as `lua51.dll` next to the exe: Lua 5.1
+-- plus LuaJIT's extensions (<https://luajit.org/extensions.html>) - some syntax
+-- backported from Lua 5.2/5.3, some of LuaJIT's own, and the `bit`, `jit` and
+-- `ffi` modules.  2.1 has `goto`, but not `//`.  A stock Lua 5.1 DLL can be
+-- dropped in its place, which is why nothing below is typed against a LuaJIT
+-- extension; set the runtime to match the DLL you actually run.
 
 --------------------------------------------------------------------------------
 -- Types used by the signatures below
