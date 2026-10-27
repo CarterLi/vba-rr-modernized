@@ -2007,12 +2007,12 @@ static enum LuaJoypadType joypad_parse_type(lua_State* L, int numArg)
 }
 
 // table joypad.get(int which = 0, string padtype = "JOYPAD_GAME")
-// 
+//
 //  Reads the joypad input that comes from the specified source.
 static int joy_get_internal(lua_State *L, bool reportUp, bool reportDown, enum LuaJoypadType type)
 {
 	int which = (int)luaL_checkinteger(L, 1);
-	
+
 	if (which < 0 || which > 4)
 	{
 		luaL_error(L, "Invalid input port (valid range 0-4, specified %d)", which);
