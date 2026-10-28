@@ -19,10 +19,11 @@
 // The driver trace, declared here rather than pulled in from the MFC side:/n// this unit is plain Win32 and has no CString.
 extern void winlog(const wchar_t *msg, ...);
 
-typedef HRESULT (WINAPI* SevenZipGetNumberOfFormats)(UINT32* numFormats);
-typedef HRESULT (WINAPI* SevenZipGetHandlerProperty2)(UInt32 formatIndex, PROPID propID, PROPVARIANT* value);
-typedef HRESULT (WINAPI* SevenZipCreateObject)(const GUID* clsid, const GUID* iid, void** outObject);
-typedef HRESULT (WINAPI* SevenZipGetModuleProp)(PROPID propID, PROPVARIANT* value);
+// 7z.dll exports GetModuleProp as well, but the SDK has no prototype for it
+// and nothing in the emulator calls it: it is probed once to log the version.
+// The declaration gives decltype a type to take.  It is never defined here and
+// never called directly; 7zapi.h deliberately does not forward it.
+STDAPI GetModuleProp(PROPID propID, PROPVARIANT* value);
 
 // NModulePropID::kVersion (CPP/7zip/ICoder.h) reports a VT_UI4 holding
 // (major << 16) | minor, which is exactly how the headers encode MY_VERSION.
@@ -42,19 +43,23 @@ static const char* SevenZipArch()
 }
 
 static HMODULE s_module = NULL;
-static SevenZipGetNumberOfFormats s_getNumberOfFormats = NULL;
-static SevenZipGetHandlerProperty2 s_getHandlerProperty2 = NULL;
-static SevenZipCreateObject s_createObject = NULL;
-static SevenZipGetModuleProp s_getModuleProp = NULL;
+static decltype(&GetNumberOfFormats)  s_getNumberOfFormats = NULL;
+static decltype(&GetHandlerProperty2) s_getHandlerProperty2 = NULL;
+static decltype(&CreateObject)        s_createObject = NULL;
+static decltype(&GetModuleProp)       s_getModuleProp = NULL;
 
 static bool SevenZipResolve(HMODULE module)
 {
-	s_getNumberOfFormats = (SevenZipGetNumberOfFormats)GetProcAddress(module, "GetNumberOfFormats");
-	s_getHandlerProperty2 = (SevenZipGetHandlerProperty2)GetProcAddress(module, "GetHandlerProperty2");
-	s_createObject = (SevenZipCreateObject)GetProcAddress(module, "CreateObject");
+	s_getNumberOfFormats = reinterpret_cast<decltype(&GetNumberOfFormats)>(
+		GetProcAddress(module, "GetNumberOfFormats"));
+	s_getHandlerProperty2 = reinterpret_cast<decltype(&GetHandlerProperty2)>(
+		GetProcAddress(module, "GetHandlerProperty2"));
+	s_createObject = reinterpret_cast<decltype(&CreateObject)>(
+		GetProcAddress(module, "CreateObject"));
 
 	// Optional: only used to report the version.  Older DLLs may not export it.
-	s_getModuleProp = (SevenZipGetModuleProp)GetProcAddress(module, "GetModuleProp");
+	s_getModuleProp = reinterpret_cast<decltype(&GetModuleProp)>(
+		GetProcAddress(module, "GetModuleProp"));
 
 	if (!s_getNumberOfFormats || !s_getHandlerProperty2 || !s_createObject)
 	{
