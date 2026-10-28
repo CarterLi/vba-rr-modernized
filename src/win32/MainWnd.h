@@ -135,6 +135,11 @@ public:
 	void winMouseOn();
 	void winConfirmMode();
 
+	// Radio mark for a menu item, in place of the check mark MFC's
+	// CCmdUI::SetRadio() would install.  Definition and rationale live in
+	// MainWndTools.cpp.
+	static void setRadioCheck(CCmdUI *pCmdUI, bool on);
+
 	// Overrides
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(MainWnd)

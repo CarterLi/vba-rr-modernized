@@ -980,7 +980,7 @@ void MainWnd::OnToolsEditModeDiscard()
 
 void MainWnd::OnUpdateToolsEditModeDiscard(CCmdUI *pCmdUI)
 {
-	pCmdUI->SetCheck(VBAMovieGetEditMode() == MOVIE_EDIT_MODE_DISCARD);
+	setRadioCheck(pCmdUI, VBAMovieGetEditMode() == MOVIE_EDIT_MODE_DISCARD);
 }
 
 void MainWnd::OnToolsEditModeOverwrite()
@@ -990,7 +990,7 @@ void MainWnd::OnToolsEditModeOverwrite()
 
 void MainWnd::OnUpdateToolsEditModeOverwrite(CCmdUI *pCmdUI)
 {
-	pCmdUI->SetCheck(VBAMovieGetEditMode() == MOVIE_EDIT_MODE_OVERWRITE);
+	setRadioCheck(pCmdUI, VBAMovieGetEditMode() == MOVIE_EDIT_MODE_OVERWRITE);
 }
 
 void MainWnd::OnToolsEditModeInsert()
@@ -1001,7 +1001,7 @@ void MainWnd::OnToolsEditModeInsert()
 void MainWnd::OnUpdateToolsEditModeInsert(CCmdUI *pCmdUI)
 {
 	pCmdUI->Enable(FALSE); // FIXME : Insert Mode UNIMPLEMENTED
-	pCmdUI->SetCheck(VBAMovieGetEditMode() == MOVIE_EDIT_MODE_INSERT);
+	setRadioCheck(pCmdUI, VBAMovieGetEditMode() == MOVIE_EDIT_MODE_INSERT);
 }
 
 void MainWnd::OnToolsEditModeXor()
@@ -1011,7 +1011,44 @@ void MainWnd::OnToolsEditModeXor()
 
 void MainWnd::OnUpdateToolsEditModeXor(CCmdUI *pCmdUI)
 {
-	pCmdUI->SetCheck(VBAMovieGetEditMode() == MOVIE_EDIT_MODE_XOR);
+	setRadioCheck(pCmdUI, VBAMovieGetEditMode() == MOVIE_EDIT_MODE_XOR);
+}
+
+// MFC's CCmdUI::SetRadio() does not ask Windows for a radio mark: it calls
+// SetMenuItemBitmaps() with a check-mark bitmap of its own and never sets
+// MFT_RADIOCHECK.  That bitmap ignores the menu theme, so it lands left of the
+// theme's check column and, in dark mode, drags a white square behind the dot.
+// Setting the flag directly lets the theme draw the mark like every other
+// menu does (a plain dot on Windows 11, a boxed dot on Windows 8.1).
+//
+// Every "pick one of these" item in the menu goes through here.  Each item
+// carries its own flag, so a group needs no first/last range: the four
+// ON_UPDATE_COMMAND_UI handlers of a group already pass through the whole set
+// on every popup, and the unselected ones take their flag off again.
+void MainWnd::setRadioCheck(CCmdUI *pCmdUI, bool on)
+{
+	pCmdUI->SetCheck(on);
+
+	if (pCmdUI->m_pMenu == NULL)
+		return;
+
+	HMENU hmenu = pCmdUI->m_pMenu->m_hMenu;
+
+	MENUITEMINFOW item;
+	ZeroMemory(&item, sizeof(item));
+	item.cbSize = sizeof(item);
+	item.fMask  = MIIM_FTYPE;
+
+	if (!GetMenuItemInfoW(hmenu, pCmdUI->m_nIndex, TRUE, &item))
+		return;
+
+	UINT type = on ? (item.fType | MFT_RADIOCHECK)
+	               : (item.fType & ~MFT_RADIOCHECK);
+	if (type == item.fType)
+		return;
+
+	item.fType = type;
+	SetMenuItemInfoW(hmenu, pCmdUI->m_nIndex, TRUE, &item);
 }
 
 void MainWnd::OnToolsOnMovieEndPause()
@@ -1031,7 +1068,7 @@ void MainWnd::OnToolsOnMovieEndStop()
 
 void MainWnd::OnUpdateToolsOnMovieEndStop(CCmdUI *pCmdUI)
 {
-	pCmdUI->SetRadio(theApp.movieOnEndBehavior == 0);
+	setRadioCheck(pCmdUI, theApp.movieOnEndBehavior == 0);
 }
 
 void MainWnd::OnToolsOnMovieEndRestart()
@@ -1041,7 +1078,7 @@ void MainWnd::OnToolsOnMovieEndRestart()
 
 void MainWnd::OnUpdateToolsOnMovieEndRestart(CCmdUI *pCmdUI)
 {
-	pCmdUI->SetRadio(theApp.movieOnEndBehavior == 1);
+	setRadioCheck(pCmdUI, theApp.movieOnEndBehavior == 1);
 }
 
 void MainWnd::OnToolsOnMovieEndAppend()
@@ -1051,7 +1088,7 @@ void MainWnd::OnToolsOnMovieEndAppend()
 
 void MainWnd::OnUpdateToolsOnMovieEndAppend(CCmdUI *pCmdUI)
 {
-	pCmdUI->SetRadio(theApp.movieOnEndBehavior == 2);
+	setRadioCheck(pCmdUI, theApp.movieOnEndBehavior == 2);
 }
 
 void MainWnd::OnToolsOnMovieEndKeep()
@@ -1061,7 +1098,7 @@ void MainWnd::OnToolsOnMovieEndKeep()
 
 void MainWnd::OnUpdateToolsOnMovieEndKeep(CCmdUI *pCmdUI)
 {
-	pCmdUI->SetRadio(theApp.movieOnEndBehavior == 3);
+	setRadioCheck(pCmdUI, theApp.movieOnEndBehavior == 3);
 }
 
 /////////////////////////////////

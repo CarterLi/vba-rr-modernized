@@ -1632,7 +1632,10 @@ static bool winUpdateCaptureFormatMenu(CMenu *pMenu)
 		label.Replace(_T(" Encoder"), _T(""));
 		label.Trim();
 
-		pMenu->AppendMenu(MF_STRING | (i == current ? MF_CHECKED : 0),
+		// A radio mark, so it matches the other "pick one of these" menus.
+		// The items are rebuilt on every popup, so the flag never has to be
+		// taken off again.
+		pMenu->AppendMenu(MF_STRING | (i == current ? (MF_CHECKED | MFT_RADIOCHECK) : 0),
 		                  ID_OPTIONS_EMULATOR_FORMAT_FIRST + i,
 		                  label);
 	}

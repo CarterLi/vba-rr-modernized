@@ -222,7 +222,7 @@ void MainWnd::OnOptionsFrameskipThrottleNothrottle()
 
 void MainWnd::OnUpdateOptionsFrameskipThrottleNothrottle(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.throttle == 0);
+	setRadioCheck(pCmdUI, theApp.throttle == 0);
 }
 
 void MainWnd::OnOptionsFrameskipThrottle6()
@@ -232,7 +232,7 @@ void MainWnd::OnOptionsFrameskipThrottle6()
 
 void MainWnd::OnUpdateOptionsFrameskipThrottle6(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.throttle == 6);
+	setRadioCheck(pCmdUI, theApp.throttle == 6);
 }
 
 void MainWnd::OnOptionsFrameskipThrottle15()
@@ -242,7 +242,7 @@ void MainWnd::OnOptionsFrameskipThrottle15()
 
 void MainWnd::OnUpdateOptionsFrameskipThrottle15(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.throttle == 15);
+	setRadioCheck(pCmdUI, theApp.throttle == 15);
 }
 
 void MainWnd::OnOptionsFrameskipThrottle25()
@@ -252,7 +252,7 @@ void MainWnd::OnOptionsFrameskipThrottle25()
 
 void MainWnd::OnUpdateOptionsFrameskipThrottle25(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.throttle == 25);
+	setRadioCheck(pCmdUI, theApp.throttle == 25);
 }
 
 void MainWnd::OnOptionsFrameskipThrottle50()
@@ -262,7 +262,7 @@ void MainWnd::OnOptionsFrameskipThrottle50()
 
 void MainWnd::OnUpdateOptionsFrameskipThrottle50(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.throttle == 50);
+	setRadioCheck(pCmdUI, theApp.throttle == 50);
 }
 
 void MainWnd::OnOptionsFrameskipThrottle75()
@@ -272,7 +272,7 @@ void MainWnd::OnOptionsFrameskipThrottle75()
 
 void MainWnd::OnUpdateOptionsFrameskipThrottle75(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.throttle == 75);
+	setRadioCheck(pCmdUI, theApp.throttle == 75);
 }
 
 void MainWnd::OnOptionsFrameskipThrottle100()
@@ -282,7 +282,7 @@ void MainWnd::OnOptionsFrameskipThrottle100()
 
 void MainWnd::OnUpdateOptionsFrameskipThrottle100(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.throttle == 100);
+	setRadioCheck(pCmdUI, theApp.throttle == 100);
 }
 
 void MainWnd::OnOptionsFrameskipThrottle125()
@@ -292,7 +292,7 @@ void MainWnd::OnOptionsFrameskipThrottle125()
 
 void MainWnd::OnUpdateOptionsFrameskipThrottle125(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.throttle == 125);
+	setRadioCheck(pCmdUI, theApp.throttle == 125);
 }
 
 void MainWnd::OnOptionsFrameskipThrottle150()
@@ -302,7 +302,7 @@ void MainWnd::OnOptionsFrameskipThrottle150()
 
 void MainWnd::OnUpdateOptionsFrameskipThrottle150(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.throttle == 150);
+	setRadioCheck(pCmdUI, theApp.throttle == 150);
 }
 
 void MainWnd::OnOptionsFrameskipThrottle200()
@@ -312,7 +312,7 @@ void MainWnd::OnOptionsFrameskipThrottle200()
 
 void MainWnd::OnUpdateOptionsFrameskipThrottle200(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.throttle == 200);
+	setRadioCheck(pCmdUI, theApp.throttle == 200);
 }
 
 void MainWnd::OnOptionsFrameskipThrottle300()
@@ -322,7 +322,7 @@ void MainWnd::OnOptionsFrameskipThrottle300()
 
 void MainWnd::OnUpdateOptionsFrameskipThrottle300(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.throttle == 300);
+	setRadioCheck(pCmdUI, theApp.throttle == 300);
 }
 
 void MainWnd::OnOptionsFrameskipThrottle400()
@@ -332,7 +332,7 @@ void MainWnd::OnOptionsFrameskipThrottle400()
 
 void MainWnd::OnUpdateOptionsFrameskipThrottle400(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.throttle == 400);
+	setRadioCheck(pCmdUI, theApp.throttle == 400);
 }
 
 void MainWnd::OnOptionsFrameskipThrottle600()
@@ -342,7 +342,7 @@ void MainWnd::OnOptionsFrameskipThrottle600()
 
 void MainWnd::OnUpdateOptionsFrameskipThrottle600(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.throttle == 600);
+	setRadioCheck(pCmdUI, theApp.throttle == 600);
 }
 
 void MainWnd::OnOptionsFrameskipThrottle1000()
@@ -352,7 +352,7 @@ void MainWnd::OnOptionsFrameskipThrottle1000()
 
 void MainWnd::OnUpdateOptionsFrameskipThrottle1000(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.throttle == 1000);
+	setRadioCheck(pCmdUI, theApp.throttle == 1000);
 }
 
 void MainWnd::OnOptionsFrameskipThrottleOther()
@@ -453,52 +453,52 @@ BOOL MainWnd::OnOptionsFrameskip(UINT nID)
 
 void MainWnd::OnUpdateOptionsVideoFrameskip0(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(systemCartridgeType == IMAGE_GBA ? frameSkip == 0 : gbFrameSkip == 0);
+	setRadioCheck(pCmdUI, systemCartridgeType == IMAGE_GBA ? frameSkip == 0 : gbFrameSkip == 0);
 }
 
 void MainWnd::OnUpdateOptionsVideoFrameskip1(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(systemCartridgeType == IMAGE_GBA ? frameSkip == 1 : gbFrameSkip == 1);
+	setRadioCheck(pCmdUI, systemCartridgeType == IMAGE_GBA ? frameSkip == 1 : gbFrameSkip == 1);
 }
 
 void MainWnd::OnUpdateOptionsVideoFrameskip2(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(systemCartridgeType == IMAGE_GBA ? frameSkip == 2 : gbFrameSkip == 2);
+	setRadioCheck(pCmdUI, systemCartridgeType == IMAGE_GBA ? frameSkip == 2 : gbFrameSkip == 2);
 }
 
 void MainWnd::OnUpdateOptionsVideoFrameskip3(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(systemCartridgeType == IMAGE_GBA ? frameSkip == 3 : gbFrameSkip == 3);
+	setRadioCheck(pCmdUI, systemCartridgeType == IMAGE_GBA ? frameSkip == 3 : gbFrameSkip == 3);
 }
 
 void MainWnd::OnUpdateOptionsVideoFrameskip4(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(systemCartridgeType == IMAGE_GBA ? frameSkip == 4 : gbFrameSkip == 4);
+	setRadioCheck(pCmdUI, systemCartridgeType == IMAGE_GBA ? frameSkip == 4 : gbFrameSkip == 4);
 }
 
 void MainWnd::OnUpdateOptionsVideoFrameskip5(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(systemCartridgeType == IMAGE_GBA ? frameSkip == 5 : gbFrameSkip == 5);
+	setRadioCheck(pCmdUI, systemCartridgeType == IMAGE_GBA ? frameSkip == 5 : gbFrameSkip == 5);
 }
 
 void MainWnd::OnUpdateOptionsVideoFrameskip6(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(systemCartridgeType == IMAGE_GBA ? frameSkip == 6 : gbFrameSkip == 6);
+	setRadioCheck(pCmdUI, systemCartridgeType == IMAGE_GBA ? frameSkip == 6 : gbFrameSkip == 6);
 }
 
 void MainWnd::OnUpdateOptionsVideoFrameskip7(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(systemCartridgeType == IMAGE_GBA ? frameSkip == 7 : gbFrameSkip == 7);
+	setRadioCheck(pCmdUI, systemCartridgeType == IMAGE_GBA ? frameSkip == 7 : gbFrameSkip == 7);
 }
 
 void MainWnd::OnUpdateOptionsVideoFrameskip8(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(systemCartridgeType == IMAGE_GBA ? frameSkip == 8 : gbFrameSkip == 8);
+	setRadioCheck(pCmdUI, systemCartridgeType == IMAGE_GBA ? frameSkip == 8 : gbFrameSkip == 8);
 }
 
 void MainWnd::OnUpdateOptionsVideoFrameskip9(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(systemCartridgeType == IMAGE_GBA ? frameSkip == 9 : gbFrameSkip == 9);
+	setRadioCheck(pCmdUI, systemCartridgeType == IMAGE_GBA ? frameSkip == 9 : gbFrameSkip == 9);
 }
 
 void MainWnd::OnOptionsVideoVsync()
@@ -513,79 +513,79 @@ void MainWnd::OnUpdateOptionsVideoVsync(CCmdUI*pCmdUI)
 
 void MainWnd::OnUpdateOptionsVideoX1(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.videoOption == VIDEO_1X);
+	setRadioCheck(pCmdUI, theApp.videoOption == VIDEO_1X);
 }
 
 void MainWnd::OnUpdateOptionsVideoX2(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.videoOption == VIDEO_2X);
+	setRadioCheck(pCmdUI, theApp.videoOption == VIDEO_2X);
 }
 
 void MainWnd::OnUpdateOptionsVideoX3(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.videoOption == VIDEO_3X);
+	setRadioCheck(pCmdUI, theApp.videoOption == VIDEO_3X);
 }
 
 void MainWnd::OnUpdateOptionsVideoX4(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.videoOption == VIDEO_4X);
+	setRadioCheck(pCmdUI, theApp.videoOption == VIDEO_4X);
 }
 
 void MainWnd::OnUpdateOptionsVideoX5(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.videoOption == VIDEO_5X);
+	setRadioCheck(pCmdUI, theApp.videoOption == VIDEO_5X);
 }
 
 void MainWnd::OnUpdateOptionsVideoX6(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.videoOption == VIDEO_6X);
+	setRadioCheck(pCmdUI, theApp.videoOption == VIDEO_6X);
 }
 
 void MainWnd::OnUpdateOptionsVideoX7(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.videoOption == VIDEO_7X);
+	setRadioCheck(pCmdUI, theApp.videoOption == VIDEO_7X);
 }
 
 void MainWnd::OnUpdateOptionsVideoX8(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.videoOption == VIDEO_8X);
+	setRadioCheck(pCmdUI, theApp.videoOption == VIDEO_8X);
 }
 
 void MainWnd::OnUpdateOptionsVideoX9(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.videoOption == VIDEO_9X);
+	setRadioCheck(pCmdUI, theApp.videoOption == VIDEO_9X);
 }
 
 void MainWnd::OnUpdateOptionsVideoX10(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.videoOption == VIDEO_10X);
+	setRadioCheck(pCmdUI, theApp.videoOption == VIDEO_10X);
 }
 
 void MainWnd::OnUpdateOptionsVideoX11(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.videoOption == VIDEO_11X);
+	setRadioCheck(pCmdUI, theApp.videoOption == VIDEO_11X);
 }
 
 void MainWnd::OnUpdateOptionsVideoX12(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.videoOption == VIDEO_12X);
+	setRadioCheck(pCmdUI, theApp.videoOption == VIDEO_12X);
 }
 
 // The three fixed full screen sizes are window sizes like any other, so they
 // are always available: nothing has to be mode-set for them.
 void MainWnd::OnUpdateOptionsVideoFullscreen320x240(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.videoOption == VIDEO_320x240);
+	setRadioCheck(pCmdUI, theApp.videoOption == VIDEO_320x240);
 }
 
 void MainWnd::OnUpdateOptionsVideoFullscreen640x480(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.videoOption == VIDEO_640x480);
+	setRadioCheck(pCmdUI, theApp.videoOption == VIDEO_640x480);
 }
 
 void MainWnd::OnUpdateOptionsVideoFullscreen800x600(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.videoOption == VIDEO_800x600);
+	setRadioCheck(pCmdUI, theApp.videoOption == VIDEO_800x600);
 }
 
 BOOL MainWnd::OnOptionVideoSize(UINT nID)
@@ -649,7 +649,7 @@ void MainWnd::OnOptionsVideoFullscreen()
 
 void MainWnd::OnUpdateOptionsVideoFullscreen(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.videoOption == VIDEO_OTHER);
+	setRadioCheck(pCmdUI, theApp.videoOption == VIDEO_OTHER);
 }
 
 void MainWnd::OnOptionsVideoDisablesfx()
@@ -678,11 +678,11 @@ void MainWnd::OnOptionsVideoScreenScaling(UINT nID)
 
 void MainWnd::OnUpdateOptionsVideoScreenScaling(CCmdUI *pCmdUI)
 {
-	// A check mark on the mode in use, not the dot of a radio group.  Once
-	// SetRadio() has run on an item it stays a radio item for the rest of
-	// the session and keeps drawing the dot, so this must not go back to it.
-	pCmdUI->SetCheck(theApp.screenScaling ==
-	                 (int)(pCmdUI->m_nID - ID_OPTIONS_VIDEO_SCALING_STRETCH));
+	// A radio dot on the mode in use, drawn by Windows.  MFC's SetRadio()
+	// cannot be used for it: that installs a check-mark bitmap of its own,
+	// which ignores the menu theme.  See setRadioCheck().
+	setRadioCheck(pCmdUI, theApp.screenScaling ==
+	                      (int)(pCmdUI->m_nID - ID_OPTIONS_VIDEO_SCALING_STRETCH));
 }
 
 BOOL MainWnd::OnVideoLayer(UINT nID)
@@ -718,7 +718,7 @@ void MainWnd::OnOptionsVideoRendermethodGdi()
 
 void MainWnd::OnUpdateOptionsVideoRendermethodGdi(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.renderMethod == GDI);
+	setRadioCheck(pCmdUI, theApp.renderMethod == GDI);
 }
 #endif // VBA_ENABLE_GDI
 
@@ -731,7 +731,7 @@ void MainWnd::OnOptionsVideoRendermethodDirectdraw()
 
 void MainWnd::OnUpdateOptionsVideoRendermethodDirectdraw(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.renderMethod == DIRECT_DRAW);
+	setRadioCheck(pCmdUI, theApp.renderMethod == DIRECT_DRAW);
 }
 #endif // VBA_ENABLE_DDRAW
 
@@ -750,7 +750,7 @@ void MainWnd::OnUpdateOptionsVideoRendermethodDirect3d(CCmdUI*pCmdUI)
 	setRenderMethodModel(pCmdUI,
 	                     active ? direct3D9PresentationModel() : NULL,
 	                     active ? direct3D9DeviceName() : NULL);
-	pCmdUI->SetCheck(active);
+	setRadioCheck(pCmdUI, active);
 }
 
 #if VBA_ENABLE_OPENGL
@@ -762,7 +762,7 @@ void MainWnd::OnOptionsVideoRendermethodOpengl()
 
 void MainWnd::OnUpdateOptionsVideoRendermethodOpengl(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.renderMethod == OPENGL);
+	setRadioCheck(pCmdUI, theApp.renderMethod == OPENGL);
 }
 
 void MainWnd::OnOptionsVideoRendermethodOpengl33()
@@ -781,7 +781,7 @@ void MainWnd::OnUpdateOptionsVideoRendermethodOpengl33(CCmdUI*pCmdUI)
 
 	setRenderMethodGlVersion(pCmdUI, active ? openGL33Version() : NULL);
 
-	pCmdUI->SetCheck(active);
+	setRadioCheck(pCmdUI, active);
 }
 #endif // VBA_ENABLE_OPENGL
 
@@ -801,7 +801,7 @@ void MainWnd::OnUpdateOptionsVideoRendermethodDirect3d11(CCmdUI*pCmdUI)
 	// in the bitblt model where it does not, see createSwapChain().
 	setRenderMethodModel(pCmdUI, theApp.renderMethod == DIRECT_3D11 ? direct3D11PresentationModel() : NULL);
 
-	pCmdUI->SetCheck(theApp.renderMethod == DIRECT_3D11);
+	setRadioCheck(pCmdUI, theApp.renderMethod == DIRECT_3D11);
 }
 
 #if VBA_ENABLE_WGPU
@@ -821,7 +821,7 @@ void MainWnd::OnUpdateOptionsVideoRendermethodWebgpu(CCmdUI*pCmdUI)
 	// the adapter has, see requestAdapter(); the entry is named after it.
 	setRenderMethodModel(pCmdUI, theApp.renderMethod == WGPU ? wgpuBackendModel() : NULL);
 
-	pCmdUI->SetCheck(theApp.renderMethod == WGPU);
+	setRadioCheck(pCmdUI, theApp.renderMethod == WGPU);
 }
 
 // The backend the WebGPU renderer runs on, which is the item id less the first
@@ -857,7 +857,7 @@ void MainWnd::OnUpdateOptionsVideoWgpubackend(CCmdUI *pCmdUI)
 	// A check mark rather than a radio dot: the dot is drawn from a bitmap
 	// that reads as a white square under the dark frame this build paints,
 	// while the check mark is the one the rest of the menu already uses.
-	pCmdUI->SetCheck(theApp.wgpuBackend == backend);
+	setRadioCheck(pCmdUI, theApp.wgpuBackend == backend);
 }
 #endif
 
@@ -962,7 +962,7 @@ void MainWnd::OnUpdateOptionsVideoTexturefilter(CCmdUI*pCmdUI)
 	int filter = (int)(pCmdUI->m_nID - ID_OPTIONS_VIDEO_TEXTUREFILTER_NEAREST);
 
 	pCmdUI->Enable(theApp.display != NULL && theApp.display->filterAvailable(filter));
-	pCmdUI->SetCheck(currentTextureFilter() == filter);
+	setRadioCheck(pCmdUI, currentTextureFilter() == filter);
 }
 
 #if VBA_ENABLE_OPENGL
@@ -975,7 +975,7 @@ void MainWnd::OnOptionsVideoRenderoptionsGltriangle()
 
 void MainWnd::OnUpdateOptionsVideoRenderoptionsGltriangle(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.glType == 0);
+	setRadioCheck(pCmdUI, theApp.glType == 0);
 }
 
 void MainWnd::OnOptionsVideoRenderoptionsGlquads()
@@ -987,7 +987,7 @@ void MainWnd::OnOptionsVideoRenderoptionsGlquads()
 
 void MainWnd::OnUpdateOptionsVideoRenderoptionsGlquads(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.glType == 1);
+	setRadioCheck(pCmdUI, theApp.glType == 1);
 }
 #endif // VBA_ENABLE_OPENGL
 
@@ -1025,7 +1025,7 @@ void MainWnd::OnUpdateOptionsEmulatorFilenamePreference(CCmdUI *pCmdUI)
 	// The two choices stay mutually exclusive, but they are drawn with ordinary
 	// check marks: a radio bullet in a dark themed menu renders as a white block
 	// with a corner dot, which reads as a broken icon rather than a selection.
-	pCmdUI->SetCheck(pCmdUI->m_nID == theApp.filenamePreference + ID_OPTIONS_PREFER_ARCHIVE_NAME);
+	setRadioCheck(pCmdUI, pCmdUI->m_nID == theApp.filenamePreference + ID_OPTIONS_PREFER_ARCHIVE_NAME);
 }
 
 void MainWnd::OnOptionsVideoDisablestatusmessages()
@@ -1119,16 +1119,16 @@ void MainWnd::OnUpdateOptionsPriority(CCmdUI *pCmdUI)
 	switch (pCmdUI->m_nID)
 	{
 	case ID_OPTIONS_PRIORITY_HIGHEST:
-		pCmdUI->SetCheck(theApp.threadPriority == 0);
+		setRadioCheck(pCmdUI, theApp.threadPriority == 0);
 		break;
 	case ID_OPTIONS_PRIORITY_ABOVENORMAL:
-		pCmdUI->SetCheck(theApp.threadPriority == 1);
+		setRadioCheck(pCmdUI, theApp.threadPriority == 1);
 		break;
 	case ID_OPTIONS_PRIORITY_NORMAL:
-		pCmdUI->SetCheck(theApp.threadPriority == 2);
+		setRadioCheck(pCmdUI, theApp.threadPriority == 2);
 		break;
 	case ID_OPTIONS_PRIORITY_BELOWNORMAL:
-		pCmdUI->SetCheck(theApp.threadPriority == 3);
+		setRadioCheck(pCmdUI, theApp.threadPriority == 3);
 		break;
 	}
 }
@@ -1268,13 +1268,13 @@ void MainWnd::OnUpdateOptionsEmulatorShowSpeed(CCmdUI *pCmdUI)
 	switch (pCmdUI->m_nID)
 	{
 	case ID_OPTIONS_EMULATOR_SHOWSPEED_NONE:
-		pCmdUI->SetCheck(theApp.showSpeed == 0);
+		setRadioCheck(pCmdUI, theApp.showSpeed == 0);
 		break;
 	case ID_OPTIONS_EMULATOR_SHOWSPEED_PERCENTAGE:
-		pCmdUI->SetCheck(theApp.showSpeed == 1);
+		setRadioCheck(pCmdUI, theApp.showSpeed == 1);
 		break;
 	case ID_OPTIONS_EMULATOR_SHOWSPEED_DETAILED:
-		pCmdUI->SetCheck(theApp.showSpeed == 2);
+		setRadioCheck(pCmdUI, theApp.showSpeed == 2);
 		break;
 	case ID_OPTIONS_EMULATOR_SHOWSPEED_TRANSPARENT:
 		pCmdUI->SetCheck(theApp.showSpeedTransparent);
@@ -1289,7 +1289,7 @@ void MainWnd::OnOptionsEmulatorSavetypeAutomatic()
 
 void MainWnd::OnUpdateOptionsEmulatorSavetypeAutomatic(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.winSaveType == 0);
+	setRadioCheck(pCmdUI, theApp.winSaveType == 0);
 	pCmdUI->Enable(!VBAMovieIsActive() || GetAsyncKeyState(VK_CONTROL));
 }
 
@@ -1300,7 +1300,7 @@ void MainWnd::OnOptionsEmulatorSavetypeEeprom()
 
 void MainWnd::OnUpdateOptionsEmulatorSavetypeEeprom(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.winSaveType == 1);
+	setRadioCheck(pCmdUI, theApp.winSaveType == 1);
 	pCmdUI->Enable(!VBAMovieIsActive() || GetAsyncKeyState(VK_CONTROL));
 }
 
@@ -1311,7 +1311,7 @@ void MainWnd::OnOptionsEmulatorSavetypeSram()
 
 void MainWnd::OnUpdateOptionsEmulatorSavetypeSram(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.winSaveType == 2);
+	setRadioCheck(pCmdUI, theApp.winSaveType == 2);
 	pCmdUI->Enable(!VBAMovieIsActive() || GetAsyncKeyState(VK_CONTROL));
 }
 
@@ -1322,7 +1322,7 @@ void MainWnd::OnOptionsEmulatorSavetypeFlash()
 
 void MainWnd::OnUpdateOptionsEmulatorSavetypeFlash(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.winSaveType == 3);
+	setRadioCheck(pCmdUI, theApp.winSaveType == 3);
 	pCmdUI->Enable(!VBAMovieIsActive() || GetAsyncKeyState(VK_CONTROL));
 }
 
@@ -1333,7 +1333,7 @@ void MainWnd::OnOptionsEmulatorSavetypeEepromsensor()
 
 void MainWnd::OnUpdateOptionsEmulatorSavetypeEepromsensor(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.winSaveType == 4);
+	setRadioCheck(pCmdUI, theApp.winSaveType == 4);
 	pCmdUI->Enable(!VBAMovieIsActive() || GetAsyncKeyState(VK_CONTROL));
 }
 
@@ -1344,7 +1344,7 @@ void MainWnd::OnOptionsEmulatorSavetypeNone()
 
 void MainWnd::OnUpdateOptionsEmulatorSavetypeNone(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.winSaveType == 5);
+	setRadioCheck(pCmdUI, theApp.winSaveType == 5);
 	pCmdUI->Enable(!VBAMovieIsActive() || GetAsyncKeyState(VK_CONTROL));
 }
 
@@ -1356,7 +1356,7 @@ void MainWnd::OnOptionsEmulatorSavetypeFlash512k()
 
 void MainWnd::OnUpdateOptionsEmulatorSavetypeFlash512k(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.winFlashSize == 0x10000);
+	setRadioCheck(pCmdUI, theApp.winFlashSize == 0x10000);
 	pCmdUI->Enable(!VBAMovieIsActive() || GetAsyncKeyState(VK_CONTROL));
 }
 
@@ -1368,7 +1368,7 @@ void MainWnd::OnOptionsEmulatorSavetypeFlash1m()
 
 void MainWnd::OnUpdateOptionsEmulatorSavetypeFlash1m(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.winFlashSize == 0x20000);
+	setRadioCheck(pCmdUI, theApp.winFlashSize == 0x20000);
 	pCmdUI->Enable(!VBAMovieIsActive() || GetAsyncKeyState(VK_CONTROL));
 }
 
@@ -1601,7 +1601,7 @@ void MainWnd::OnOptionsSound11khz()
 
 void MainWnd::OnUpdateOptionsSound11khz(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(soundQuality == 4);
+	setRadioCheck(pCmdUI, soundQuality == 4);
 	pCmdUI->Enable((!VBAMovieIsActive() ||
 	                GetAsyncKeyState(VK_CONTROL)) && !(theApp.soundRecording || theApp.aviRecording || theApp.nvAudioLog));
 }
@@ -1613,7 +1613,7 @@ void MainWnd::OnOptionsSound22khz()
 
 void MainWnd::OnUpdateOptionsSound22khz(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(soundQuality == 2);
+	setRadioCheck(pCmdUI, soundQuality == 2);
 	pCmdUI->Enable((!VBAMovieIsActive() ||
 	                GetAsyncKeyState(VK_CONTROL)) && !(theApp.soundRecording || theApp.aviRecording || theApp.nvAudioLog));
 }
@@ -1625,7 +1625,7 @@ void MainWnd::OnOptionsSound44khz()
 
 void MainWnd::OnUpdateOptionsSound44khz(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(soundQuality == 1);
+	setRadioCheck(pCmdUI, soundQuality == 1);
 	pCmdUI->Enable(!(theApp.soundRecording || theApp.aviRecording || theApp.nvAudioLog));
 }
 
@@ -1653,7 +1653,7 @@ void MainWnd::OnUpdateOptionsSoundApiDirectsound(CCmdUI*pCmdUI)
 	// compared where the backend is chosen.
 	setSoundApiBuffering(pCmdUI, directSoundBufferCount(), directSoundBufferingMs(), 0);
 
-	pCmdUI->SetCheck(theApp.soundApi == SOUND_API_DIRECTSOUND);
+	setRadioCheck(pCmdUI, theApp.soundApi == SOUND_API_DIRECTSOUND);
 	pCmdUI->Enable(!(theApp.soundRecording || theApp.aviRecording || theApp.nvAudioLog));
 }
 
@@ -1672,7 +1672,7 @@ void MainWnd::OnUpdateOptionsSoundApiXaudio2(CCmdUI*pCmdUI)
 	// is tuned for, so they are shown where the backend is chosen.
 	setSoundApiBuffering(pCmdUI, xaudio2BufferCount(), xaudio2BufferingMs(), xaudio2DropoutCount());
 
-	pCmdUI->SetCheck(theApp.soundApi == SOUND_API_XAUDIO2);
+	setRadioCheck(pCmdUI, theApp.soundApi == SOUND_API_XAUDIO2);
 	pCmdUI->Enable(!(theApp.soundRecording || theApp.aviRecording || theApp.nvAudioLog));
 }
 
@@ -1684,7 +1684,7 @@ BOOL MainWnd::OnOptionsSoundVolume(UINT nID)
 
 void MainWnd::OnUpdateOptionsSoundVolume(CCmdUI *pCmdUI)
 {
-	pCmdUI->SetCheck(soundVolume == (int)(pCmdUI->m_nID - ID_OPTIONS_SOUND_VOLUME_1X));
+	setRadioCheck(pCmdUI, soundVolume == (int)(pCmdUI->m_nID - ID_OPTIONS_SOUND_VOLUME_1X));
 }
 
 void MainWnd::OnOptionsSoundVolume25x()
@@ -1694,7 +1694,7 @@ void MainWnd::OnOptionsSoundVolume25x()
 
 void MainWnd::OnUpdateOptionsSoundVolume25x(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(soundVolume == 4);
+	setRadioCheck(pCmdUI, soundVolume == 4);
 }
 
 void MainWnd::OnOptionsSoundVolume5x()
@@ -1704,7 +1704,7 @@ void MainWnd::OnOptionsSoundVolume5x()
 
 void MainWnd::OnUpdateOptionsSoundVolume5x(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(soundVolume == 5);
+	setRadioCheck(pCmdUI, soundVolume == 5);
 }
 
 static inline void OnSoundToggleEnabled(int c)
@@ -1833,7 +1833,7 @@ void MainWnd::OnOptionsGameboyAutomatic()
 
 void MainWnd::OnUpdateOptionsGameboyAutomatic(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(gbEmulatorType == 0);
+	setRadioCheck(pCmdUI, gbEmulatorType == 0);
 	pCmdUI->Enable(!VBAMovieIsActive() || GetAsyncKeyState(VK_CONTROL));
 }
 
@@ -1844,7 +1844,7 @@ void MainWnd::OnOptionsGameboyGba()
 
 void MainWnd::OnUpdateOptionsGameboyGba(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(gbEmulatorType == 4);
+	setRadioCheck(pCmdUI, gbEmulatorType == 4);
 	pCmdUI->Enable(!VBAMovieIsActive() || GetAsyncKeyState(VK_CONTROL));
 }
 
@@ -1855,7 +1855,7 @@ void MainWnd::OnOptionsGameboyCgb()
 
 void MainWnd::OnUpdateOptionsGameboyCgb(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(gbEmulatorType == 1);
+	setRadioCheck(pCmdUI, gbEmulatorType == 1);
 	pCmdUI->Enable(!VBAMovieIsActive() || GetAsyncKeyState(VK_CONTROL));
 }
 
@@ -1866,7 +1866,7 @@ void MainWnd::OnOptionsGameboySgb()
 
 void MainWnd::OnUpdateOptionsGameboySgb(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(gbEmulatorType == 2);
+	setRadioCheck(pCmdUI, gbEmulatorType == 2);
 	pCmdUI->Enable(!VBAMovieIsActive() || GetAsyncKeyState(VK_CONTROL));
 }
 
@@ -1877,7 +1877,7 @@ void MainWnd::OnOptionsGameboySgb2()
 
 void MainWnd::OnUpdateOptionsGameboySgb2(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(gbEmulatorType == 5);
+	setRadioCheck(pCmdUI, gbEmulatorType == 5);
 	pCmdUI->Enable(!VBAMovieIsActive() || GetAsyncKeyState(VK_CONTROL));
 }
 
@@ -1888,7 +1888,7 @@ void MainWnd::OnOptionsGameboyGb()
 
 void MainWnd::OnUpdateOptionsGameboyGb(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(gbEmulatorType == 3);
+	setRadioCheck(pCmdUI, gbEmulatorType == 3);
 	pCmdUI->Enable(!VBAMovieIsActive() || GetAsyncKeyState(VK_CONTROL));
 }
 
@@ -1899,7 +1899,7 @@ void MainWnd::OnOptionsGameboyRealcolors()
 
 void MainWnd::OnUpdateOptionsGameboyRealcolors(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(gbColorOption == 0);
+	setRadioCheck(pCmdUI, gbColorOption == 0);
 }
 
 void MainWnd::OnOptionsGameboyGameboycolors()
@@ -1909,7 +1909,7 @@ void MainWnd::OnOptionsGameboyGameboycolors()
 
 void MainWnd::OnUpdateOptionsGameboyGameboycolors(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(gbColorOption == 1);
+	setRadioCheck(pCmdUI, gbColorOption == 1);
 }
 
 void MainWnd::OnOptionsGameboyColors()
@@ -2024,90 +2024,90 @@ void MainWnd::OnUpdateOptionsFilter(CCmdUI *pCmdUI)
 	switch (pCmdUI->m_nID)
 	{
 	case ID_OPTIONS_FILTER_NORMAL:
-		pCmdUI->SetCheck(theApp.filterType == 0);
+		setRadioCheck(pCmdUI, theApp.filterType == 0);
 		break;
 	case ID_OPTIONS_FILTER_TVMODE:
-		pCmdUI->SetCheck(theApp.filterType == 1);
+		setRadioCheck(pCmdUI, theApp.filterType == 1);
 		break;
 	case ID_OPTIONS_FILTER_2XSAI:
-		pCmdUI->SetCheck(theApp.filterType == 2);
+		setRadioCheck(pCmdUI, theApp.filterType == 2);
 		break;
 	case ID_OPTIONS_FILTER_SUPER2XSAI:
-		pCmdUI->SetCheck(theApp.filterType == 3);
+		setRadioCheck(pCmdUI, theApp.filterType == 3);
 		break;
 	case ID_OPTIONS_FILTER_SUPEREAGLE:
-		pCmdUI->SetCheck(theApp.filterType == 4);
+		setRadioCheck(pCmdUI, theApp.filterType == 4);
 		break;
 	case ID_OPTIONS_FILTER16BIT_PIXELATEEXPERIMENTAL:
-		pCmdUI->SetCheck(theApp.filterType == 5);
+		setRadioCheck(pCmdUI, theApp.filterType == 5);
 		break;
 	case ID_OPTIONS_FILTER16BIT_MOTIONBLUREXPERIMENTAL:
-		pCmdUI->SetCheck(theApp.filterType == 6);
+		setRadioCheck(pCmdUI, theApp.filterType == 6);
 		break;
 	case ID_OPTIONS_FILTER16BIT_ADVANCEMAMESCALE2X:
-		pCmdUI->SetCheck(theApp.filterType == 7);
+		setRadioCheck(pCmdUI, theApp.filterType == 7);
 		break;
 	case ID_OPTIONS_FILTER16BIT_SIMPLE2X:
-		pCmdUI->SetCheck(theApp.filterType == 8);
+		setRadioCheck(pCmdUI, theApp.filterType == 8);
 		break;
 	case ID_OPTIONS_FILTER_BILINEAR:
-		pCmdUI->SetCheck(theApp.filterType == 9);
+		setRadioCheck(pCmdUI, theApp.filterType == 9);
 		break;
 	case ID_OPTIONS_FILTER_BILINEARPLUS:
-		pCmdUI->SetCheck(theApp.filterType == 10);
+		setRadioCheck(pCmdUI, theApp.filterType == 10);
 		break;
 	case ID_OPTIONS_FILTER_SCANLINES:
-		pCmdUI->SetCheck(theApp.filterType == 11);
+		setRadioCheck(pCmdUI, theApp.filterType == 11);
 		break;
 	case ID_OPTIONS_FILTER_HQ2X2:
-		pCmdUI->SetCheck(theApp.filterType == 12);
+		setRadioCheck(pCmdUI, theApp.filterType == 12);
 		break;
 	case ID_OPTIONS_FILTER_HQ2X:
-		pCmdUI->SetCheck(theApp.filterType == 13);
+		setRadioCheck(pCmdUI, theApp.filterType == 13);
 		break;
 	case ID_OPTIONS_FILTER_LQ2X:
-		pCmdUI->SetCheck(theApp.filterType == 14);
+		setRadioCheck(pCmdUI, theApp.filterType == 14);
 		break;
 	case ID_OPTIONS_FILTER_HQ3X2:
-		pCmdUI->SetCheck(theApp.filterType == 15);
+		setRadioCheck(pCmdUI, theApp.filterType == 15);
 		break;
 	case ID_OPTIONS_FILTER_HQ3X:
-		pCmdUI->SetCheck(theApp.filterType == 16);
+		setRadioCheck(pCmdUI, theApp.filterType == 16);
 		break;
 	case ID_OPTIONS_FILTER16BIT_SIMPLE3X:
-		pCmdUI->SetCheck(theApp.filterType == 17);
+		setRadioCheck(pCmdUI, theApp.filterType == 17);
 		break;
 	case ID_OPTIONS_FILTER16BIT_SIMPLE4X:
-		pCmdUI->SetCheck(theApp.filterType == 18);
+		setRadioCheck(pCmdUI, theApp.filterType == 18);
 		break;
 	case ID_OPTIONS_FILTER16BIT_PIXELATEEXPERIMENTAL3X:
-		pCmdUI->SetCheck(theApp.filterType == 19);
+		setRadioCheck(pCmdUI, theApp.filterType == 19);
 		break;
 	case ID_OPTIONS_FILTER16BIT_PIXELATEEXPERIMENTAL4X:
-		pCmdUI->SetCheck(theApp.filterType == 20);
+		setRadioCheck(pCmdUI, theApp.filterType == 20);
 		break;
 	case ID_OPTIONS_FILTER_XBRZ2X:
 		pCmdUI->Enable(systemColorDepth == 32); // xBRZ has no 16-bit variant
-		pCmdUI->SetCheck(theApp.filterType == 21);
+		setRadioCheck(pCmdUI, theApp.filterType == 21);
 		break;
 	case ID_OPTIONS_FILTER_XBRZ3X:
 		pCmdUI->Enable(systemColorDepth == 32);
-		pCmdUI->SetCheck(theApp.filterType == 22);
+		setRadioCheck(pCmdUI, theApp.filterType == 22);
 		break;
 	case ID_OPTIONS_FILTER_XBRZ4X:
 		pCmdUI->Enable(systemColorDepth == 32);
-		pCmdUI->SetCheck(theApp.filterType == 23);
+		setRadioCheck(pCmdUI, theApp.filterType == 23);
 		break;
 	case ID_OPTIONS_FILTER_XBRZ5X:
 		pCmdUI->Enable(systemColorDepth == 32);
-		pCmdUI->SetCheck(theApp.filterType == 24);
+		setRadioCheck(pCmdUI, theApp.filterType == 24);
 		break;
 	case ID_OPTIONS_FILTER_HQ4X:
-		pCmdUI->SetCheck(theApp.filterType == 25);
+		setRadioCheck(pCmdUI, theApp.filterType == 25);
 		break;
 	case ID_OPTIONS_FILTER_SCALEFX3X:
 		pCmdUI->Enable(systemColorDepth == 32); // ScaleFX has no 16-bit variant
-		pCmdUI->SetCheck(theApp.filterType == 26);
+		setRadioCheck(pCmdUI, theApp.filterType == 26);
 		break;
 	}
 }
@@ -2137,13 +2137,13 @@ void MainWnd::OnUpdateOptionsFilterIFB(CCmdUI *pCmdUI)
 	switch (pCmdUI->m_nID)
 	{
 	case ID_OPTIONS_FILTER_INTERFRAMEBLENDING_NONE:
-		pCmdUI->SetCheck(theApp.ifbType == 0);
+		setRadioCheck(pCmdUI, theApp.ifbType == 0);
 		break;
 	case ID_OPTIONS_FILTER_INTERFRAMEBLENDING_MOTIONBLUR:
-		pCmdUI->SetCheck(theApp.ifbType == 1);
+		setRadioCheck(pCmdUI, theApp.ifbType == 1);
 		break;
 	case ID_OPTIONS_FILTER_INTERFRAMEBLENDING_SMART:
-		pCmdUI->SetCheck(theApp.ifbType == 2);
+		setRadioCheck(pCmdUI, theApp.ifbType == 2);
 		break;
 	}
 }
@@ -2198,34 +2198,34 @@ void MainWnd::OnUpdateOptionsVideoLcdFilter(CCmdUI *pCmdUI)
 	switch (pCmdUI->m_nID)
 	{
 	case ID_OPTIONS_VIDEO_LCDFILTER_GBA_NONE:
-		pCmdUI->SetCheck(theApp.lcdFilterGba == LCD_FILTER_OFF);
+		setRadioCheck(pCmdUI, theApp.lcdFilterGba == LCD_FILTER_OFF);
 		break;
 	case ID_OPTIONS_VIDEO_LCDFILTER_GBA_GBA:
-		pCmdUI->SetCheck(theApp.lcdFilterGba == kLcdGbaGba);
+		setRadioCheck(pCmdUI, theApp.lcdFilterGba == kLcdGbaGba);
 		break;
 	case ID_OPTIONS_VIDEO_LCDFILTER_GBA_SP:
-		pCmdUI->SetCheck(theApp.lcdFilterGba == kLcdGbaGbaSpBacklit);
+		setRadioCheck(pCmdUI, theApp.lcdFilterGba == kLcdGbaGbaSpBacklit);
 		break;
 	case ID_OPTIONS_VIDEO_LCDFILTER_GBA_MICRO:
-		pCmdUI->SetCheck(theApp.lcdFilterGba == kLcdGbaMicro);
+		setRadioCheck(pCmdUI, theApp.lcdFilterGba == kLcdGbaMicro);
 		break;
 	case ID_OPTIONS_VIDEO_LCDFILTER_GBA_NDS:
-		pCmdUI->SetCheck(theApp.lcdFilterGba == kLcdGbaDs);
+		setRadioCheck(pCmdUI, theApp.lcdFilterGba == kLcdGbaDs);
 		break;
 	case ID_OPTIONS_VIDEO_LCDFILTER_GBA_DSLITE:
-		pCmdUI->SetCheck(theApp.lcdFilterGba == kLcdGbaDsLite);
+		setRadioCheck(pCmdUI, theApp.lcdFilterGba == kLcdGbaDsLite);
 		break;
 	case ID_OPTIONS_VIDEO_LCDFILTER_GBA_NSO:
-		pCmdUI->SetCheck(theApp.lcdFilterGba == kLcdGbaNso);
+		setRadioCheck(pCmdUI, theApp.lcdFilterGba == kLcdGbaNso);
 		break;
 	case ID_OPTIONS_VIDEO_LCDFILTER_GBC_NONE:
-		pCmdUI->SetCheck(theApp.lcdFilterGbc == LCD_FILTER_OFF);
+		setRadioCheck(pCmdUI, theApp.lcdFilterGbc == LCD_FILTER_OFF);
 		break;
 	case ID_OPTIONS_VIDEO_LCDFILTER_GBC_CGB:
-		pCmdUI->SetCheck(theApp.lcdFilterGbc == kLcdGbcCgb);
+		setRadioCheck(pCmdUI, theApp.lcdFilterGbc == kLcdGbcCgb);
 		break;
 	case ID_OPTIONS_VIDEO_LCDFILTER_GBC_NSO:
-		pCmdUI->SetCheck(theApp.lcdFilterGbc == kLcdGbcNso);
+		setRadioCheck(pCmdUI, theApp.lcdFilterGbc == kLcdGbcNso);
 		break;
 	}
 }
@@ -2282,7 +2282,7 @@ void MainWnd::OnUpdateOptionsVideoUpscaler(CCmdUI *pCmdUI)
 	{
 		int scale = g_upscalerMaxScales[(int)(pCmdUI->m_nID - ID_OPTIONS_VIDEO_UPSCALER_MAXSCALE_UNLIMITED)];
 
-		pCmdUI->SetCheck(theApp.upscalerMaxScale == scale);
+		setRadioCheck(pCmdUI, theApp.upscalerMaxScale == scale);
 		pCmdUI->Enable(theApp.upscaler != UPSCALER_OFF && theApp.display != NULL &&
 		               theApp.display->upscalerAvailable(theApp.upscaler));
 		return;
@@ -2292,7 +2292,7 @@ void MainWnd::OnUpdateOptionsVideoUpscaler(CCmdUI *pCmdUI)
 	{
 		int upscaler = UPSCALER_OFF + (int)(pCmdUI->m_nID - ID_OPTIONS_VIDEO_UPSCALER_OFF);
 
-		pCmdUI->SetCheck(theApp.upscaler == upscaler);
+		setRadioCheck(pCmdUI, theApp.upscaler == upscaler);
 
 		// The shaders that are built when the renderer starts are left out
 		// where they did not compile, and the ones a backend does not have at
@@ -2305,7 +2305,7 @@ void MainWnd::OnUpdateOptionsVideoUpscaler(CCmdUI *pCmdUI)
 	int sharpness = 25 * (int)(pCmdUI->m_nID - ID_OPTIONS_VIDEO_UPSCALER_SHARP_0);
 	bool sharpens = theApp.upscaler == UPSCALER_NIS || theApp.upscaler == UPSCALER_FSR;
 
-	pCmdUI->SetCheck(theApp.upscalerSharpness == sharpness);
+	setRadioCheck(pCmdUI, theApp.upscalerSharpness == sharpness);
 	pCmdUI->Enable(sharpens && theApp.display != NULL &&
 	               theApp.display->upscalerAvailable(theApp.upscaler));
 }
@@ -2317,7 +2317,7 @@ void MainWnd::OnOptionsLanguageSystem()
 
 void MainWnd::OnUpdateOptionsLanguageSystem(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.languageOption == 0);
+	setRadioCheck(pCmdUI, theApp.languageOption == 0);
 }
 
 void MainWnd::OnOptionsLanguageEnglish()
@@ -2327,7 +2327,7 @@ void MainWnd::OnOptionsLanguageEnglish()
 
 void MainWnd::OnUpdateOptionsLanguageEnglish(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.languageOption == 1);
+	setRadioCheck(pCmdUI, theApp.languageOption == 1);
 }
 
 void MainWnd::OnOptionsLanguageOther()
@@ -2337,7 +2337,7 @@ void MainWnd::OnOptionsLanguageOther()
 
 void MainWnd::OnUpdateOptionsLanguageOther(CCmdUI*pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.languageOption == 2);
+	setRadioCheck(pCmdUI, theApp.languageOption == 2);
 }
 
 void MainWnd::OnOptionsJoypadConfigure1()
@@ -2392,7 +2392,7 @@ BOOL MainWnd::OnOptionsJoypadDefault(UINT nID)
 
 void MainWnd::OnUpdateOptionsJoypadDefault(CCmdUI *pCmdUI)
 {
-	pCmdUI->SetCheck(theApp.joypadDefault == (int)(pCmdUI->m_nID - ID_OPTIONS_JOYPAD_DEFAULTJOYPAD_1));
+	setRadioCheck(pCmdUI, theApp.joypadDefault == (int)(pCmdUI->m_nID - ID_OPTIONS_JOYPAD_DEFAULTJOYPAD_1));
 }
 
 void MainWnd::OnOptionsJoypadMotionconfigure()
