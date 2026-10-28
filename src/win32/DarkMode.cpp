@@ -16,14 +16,18 @@
 #	define _WIN32_WINNT 0x0501
 #	define WINVER       0x0501
 #else
-#	define _WIN32_WINNT 0x0600
-#	define WINVER       0x0600
+// This translation unit includes windows.h directly instead of stdafx.h, so
+// it sets the target level itself.  Declarations only: the DWM entry point
+// is still resolved with GetProcAddress.
+#	define _WIN32_WINNT 0x0A00
+#	define WINVER       0x0A00
 #endif
 
 #define WIN32_LEAN_AND_MEAN
 
 #include <windows.h>
 #include <commctrl.h>
+#include <dwmapi.h>
 
 #include "DarkMode.h"
 
@@ -50,14 +54,15 @@ namespace
 	HHOOK g_hook    = NULL;
 	bool  g_enabled = false;
 
-	// uxtheme exports these by ordinal only; dwmapi is not present before
-	// Windows Vista, so neither is linked statically.
+	// uxtheme exports these by ordinal only and the SDK does not declare them,
+	// so their types stay hand written.  Everything with a prototype uses
+	// decltype.  Nothing here is linked statically: dwmapi is not present
+	// before Windows Vista, and uxtheme's ordinals may be missing too.
 	typedef int     (WINAPI *FnSetPreferredAppMode)(int);
 	typedef void    (WINAPI *FnFlushMenuThemes)();
 	typedef void    (WINAPI *FnRefreshImmersiveColorPolicyState)();
-	typedef HRESULT (WINAPI *FnDwmSetWindowAttribute)(HWND, DWORD, LPCVOID, DWORD);
 
-	FnDwmSetWindowAttribute      g_setDwmAttribute    = NULL;
+	decltype(&DwmSetWindowAttribute) g_setDwmAttribute    = NULL;
 
 	// PreferredAppMode, as used by the ordinal 135 entry point.
 	enum
@@ -135,11 +140,8 @@ namespace
 	// only way in is to answer the messages uxtheme itself uses for it.
 	HFONT g_menuFont = NULL;
 
-	typedef UINT (WINAPI *FnGetDpiForWindow)(HWND);
-	typedef BOOL (WINAPI *FnSystemParametersInfoForDpi)(UINT, UINT, PVOID, UINT, UINT);
-
-	FnGetDpiForWindow          g_getDpiForWindow = NULL;
-	FnSystemParametersInfoForDpi g_spiForDpi     = NULL;
+	decltype(&GetDpiForWindow)            g_getDpiForWindow = NULL;
+	decltype(&SystemParametersInfoForDpi) g_spiForDpi       = NULL;
 
 	HFONT menuFont(HWND hwnd)
 	{
@@ -403,7 +405,7 @@ namespace darkMode
 		// emulator creates needs that.
 		HMODULE dwmapi = LoadLibraryW(L"dwmapi.dll");
 		if (dwmapi != NULL)
-			g_setDwmAttribute = reinterpret_cast<FnDwmSetWindowAttribute>(
+			g_setDwmAttribute = reinterpret_cast<decltype(&DwmSetWindowAttribute)>(
 				GetProcAddress(dwmapi, "DwmSetWindowAttribute"));
 
 		if (!systemUsesDarkMode())

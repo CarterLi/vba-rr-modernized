@@ -9,16 +9,16 @@
 // back to the legacy dialogs whenever the shell ones cannot be created (a
 // thread that already lives in a multithreaded apartment, for instance).
 //
-// shobjidl.h only declares IFileOpenDialog from _WIN32_WINNT 0x0600 on, so
-// this translation unit raises the version for itself; stdafx.h still says
-// 0x0501 for everything else.
+// shobjidl.h only declares IFileOpenDialog from _WIN32_WINNT 0x0600 on.  This
+// translation unit includes windows.h directly instead of stdafx.h, so it
+// sets the target level itself; the project targets Windows 10 throughout.
 
 #if defined(WINXP)
 #	define _WIN32_WINNT 0x0501
 #	define WINVER       0x0501
 #else
-#	define _WIN32_WINNT 0x0600
-#	define WINVER       0x0600
+#	define _WIN32_WINNT 0x0A00
+#	define WINVER       0x0A00
 #endif
 
 #define WIN32_LEAN_AND_MEAN

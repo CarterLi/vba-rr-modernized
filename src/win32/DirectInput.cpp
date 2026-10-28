@@ -1342,12 +1342,12 @@ bool DirectInput::initialize()
 	// 2000 uses, and it is the one that gets the bug fixes.
 	dinputDLL = /**/ ::LoadLibrary(_T("dinput8.dll"));
 
-	HRESULT (WINAPI *DInputCreate)(HINSTANCE, DWORD, REFIID, LPVOID *, LPUNKNOWN);
+	decltype(&DirectInput8Create) DInputCreate;
 
 	if (dinputDLL != NULL)
 	{
-		DInputCreate = (HRESULT (WINAPI *)(HINSTANCE, DWORD, REFIID, LPVOID *, LPUNKNOWN))
-		               GetProcAddress(dinputDLL, "DirectInput8Create");
+		DInputCreate = reinterpret_cast<decltype(&DirectInput8Create)>(
+			GetProcAddress(dinputDLL, "DirectInput8Create"));
 
 		if (DInputCreate == NULL)
 		{

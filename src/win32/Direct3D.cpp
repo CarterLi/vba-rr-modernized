@@ -40,9 +40,6 @@ typedef struct _D3DTLVERTEX
 
 #define D3DFVF_TLVERTEX D3DFVF_XYZRHW|D3DFVF_DIFFUSE|D3DFVF_TEX1
 
-typedef HRESULT (WINAPI *PFN_Direct3DCreate9Ex)(UINT SDKVersion, IDirect3D9Ex * *ppD3D);
-typedef IDirect3D9 *(WINAPI *PFN_Direct3DCreate9)(UINT SDKVersion);
-
 // The swap effect the running display presents with, -1 while there is none.
 static int currentSwapEffect = -1;
 
@@ -239,8 +236,8 @@ bool Direct3DDisplay::initialize()
 	}
 
 	// Prefer Direct3D 9Ex (Vista and later); fall back to plain 9.0c.
-	PFN_Direct3DCreate9Ex create9Ex =
-	    (PFN_Direct3DCreate9Ex)GetProcAddress(d3dDLL, "Direct3DCreate9Ex");
+	decltype(&Direct3DCreate9Ex) create9Ex = reinterpret_cast<decltype(&Direct3DCreate9Ex)>(
+	    GetProcAddress(d3dDLL, "Direct3DCreate9Ex"));
 	if (create9Ex != NULL)
 		create9Ex(D3D_SDK_VERSION, &pD3DEx);
 
@@ -251,8 +248,8 @@ bool Direct3DDisplay::initialize()
 	}
 	else
 	{
-		PFN_Direct3DCreate9 create9 =
-		    (PFN_Direct3DCreate9)GetProcAddress(d3dDLL, "Direct3DCreate9");
+		decltype(&Direct3DCreate9) create9 = reinterpret_cast<decltype(&Direct3DCreate9)>(
+		    GetProcAddress(d3dDLL, "Direct3DCreate9"));
 		if (create9 == NULL)
 		{
 			winlog(_T("Error creating Direct3D object\n"));

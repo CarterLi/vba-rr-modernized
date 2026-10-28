@@ -24,13 +24,11 @@
 // uiFont::scaleDialog() after they have told their own sizer about the new
 // client size (otherwise the anchored controls would be moved twice).
 
-#if defined(WINXP)
-#	define _WIN32_WINNT 0x0501
-#	define WINVER       0x0501
-#else
-#	define _WIN32_WINNT 0x0600
-#	define WINVER       0x0600
-#endif
+// This translation unit includes windows.h directly instead of stdafx.h, so
+// it sets the target level itself.  Declarations only: every entry point
+// below is still resolved with GetProcAddress.
+#define _WIN32_WINNT 0x0A00
+#define WINVER       0x0A00
 
 #define WIN32_LEAN_AND_MEAN
 
@@ -48,15 +46,10 @@
 
 namespace
 {
-	typedef UINT (WINAPI *FnGetDpiForWindow)(HWND);
-	typedef UINT (WINAPI *FnGetDpiForSystem)(void);
-	typedef BOOL (WINAPI *FnSystemParametersInfoForDpi)(UINT, UINT, PVOID, UINT, UINT);
-	typedef BOOL (WINAPI *FnAdjustWindowRectExForDpi)(LPRECT, DWORD, BOOL, DWORD, UINT);
-
-	FnGetDpiForWindow          g_getDpiForWindow = NULL;
-	FnGetDpiForSystem          g_getDpiForSystem = NULL;
-	FnSystemParametersInfoForDpi g_spiForDpi     = NULL;
-	FnAdjustWindowRectExForDpi g_adjustForDpi    = NULL;
+	decltype(&GetDpiForWindow)            g_getDpiForWindow = NULL;
+	decltype(&GetDpiForSystem)            g_getDpiForSystem = NULL;
+	decltype(&SystemParametersInfoForDpi) g_spiForDpi       = NULL;
+	decltype(&AdjustWindowRectExForDpi)   g_adjustForDpi    = NULL;
 
 	const int kMaxDpiSets = 8;
 
@@ -442,13 +435,13 @@ namespace uiFont
 			return;
 
 		HMODULE user32 = GetModuleHandleW(L"user32.dll");
-		g_getDpiForWindow = reinterpret_cast<FnGetDpiForWindow>(
+		g_getDpiForWindow = reinterpret_cast<decltype(&GetDpiForWindow)>(
 			GetProcAddress(user32, "GetDpiForWindow"));
-		g_getDpiForSystem = reinterpret_cast<FnGetDpiForSystem>(
+		g_getDpiForSystem = reinterpret_cast<decltype(&GetDpiForSystem)>(
 			GetProcAddress(user32, "GetDpiForSystem"));
-		g_spiForDpi = reinterpret_cast<FnSystemParametersInfoForDpi>(
+		g_spiForDpi = reinterpret_cast<decltype(&SystemParametersInfoForDpi)>(
 			GetProcAddress(user32, "SystemParametersInfoForDpi"));
-		g_adjustForDpi = reinterpret_cast<FnAdjustWindowRectExForDpi>(
+		g_adjustForDpi = reinterpret_cast<decltype(&AdjustWindowRectExForDpi)>(
 			GetProcAddress(user32, "AdjustWindowRectExForDpi"));
 
 		setFor(systemDpi());

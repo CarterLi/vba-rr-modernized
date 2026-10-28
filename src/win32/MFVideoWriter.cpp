@@ -18,13 +18,8 @@
 // caller only converts into a free slot and signals a worker thread, and that
 // thread is the one that waits.
 
-// Declarations only: _WIN32_WINNT decides which SDK prototypes this file
-// can see, not what the exe links against.  Every entry point used here is
-// looked up with GetProcAddress, and none of them is newer than Windows 7,
-// so the Windows 10 target costs nothing at run time -- it just unhides
-// MFAudioFormat_FLAC / _ALAC / _Opus, which the SDK gates on WINVER.
-#define _WIN32_WINNT 0x0A00
-#define WINVER 0x0A00
+// Declarations only: _WIN32_WINNT, set in stdafx.h, decides which SDK
+// prototypes this file can see, not what the exe links against.
 
 #include "stdafx.h"
 

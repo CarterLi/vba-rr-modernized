@@ -48,17 +48,10 @@ extern void directXMessage(const char *);
 // direct3D11Available() lets the render method menu leave the renderer out when
 // either of them is missing.  The DLLs stay loaded for the lifetime of the
 // process so the entry points stay valid across display recreation.
-typedef HRESULT (WINAPI *PFN_D3D11CreateDevice)(
-    IDXGIAdapter *, D3D_DRIVER_TYPE, HMODULE, UINT, CONST D3D_FEATURE_LEVEL *, UINT,
-    UINT, ID3D11Device **, D3D_FEATURE_LEVEL *, ID3D11DeviceContext **);
-typedef HRESULT (WINAPI *PFN_D3DCompile)(
-    LPCVOID, SIZE_T, LPCSTR, CONST D3D_SHADER_MACRO *, ID3DInclude *,
-    LPCSTR, LPCSTR, UINT, UINT, ID3DBlob **, ID3DBlob **);
-
 static HINSTANCE d3d11DLL       = NULL;
 static HINSTANCE d3dcompilerDLL = NULL;
-static PFN_D3D11CreateDevice d3d11CreateDevice = NULL;
-static PFN_D3DCompile d3dCompile = NULL;
+static decltype(&D3D11CreateDevice) d3d11CreateDevice = NULL;
+static decltype(&D3DCompile)        d3dCompile        = NULL;
 static bool      d3d11Probed    = false;
 
 // Resolves the DLLs once.  Silent, because the render method menu uses the
@@ -72,12 +65,13 @@ static void loadD3D11Libraries()
 
 	d3d11DLL = LoadLibrary(_T("D3D11.DLL"));
 	if (d3d11DLL != NULL)
-		d3d11CreateDevice = (PFN_D3D11CreateDevice)
-		    GetProcAddress(d3d11DLL, "D3D11CreateDevice");
+		d3d11CreateDevice = reinterpret_cast<decltype(&D3D11CreateDevice)>(
+		    GetProcAddress(d3d11DLL, "D3D11CreateDevice"));
 
 	d3dcompilerDLL = LoadLibrary(_T("D3DCOMPILER_47.DLL"));
 	if (d3dcompilerDLL != NULL)
-		d3dCompile = (PFN_D3DCompile)GetProcAddress(d3dcompilerDLL, "D3DCompile");
+		d3dCompile = reinterpret_cast<decltype(&D3DCompile)>(
+		    GetProcAddress(d3dcompilerDLL, "D3DCompile"));
 
 	if (d3d11CreateDevice == NULL)
 		winlog(_T("D3D11: D3D11.DLL is not available\n"));

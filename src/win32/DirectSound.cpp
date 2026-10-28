@@ -128,11 +128,11 @@ bool DirectSound::init()
 	HRESULT hr;
 
 	dsoundDLL = LoadLibrary(_T("DSOUND.DLL"));
-	HRESULT (WINAPI *DSoundCreate)(LPCGUID, LPDIRECTSOUND *, IUnknown *);
+	decltype(&DirectSoundCreate) DSoundCreate;
 	if (dsoundDLL != NULL)
 	{
-		DSoundCreate = (HRESULT (WINAPI *)(LPCGUID, LPDIRECTSOUND *, IUnknown *))
-		               GetProcAddress(dsoundDLL, "DirectSoundCreate");
+		DSoundCreate = reinterpret_cast<decltype(&DirectSoundCreate)>(
+			GetProcAddress(dsoundDLL, "DirectSoundCreate"));
 
 		if (DSoundCreate == NULL)
 		{

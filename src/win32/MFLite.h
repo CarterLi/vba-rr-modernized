@@ -3,15 +3,14 @@
 
 #pragma once
 
-// The Media Foundation entry points the recorder uses, loaded at run time so
-// the emulator still starts where mfplat.dll is not there.  That is the same
-// rule D3D11, DirectDraw, DirectSound, XAudio2 and wgpu follow; see
-// README.md, "Nothing is imported statically".
+// The entry points the recorder uses, loaded at run time so the emulator
+// still starts where mfplat.dll is not there.  That is the same rule D3D11,
+// DirectDraw, DirectSound, XAudio2 and wgpu follow; see README.md, "Nothing
+// is imported statically".
 //
-// Only the translation units that raise _WIN32_WINNT to 0x0602 may include
-// this header.  The SDK hides MFTEnumEx below Windows 7 and
-// MFT_ENUM_HARDWARE_VENDOR_ID_Attribute below Windows 8, while the rest of
-// the emulator still targets the XP API level (_WIN32_WINNT 0x0501).
+// The project targets Windows 10 (see stdafx.h), so the SDK declares
+// everything used here: MFTEnumEx appears from Windows 7 on and
+// MFT_ENUM_HARDWARE_VENDOR_ID_Attribute from Windows 8 on.
 
 #include <windows.h>
 
@@ -34,15 +33,16 @@ namespace mf
 	bool startup();
 	void shutdown();
 
-	// NULL until startup() succeeded.
-	extern HRESULT(WINAPI *enumTransforms)(REFGUID, UINT32, const MFT_REGISTER_TYPE_INFO *,
-	                                       const MFT_REGISTER_TYPE_INFO *, IMFActivate ***, UINT32 *);
-	extern HRESULT(WINAPI *createAttributes)(IMFAttributes **, UINT32);
-	extern HRESULT(WINAPI *createMediaType)(IMFMediaType **);
-	extern HRESULT(WINAPI *createMemoryBuffer)(DWORD, IMFMediaBuffer **);
-	extern HRESULT(WINAPI *createSample)(IMFSample **);
-	extern HRESULT(WINAPI *createSinkWriterFromURL)(LPCWSTR, IMFByteStream *, IMFAttributes *,
-	                                                IMFSinkWriter **);
+	// NULL until startup() succeeded.  The pointer types are the SDK
+	// prototypes themselves, so they cannot drift: MFTEnumEx takes its
+	// category GUID by value, and a hand written REFGUID here shifted every
+	// later argument by one register.
+	extern decltype(&MFTEnumEx) enumTransforms;
+	extern decltype(&MFCreateAttributes) createAttributes;
+	extern decltype(&MFCreateMediaType) createMediaType;
+	extern decltype(&MFCreateMemoryBuffer) createMemoryBuffer;
+	extern decltype(&MFCreateSample) createSample;
+	extern decltype(&MFCreateSinkWriterFromURL) createSinkWriterFromURL;
 
 	// A COM apartment for the calling thread, released on destruction.  The
 	// emulator does not otherwise hold one; ImageWrite.cpp does the same

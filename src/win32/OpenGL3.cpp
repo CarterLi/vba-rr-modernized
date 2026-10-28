@@ -109,6 +109,9 @@ typedef char      GLchar;
 #define GL_SHADER_IMAGE_ACCESS_BARRIER_BIT 0x00000020
 #endif
 
+// OpenGL 2.0 and later entry points.  The SDK's gl.h stops at 1.1 and there is
+// no glext.h of our own, so these have no prototype to take decltype of: the
+// types are written out by hand and the pointers filled from wglGetProcAddress.
 typedef void   (APIENTRY *PFNGLACTIVETEXTUREPROC)(GLenum texture);
 typedef void   (APIENTRY *PFNGLGENBUFFERSPROC)(GLsizei n, GLuint *buffers);
 typedef void   (APIENTRY *PFNGLBINDBUFFERPROC)(GLenum target, GLuint buffer);

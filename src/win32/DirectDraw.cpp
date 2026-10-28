@@ -142,11 +142,11 @@ bool DirectDrawDisplay::initialize()
 		guid = theApp.pVideoDriverGUID;
 
 	ddrawDLL = /**/ ::LoadLibrary(_T("DDRAW.DLL"));
-	HRESULT (WINAPI *DDrawCreateEx)(GUID *, LPVOID *, REFIID, IUnknown *);
+	decltype(&DirectDrawCreateEx) DDrawCreateEx;
 	if (ddrawDLL != NULL)
 	{
-		DDrawCreateEx = (HRESULT (WINAPI *)(GUID *, LPVOID *, REFIID, IUnknown *))
-		                GetProcAddress(ddrawDLL, "DirectDrawCreateEx");
+		DDrawCreateEx = reinterpret_cast<decltype(&DirectDrawCreateEx)>(
+			GetProcAddress(ddrawDLL, "DirectDrawCreateEx"));
 
 		if (DDrawCreateEx == NULL)
 		{

@@ -16,16 +16,10 @@
 
 #include "stdafx.h"
 
-// The SDK xaudio2.h refuses to compile below Windows 8 while this project
-// still declares an XP compatible target.  Raise the version for this header
-// only (it merely picks a DLL name and a GUID we do not use) and restore it
-// afterwards.  The DLL itself is only loaded on the systems that have it.
-#define VBA_XAUDIO2_SAVED_WIN32_WINNT _WIN32_WINNT
-#undef _WIN32_WINNT
-#define _WIN32_WINNT 0x0A00
+// xaudio2.h needs a Windows 8 or newer target; stdafx.h sets Windows 10 for
+// the whole project.  The DLL itself is still opened by hand below, so the
+// import table has nothing from it.
 #include <xaudio2.h>
-#undef _WIN32_WINNT
-#define _WIN32_WINNT VBA_XAUDIO2_SAVED_WIN32_WINNT
 
 #include "resource.h"
 #include "AVIWrite.h"
@@ -44,8 +38,6 @@
 // the DirectSound backend's ring stands at about 150 ms.  Raise this if a slow
 // machine starts reporting dropouts in the sound API menu.
 #define XAUDIO2_SOUND_BUFFERS 4
-
-typedef HRESULT (WINAPI *XAudio2CreateFn)(IXAudio2 **, UINT32, XAUDIO2_PROCESSOR);
 
 extern void directXMessage(const char *);
 
@@ -240,7 +232,8 @@ bool XAudio2Sound::init()
 		return false;
 	}
 
-	XAudio2CreateFn xaudio2Create = (XAudio2CreateFn)GetProcAddress(hXAudio2, "XAudio2Create");
+	decltype(&XAudio2Create) xaudio2Create = reinterpret_cast<decltype(&XAudio2Create)>(
+		GetProcAddress(hXAudio2, "XAudio2Create"));
 	if (xaudio2Create == NULL)
 	{
 		directXMessage("XAudio2Create");

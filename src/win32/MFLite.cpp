@@ -2,13 +2,14 @@
 //
 // Nothing here is imported: mfplat.dll and mfreadwrite.dll are opened with
 // LoadLibrary, and the emulator keeps starting on a system that has neither.
-// The header explains why _WIN32_WINNT has to be raised for this file only.
-
-// Declarations only: _WIN32_WINNT decides which SDK prototypes this file
-// can see, not what the exe links against.  Every entry point used here is
-// looked up with GetProcAddress, and none of them is newer than Windows 7,
-// so the Windows 10 target costs nothing at run time -- it just unhides
-// MFAudioFormat_FLAC / _ALAC / _Opus, which the SDK gates on WINVER.
+//
+// Every pointer below is the SDK prototype through decltype, so the call
+// sites and the resolved address cannot disagree about the argument list.
+//
+// This translation unit does not include stdafx.h, so it sets the target
+// level itself: declarations only, which is what lets MFAudioFormat_FLAC /
+// _ALAC / _Opus and the Windows 8 attributes be named.  Nothing here adds an
+// entry to the import table.
 #define _WIN32_WINNT 0x0A00
 #define WINVER 0x0A00
 
@@ -16,14 +17,12 @@
 
 namespace mf
 {
-	HRESULT(WINAPI *enumTransforms)(REFGUID, UINT32, const MFT_REGISTER_TYPE_INFO *,
-	                                const MFT_REGISTER_TYPE_INFO *, IMFActivate ***, UINT32 *) = NULL;
-	HRESULT(WINAPI *createAttributes)(IMFAttributes **, UINT32)				   = NULL;
-	HRESULT(WINAPI *createMediaType)(IMFMediaType **)						   = NULL;
-	HRESULT(WINAPI *createMemoryBuffer)(DWORD, IMFMediaBuffer **)			   = NULL;
-	HRESULT(WINAPI *createSample)(IMFSample **)								   = NULL;
-	HRESULT(WINAPI *createSinkWriterFromURL)(LPCWSTR, IMFByteStream *, IMFAttributes *,
-	                                         IMFSinkWriter **)				   = NULL;
+	decltype(&MFTEnumEx) enumTransforms							  = NULL;
+	decltype(&MFCreateAttributes) createAttributes				  = NULL;
+	decltype(&MFCreateMediaType) createMediaType				  = NULL;
+	decltype(&MFCreateMemoryBuffer) createMemoryBuffer			  = NULL;
+	decltype(&MFCreateSample) createSample						  = NULL;
+	decltype(&MFCreateSinkWriterFromURL) createSinkWriterFromURL = NULL;
 
 	namespace
 	{
@@ -32,8 +31,8 @@ namespace mf
 		int		s_refs		= 0;
 		bool	s_started	= false;
 
-		HRESULT(WINAPI *s_startupPlatform)(ULONG, DWORD) = NULL;
-		HRESULT(WINAPI *s_shutdownPlatform)()			 = NULL;
+		decltype(&MFStartup) s_startupPlatform	= NULL;
+		decltype(&MFShutdown) s_shutdownPlatform = NULL;
 
 		// One GetProcAddress per entry point, all or nothing: a partially
 		// resolved table would only move the failure further down.
@@ -52,17 +51,15 @@ namespace mf
 			    !sample || !sinkWriter)
 				return false;
 
-			s_startupPlatform  = (HRESULT(WINAPI *)(ULONG, DWORD))startup;
-			s_shutdownPlatform = (HRESULT(WINAPI *)())shutdown;
-			enumTransforms	   = (HRESULT(WINAPI *)(REFGUID, UINT32, const MFT_REGISTER_TYPE_INFO *,
-			                                        const MFT_REGISTER_TYPE_INFO *, IMFActivate ***,
-			                                        UINT32 *))enumerate;
-			createAttributes   = (HRESULT(WINAPI *)(IMFAttributes **, UINT32))attributes;
-			createMediaType	   = (HRESULT(WINAPI *)(IMFMediaType **))mediaType;
-			createMemoryBuffer = (HRESULT(WINAPI *)(DWORD, IMFMediaBuffer **))buffer;
-			createSample	   = (HRESULT(WINAPI *)(IMFSample **))sample;
+			s_startupPlatform  = reinterpret_cast<decltype(&MFStartup)>(startup);
+			s_shutdownPlatform = reinterpret_cast<decltype(&MFShutdown)>(shutdown);
+			enumTransforms	   = reinterpret_cast<decltype(&MFTEnumEx)>(enumerate);
+			createAttributes   = reinterpret_cast<decltype(&MFCreateAttributes)>(attributes);
+			createMediaType	   = reinterpret_cast<decltype(&MFCreateMediaType)>(mediaType);
+			createMemoryBuffer = reinterpret_cast<decltype(&MFCreateMemoryBuffer)>(buffer);
+			createSample	   = reinterpret_cast<decltype(&MFCreateSample)>(sample);
 			createSinkWriterFromURL =
-				(HRESULT(WINAPI *)(LPCWSTR, IMFByteStream *, IMFAttributes *, IMFSinkWriter **))sinkWriter;
+				reinterpret_cast<decltype(&MFCreateSinkWriterFromURL)>(sinkWriter);
 			return true;
 		}
 	}
