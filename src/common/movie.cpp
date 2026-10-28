@@ -2301,3 +2301,150 @@ int VBAMovieDeleteFrameAt(uint32 row)
 	return MOVIE_SUCCESS;
 }
 
+// Batch insert: the same contract as VBAMovieInsertFrameAt(), but with one
+// buffer move, one header write and one frame write for the whole block.  The
+// editor uses it for paste; calling InsertFrameAt() in a loop would rewrite
+// the entire timeline once per pasted row.
+//
+// values must not point into Movie.inputBuffer: reserve_movie_buffer_space()
+// may move the buffer and the memmove below shifts everything at or above row.
+// The caller owns a copy (the editor parses the clipboard into a vector).
+int VBAMovieInsertFramesAt(uint32 row, const uint16 *values, uint32 count, int controller)
+{
+	if (!movie_timeline_editable())
+		return MOVIE_NOTHING;
+	if (Movie.state == MOVIE_STATE_RECORD || Movie.state == MOVIE_STATE_END)
+		return MOVIE_NOTHING;
+	if (Movie.header.minorVersion > VBM_REVISION)
+		return MOVIE_WRONG_VERSION;
+	if (count == 0)
+		return MOVIE_SUCCESS;	// an empty selection is not an error
+	if (controller < 0 || controller >= MOVIE_NUM_OF_POSSIBLE_CONTROLLERS
+	    || !(Movie.header.controllerFlags & MOVIE_CONTROLLER(controller)))
+		return MOVIE_WRONG_FORMAT;
+	if (!values)
+		return MOVIE_WRONG_FORMAT;
+	if (row > Movie.header.length_frames)
+		return MOVIE_WRONG_FORMAT;
+	// length_frames >= MOVIE_MAX_FRAMES first, so the subtraction cannot wrap
+	if (Movie.header.length_frames >= MOVIE_MAX_FRAMES
+	    || count > MOVIE_MAX_FRAMES - Movie.header.length_frames)
+		return MOVIE_FATAL_ERROR;
+
+	// same normalisation VBAMovieInsertFrameAt() performs, so a 1.0 movie is
+	// converted to 1.1 before we write to it.  It may rewrite frame 0 and the
+	// old reset bits, but it never changes length_frames, so the bounds above
+	// stay valid.
+	VBAMovieConvertCurrent(false);
+
+	const uint32 oldLength = Movie.header.length_frames;
+	const uint32 newLength = oldLength + count;
+
+	reserve_movie_buffer_space(newLength * Movie.bytesPerFrame);
+
+	uint8 *at = Movie.inputBuffer + (size_t)Movie.bytesPerFrame * row;
+	memmove(at + (size_t)Movie.bytesPerFrame * count, at,
+	        (size_t)Movie.bytesPerFrame * (oldLength - row));
+	memset(at, 0, (size_t)Movie.bytesPerFrame * count);
+
+	for (uint32 i = 0; i < count; ++i)
+	{
+		uint8 *frame = at + (size_t)Movie.bytesPerFrame * i;
+		Write16(uint16(values[i] & BUTTON_REGULAR_MASK),
+		        frame + CONTROLLER_DATA_SIZE * controller);
+	}
+
+	Movie.header.length_frames = newLength;
+	Movie.inputBufferPtr = Movie.inputBuffer + (size_t)Movie.bytesPerFrame * min(Movie.currentFrame, Movie.header.length_frames);
+
+	flush_movie_header();
+	flush_movie_frames();
+
+	preserve_movie_next_input();
+
+	++Movie.inputGeneration;
+	return MOVIE_SUCCESS;
+}
+
+// Batch delete: rows must be ascending and unique, and must leave at least one
+// row behind.  It compacts the timeline in one pass and truncates the file
+// once; a loop of DeleteFrameAt() calls would move the tail and rewrite the
+// file for every deleted row.
+int VBAMovieDeleteFramesAt(const uint32 *rows, uint32 count)
+{
+	if (!movie_timeline_editable())
+		return MOVIE_NOTHING;
+	if (Movie.state == MOVIE_STATE_RECORD || Movie.state == MOVIE_STATE_END)
+		return MOVIE_NOTHING;
+	if (Movie.header.minorVersion > VBM_REVISION)
+		return MOVIE_WRONG_VERSION;
+	if (count == 0)
+		return MOVIE_SUCCESS;
+	if (!rows)
+		return MOVIE_WRONG_FORMAT;
+
+	const uint32 oldLength = Movie.header.length_frames;
+	// count == oldLength would delete every row.  A zero-frame movie opens as
+	// MOVIE_STATE_END, and END refuses insert, so the editor could never put a
+	// frame back - and it has no undo.  Deleting down to one row stays legal.
+	if (count >= oldLength)
+		return MOVIE_WRONG_FORMAT;
+
+	for (uint32 i = 0; i < count; ++i)
+	{
+		if (rows[i] >= oldLength)
+			return MOVIE_WRONG_FORMAT;
+		if (i > 0 && rows[i] <= rows[i - 1])
+			return MOVIE_WRONG_FORMAT;	// unsorted or duplicated
+	}
+
+	VBAMovieConvertCurrent(false);
+
+	const uint32 newLength = oldLength - count;
+	const uint32 bytesPerFrame = Movie.bytesPerFrame;
+
+	// Move the kept runs to the front.  Every destination is at or before its
+	// source, so one memmove per run is safe even when the ranges overlap.
+	uint32 dstRow = 0;
+	uint32 srcRow = 0;
+	for (uint32 i = 0; i < count; ++i)
+	{
+		const uint32 keep = rows[i] - srcRow;
+		if (keep > 0)
+		{
+			memmove(Movie.inputBuffer + (size_t)bytesPerFrame * dstRow,
+			        Movie.inputBuffer + (size_t)bytesPerFrame * srcRow,
+			        (size_t)bytesPerFrame * keep);
+			dstRow += keep;
+		}
+		srcRow = rows[i] + 1;
+	}
+
+	const uint32 keep = oldLength - srcRow;
+	if (keep > 0)
+	{
+		memmove(Movie.inputBuffer + (size_t)bytesPerFrame * dstRow,
+		        Movie.inputBuffer + (size_t)bytesPerFrame * srcRow,
+		        (size_t)bytesPerFrame * keep);
+		dstRow += keep;
+	}
+
+	assert(dstRow == newLength);
+
+	// the old tail is no longer part of the timeline; zero it like the
+	// single-row delete does, then let truncate_movie() cut the file
+	memset(Movie.inputBuffer + (size_t)bytesPerFrame * newLength, 0,
+	       (size_t)bytesPerFrame * count);
+	Movie.header.length_frames = newLength;
+
+	Movie.inputBufferPtr = Movie.inputBuffer + (size_t)bytesPerFrame * min(Movie.currentFrame, Movie.header.length_frames);
+
+	flush_movie_frames();
+	truncate_movie(newLength);
+
+	preserve_movie_next_input();
+
+	++Movie.inputGeneration;
+	return MOVIE_SUCCESS;
+}
+

@@ -236,6 +236,15 @@ int	   VBAMovieSetInputAt(uint32 row, int controller, uint16 value);
 int	   VBAMovieInsertFrameAt(uint32 row);
 int	   VBAMovieDeleteFrameAt(uint32 row);
 
+// Batch variants of the two calls above.  rows must be ascending, unique and
+// must leave at least one frame in the movie (a zero-frame movie opens as
+// ENDED and can never be edited again).  Insert values are masked with
+// BUTTON_REGULAR_MASK before they are written; values must not point into
+// Movie.inputBuffer.  count == 0 is a successful no-op, so callers do not need
+// a special case for an empty selection.
+int	   VBAMovieInsertFramesAt(uint32 row, const uint16 *values, uint32 count, int controller = 0);
+int	   VBAMovieDeleteFramesAt(const uint32 *rows, uint32 count);
+
 // 0: editable, 1: read-only mode, 2: the file itself cannot be written to
 // (opened "rb" because "rb+" failed), which read-only mode cannot undo.
 int VBAMovieGetReadOnlyMode();
