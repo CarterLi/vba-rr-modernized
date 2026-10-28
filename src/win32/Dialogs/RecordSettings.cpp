@@ -499,6 +499,14 @@ void CRecordSettings::updatePresetBoxes()
 
 void CRecordSettings::updateSummary()
 {
+	// The spin controls write their buddy's text while the template is still
+	// being created (UDS_AUTOBUDDY | UDS_SETBUDDYINT), which sends EN_CHANGE
+	// long before OnInitDialog() has attached the controls and enumerated the
+	// encoders.  There is no selection to summarize at that point, and asking
+	// the list would assert on its null handle.
+	if (m_list.GetSafeHwnd() == NULL)
+		return;
+
 	bool	   hardware = false;
 	const GUID video	= currentVideo(&hardware);
 	const GUID audio	= currentAudio();
@@ -638,19 +646,11 @@ void CRecordSettings::OnAudioPreset()
 
 void CRecordSettings::OnVideoOptionChanged()
 {
-	if (GetDlgItem(IDC_ENC_SUMMARY) == NULL)
-		return;
-
 	updateSummary();
 }
 
 void CRecordSettings::OnBitrateChanged()
 {
-	// Fires while the dialog is still being built, before the summary field
-	// exists.
-	if (GetDlgItem(IDC_ENC_SUMMARY) == NULL)
-		return;
-
 	updateSummary();
 }
 
