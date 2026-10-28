@@ -135,7 +135,11 @@ private:
 
 	// What updateControls() applied last time, so the tick leaves the controls
 	// alone when nothing changed (calling EnableWindow twenty times a second on
-	// an owner-drawn button makes it flicker).
+	// an owner-drawn button makes it flicker).  m_uiChecks packs the read-only
+	// mark in bit 0, the follow mark in bit 1 and the read-only box's enabled
+	// state in bit 2: the mark has two sources (movie lock, this window's own
+	// lock) while only one of them greys the box out, so the enabled state is
+	// not derivable from the marks.
 	int m_uiChecks;
 	int m_uiEnable;
 	int m_selectionRow;	// row the frame box is showing, or -1

@@ -441,6 +441,10 @@ void VbmEditor::refresh()
 	}
 
 	const bool switched = (identity != m_identity);
+	// The movie's own lock is a menu toggle (Tools > Movie > Read-Only Mode),
+	// so it can change while this window sits open on the same movie.  The
+	// status line below has to follow that edge, not just a movie switch.
+	const bool modeChanged = switched || (mode != m_readOnlyMode);
 
 	m_active	   = true;	// before updateTitle(), which asks whether one is open
 	m_readOnlyMode = mode;
@@ -495,10 +499,12 @@ void VbmEditor::refresh()
 		followPlayhead(newHead);
 	}
 
-	if (switched && mode == 2)
+	if (modeChanged && mode == 2)
 		setStatusRes(IDS_VBMEDITOR_FILE_READONLY);
-	else if (switched && mode != 0)
+	else if (modeChanged && mode != 0)
 		setStatusRes(IDS_VBMEDITOR_READONLY_STATE);
+	else if (modeChanged)
+		setStatus(_T(""));	// unlocked: the old sentence would now be wrong
 
 	updateControls();
 }
@@ -689,7 +695,14 @@ void VbmEditor::updateControls()
 	// be a switch the user can flip.
 	const bool movieLocked = !m_active || m_readOnlyMode != 0;
 
-	const int checks = (movieLocked || m_editLock ? 1 : 0) | (m_follow ? 2 : 0);
+	// Two different reasons put the check mark there: the movie is locked, or
+	// the user locked this window.  Only the first one greys the box out, so
+	// both have to reach the cache - with just the check bit, cancelling the
+	// movie's read-only mode changed neither bit (m_editLock still held the
+	// mark) and EnableWindow() was never called again: the box stayed checked
+	// and disabled until the dialog was reopened.
+	const int checks = (movieLocked || m_editLock ? 1 : 0) | (m_follow ? 2 : 0)
+	                 | (movieLocked ? 4 : 0);
 	if (checks != m_uiChecks)
 	{
 		m_uiChecks = checks;
@@ -1437,5 +1450,8 @@ void VbmEditor::setStatus(const CString &text)
 
 void VbmEditor::setStatusRes(UINT id)
 {
-	SetDlgItemText(IDC_VBM_STATUS, winResLoadString(id));
+	// keep m_statusText in step, otherwise a later setStatus() with the same
+	// text would think the line is already there and leave the resource
+	// string on screen
+	setStatus(winResLoadString(id));
 }
