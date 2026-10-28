@@ -150,9 +150,18 @@ This is the part built for people who record:
 
 **Tools → Movie → VBM Editor…** shows the open `.vbm` as a frame grid — one row per frame,
 one column per pad button, an `HH:mm:ss.SS` stamp, an arrow on the row being played. Click a
-cell to press or release that button, right-click to insert, delete or mark a row; every
-change is written straight back into the `.vbm`. The buttons at the top are the File menu's
-pause and frame advance, and a box jumps to a typed frame number.
+cell to press or release that button, right-click to insert or delete rows, mark frames you
+want to come back to; every change is written straight back into the `.vbm`. The buttons at
+the top are the File menu's pause and frame advance, and a box jumps to a typed frame number.
+
+Drag the bottom edge to see more frames at once, and the right edge to give the key columns
+more room. Hold Ctrl or Shift to select a block of frames: delete, cut, copy and mark then
+act on the whole block. The mark command itself turns into "unmark" once every selected frame
+already has a mark, so `M` toggles a block either way. The clipboard is plain CSV —
+`frame,Left,Up,Right,Down,A,B,L,R,Start,Select`, one line per frame — so you can copy a
+stretch, fix it in Notepad, and paste it back; paste inserts after the selected frame and
+ignores the `frame` column. Only the ten pad buttons travel: reset and motion bits stay with
+the frames they were already on.
 
 It edits the recording, never the emulator — no pause, reset, seek or state load — so a frame
 before the playhead can only matter from the next playback on. Movies open read-only; turn

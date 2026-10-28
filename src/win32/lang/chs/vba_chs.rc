@@ -39,7 +39,7 @@ LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
 // resources and may be missing strings, controls or whole dialogs.  An
 // unchanged vba.rc keeps the value, so the version changes only when the
 // English resources do.
-#define VBA_L10N_VERSION "e389a847174ae74647f929b8ffc75bf89e36853f74da17345aad50c815369017"
+#define VBA_L10N_VERSION "d99985ed8318623ef8cab141350dd1c05b9cc77f5992c2a48620aa911e065373"
 
 // The About box shows the application icon; its dialog template lives here,
 // so the icon has to be here too or the control comes up empty.
@@ -836,7 +836,7 @@ BEGIN
 END
 
 IDD_VBM_EDITOR DIALOGEX 0, 0, 276, 352
-STYLE DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX
+STYLE DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_THICKFRAME
 CAPTION "VBM 编辑器"
 FONT 8, "MS Sans Serif", 0, 0, 0x0
 BEGIN
@@ -844,13 +844,13 @@ BEGIN
     CONTROL         "",IDC_VBM_PAUSE,"Button",BS_OWNERDRAW | WS_TABSTOP,29,5,21,14
     CONTROL         "",IDC_VBM_STEP,"Button",BS_OWNERDRAW | WS_TABSTOP,51,5,21,14
     CONTROL         "",IDC_VBM_GOTOPLAYHEAD,"Button",BS_OWNERDRAW | WS_TABSTOP,73,5,21,14
-    LTEXT           "跳转到帧",IDC_STATIC,146,8,52,8,SS_RIGHT
+    LTEXT           "跳转到帧",IDC_VBM_GOTOLABEL,146,8,52,8,SS_RIGHT
     EDITTEXT        IDC_VBM_FRAMENO,202,6,67,13,ES_NUMBER | ES_RIGHT | ES_AUTOHSCROLL
     CONTROL         "只读",IDC_VBM_READONLY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,26,58,10
     CONTROL         "跟随播放位置",IDC_VBM_FOLLOW,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,67,26,79,10
     PUSHBUTTON      "上一个标记",IDC_VBM_PREVMARK,155,24,55,14
     PUSHBUTTON      "下一个标记",IDC_VBM_NEXTMARK,212,24,57,14
-    CONTROL         "",IDC_VBM_LIST,"SysListView32",LVS_REPORT | LVS_OWNERDATA | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER | WS_BORDER | WS_TABSTOP,7,42,262,284,WS_EX_CLIENTEDGE
+    CONTROL         "",IDC_VBM_LIST,"SysListView32",LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER | WS_BORDER | WS_TABSTOP,7,42,262,284,WS_EX_CLIENTEDGE
     LTEXT           "",IDC_VBM_HINT,7,329,262,9
     LTEXT           "",IDC_VBM_STATUS,7,340,262,9
 END
@@ -2453,10 +2453,10 @@ BEGIN
     IDS_VBMEDITOR_FRAME            "帧"
     IDS_VBMEDITOR_NO_MOVIE         "没有打开录像文件。"
     IDS_VBMEDITOR_FILE_READONLY    "录像文件不可写，无法编辑时间轴。"
-    IDS_VBMEDITOR_MARK             "标记该帧(&M)"
-    IDS_VBMEDITOR_UNMARK           "取消该帧的标记(&M)"
+    IDS_VBMEDITOR_MARK             "标记帧(&M)"
+    IDS_VBMEDITOR_UNMARK           "取消标记帧(&M)"
     IDS_VBMEDITOR_INSERT_ROW       "在该帧之前插入一行(&I)"
-    IDS_VBMEDITOR_DELETE_ROW       "删除该行(&D)"
+    IDS_VBMEDITOR_DELETE_ROW       "删除选中的行(&D)"
     IDS_VBMEDITOR_GOTO_PREV        "跳到上一个标记(&P)"
     IDS_VBMEDITOR_GOTO_NEXT        "跳到下一个标记(&N)"
     IDS_VBMEDITOR_CLEAR_MARKS      "清除所有标记(&C)"
@@ -2476,6 +2476,22 @@ BEGIN
     IDS_VBMEDITOR_TIP_PLAYHEAD     "跳到正在播放的帧"
     IDS_VBMEDITOR_TIP_FRAMENO      "输入帧号后按回车。"
     IDS_VBMEDITOR_TIME             "时间"
+    IDS_VBMEDITOR_INSERT_ROW_AFTER "在该帧之后插入一行(&A)"
+    IDS_VBMEDITOR_DELETED_MANY     "已删除 %u 帧。"
+    IDS_VBMEDITOR_NEED_ONE_ROW     "请只选中一帧再执行此操作。"
+    IDS_VBMEDITOR_CUT_MENU         "剪切(&T)"
+    IDS_VBMEDITOR_COPY_MENU        "复制(&C)"
+    IDS_VBMEDITOR_PASTE_MENU       "粘贴(&P)"
+    IDS_VBMEDITOR_COPIED           "已复制 %u 帧。"
+    IDS_VBMEDITOR_CUT_DONE         "已剪切 %u 帧。"
+    IDS_VBMEDITOR_PASTED           "已在第 %u 帧之后粘贴 %u 帧。"
+    IDS_VBMEDITOR_NEED_SELECTION   "请先选中至少一帧。"
+    IDS_VBMEDITOR_CLIPBOARD_BAD    "剪贴板里不是本编辑器能识别的帧数据。"
+    IDS_VBMEDITOR_CLIPBOARD_LINE   "剪贴板第 %d 行不是本编辑器能识别的帧数据。"
+    IDS_VBMEDITOR_CLIPBOARD_LARGE  "剪贴板内容过大，无法粘贴。"
+    IDS_VBMEDITOR_PASTE_FULL       "录像放不下这么多帧。"
+    IDS_VBMEDITOR_MARKED_MANY      "已标记 %u 帧。"
+    IDS_VBMEDITOR_UNMARKED_MANY    "已取消 %u 帧的标记。"
 END
 
 STRINGTABLE

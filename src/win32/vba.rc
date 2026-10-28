@@ -1010,7 +1010,7 @@ END
 // Dialog: the recorded key sequence, one row per frame (Tools > Movie)
 //
 IDD_VBM_EDITOR DIALOGEX 0, 0, 276, 352
-STYLE DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX
+STYLE DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_THICKFRAME
 CAPTION "VBM Editor"
 FONT 8, "MS Sans Serif", 0, 0, 0x0
 BEGIN
@@ -1018,13 +1018,13 @@ BEGIN
     CONTROL         "",IDC_VBM_PAUSE,"Button",BS_OWNERDRAW | WS_TABSTOP,29,5,21,14
     CONTROL         "",IDC_VBM_STEP,"Button",BS_OWNERDRAW | WS_TABSTOP,51,5,21,14
     CONTROL         "",IDC_VBM_GOTOPLAYHEAD,"Button",BS_OWNERDRAW | WS_TABSTOP,73,5,21,14
-    LTEXT           "Go to frame",IDC_STATIC,146,8,52,8,SS_RIGHT
+    LTEXT           "Go to frame",IDC_VBM_GOTOLABEL,146,8,52,8,SS_RIGHT
     EDITTEXT        IDC_VBM_FRAMENO,202,6,67,13,ES_NUMBER | ES_RIGHT | ES_AUTOHSCROLL
     CONTROL         "Read-only",IDC_VBM_READONLY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,26,58,10
     CONTROL         "Follow playhead",IDC_VBM_FOLLOW,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,67,26,79,10
     PUSHBUTTON      "Prev mark",IDC_VBM_PREVMARK,155,24,55,14
     PUSHBUTTON      "Next mark",IDC_VBM_NEXTMARK,212,24,57,14
-    CONTROL         "",IDC_VBM_LIST,"SysListView32",LVS_REPORT | LVS_OWNERDATA | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER | WS_BORDER | WS_TABSTOP,7,42,262,284,WS_EX_CLIENTEDGE
+    CONTROL         "",IDC_VBM_LIST,"SysListView32",LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER | WS_BORDER | WS_TABSTOP,7,42,262,284,WS_EX_CLIENTEDGE
     LTEXT           "",IDC_VBM_HINT,7,329,262,9
     LTEXT           "",IDC_VBM_STATUS,7,340,262,9
 END
@@ -3111,10 +3111,10 @@ BEGIN
     IDS_VBMEDITOR_FRAME            "Frame"
     IDS_VBMEDITOR_NO_MOVIE         "No movie is open."
     IDS_VBMEDITOR_FILE_READONLY    "The movie file cannot be written to, so the timeline cannot be edited."
-    IDS_VBMEDITOR_MARK             "&Mark frame"
-    IDS_VBMEDITOR_UNMARK           "&Unmark frame"
+    IDS_VBMEDITOR_MARK             "&Mark frames"
+    IDS_VBMEDITOR_UNMARK           "&Unmark frames"
     IDS_VBMEDITOR_INSERT_ROW       "&Insert a row before this frame"
-    IDS_VBMEDITOR_DELETE_ROW       "&Delete this row"
+    IDS_VBMEDITOR_DELETE_ROW       "&Delete the selected rows"
     IDS_VBMEDITOR_GOTO_PREV        "Go to &previous mark"
     IDS_VBMEDITOR_GOTO_NEXT        "Go to &next mark"
     IDS_VBMEDITOR_CLEAR_MARKS      "&Clear all marks"
@@ -3134,6 +3134,22 @@ BEGIN
     IDS_VBMEDITOR_TIP_PLAYHEAD     "Go to the frame being played"
     IDS_VBMEDITOR_TIP_FRAMENO      "Type a frame number, then press Enter."
     IDS_VBMEDITOR_TIME             "Time"
+    IDS_VBMEDITOR_INSERT_ROW_AFTER "Insert a row &after this frame"
+    IDS_VBMEDITOR_DELETED_MANY     "Deleted %u frames."
+    IDS_VBMEDITOR_NEED_ONE_ROW     "Select exactly one frame for this."
+    IDS_VBMEDITOR_CUT_MENU         "Cu&t"
+    IDS_VBMEDITOR_COPY_MENU        "&Copy"
+    IDS_VBMEDITOR_PASTE_MENU       "&Paste"
+    IDS_VBMEDITOR_COPIED           "Copied %u frames."
+    IDS_VBMEDITOR_CUT_DONE         "Cut %u frames."
+    IDS_VBMEDITOR_PASTED           "Pasted %u frames after frame %u."
+    IDS_VBMEDITOR_NEED_SELECTION   "Select at least one frame first."
+    IDS_VBMEDITOR_CLIPBOARD_BAD    "The clipboard does not hold frame data this editor can read."
+    IDS_VBMEDITOR_CLIPBOARD_LINE   "Line %d of the clipboard is not frame data this editor can read."
+    IDS_VBMEDITOR_CLIPBOARD_LARGE  "The clipboard is too large to paste."
+    IDS_VBMEDITOR_PASTE_FULL       "The movie cannot take that many frames."
+    IDS_VBMEDITOR_MARKED_MANY      "Marked %u frames."
+    IDS_VBMEDITOR_UNMARKED_MANY    "Unmarked %u frames."
 END
 
 /////////////////////////////////////////////////////////////////////////////

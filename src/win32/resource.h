@@ -330,6 +330,27 @@
 #define IDS_VBMEDITOR_TIP_PLAYHEAD     321
 #define IDS_VBMEDITOR_TIP_FRAMENO      322
 #define IDS_VBMEDITOR_TIME             323
+// Multi-selection and the two insert positions: a row can go before or after
+// the focused frame, and a delete takes the whole selection.
+#define IDS_VBMEDITOR_INSERT_ROW_AFTER 334
+#define IDS_VBMEDITOR_DELETED_MANY     335
+#define IDS_VBMEDITOR_NEED_ONE_ROW     336
+// The CSV clipboard: the three commands, what they say when they worked, and
+// the three ways a paste can be refused before anything is written.
+#define IDS_VBMEDITOR_CUT_MENU         337
+#define IDS_VBMEDITOR_COPY_MENU        338
+#define IDS_VBMEDITOR_PASTE_MENU       339
+#define IDS_VBMEDITOR_COPIED           340
+#define IDS_VBMEDITOR_CUT_DONE         341
+#define IDS_VBMEDITOR_PASTED           342
+#define IDS_VBMEDITOR_NEED_SELECTION   343
+#define IDS_VBMEDITOR_CLIPBOARD_BAD    344
+#define IDS_VBMEDITOR_CLIPBOARD_LINE   345
+#define IDS_VBMEDITOR_CLIPBOARD_LARGE  346
+#define IDS_VBMEDITOR_PASTE_FULL       347
+// Marks apply to the whole selection, so they need a plural sentence.
+#define IDS_VBMEDITOR_MARKED_MANY      348
+#define IDS_VBMEDITOR_UNMARKED_MANY    349
 #define IDS_LUA_ABOUT_TITLE            324
 // Version of the English resource script a build was made from.  A language
 // module carries the same value; see winResL10nVersionMatches in
@@ -1405,6 +1426,9 @@
 #define IDC_VBM_STEP                    1529
 #define IDC_VBM_GOTOPLAYHEAD            1530
 #define IDC_VBM_FRAMENO                 1531
+// The "Go to frame" caption had IDC_STATIC until the window became resizable;
+// it needs its own id to follow the right edge together with the box.
+#define IDC_VBM_GOTOLABEL               1532
 
 // Embedded 7z.dll (see 7zip/7zapi.cpp and the RCDATA entry in VBA.rc)
 #define IDR_SEVENZ_DLL                  310

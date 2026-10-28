@@ -42,6 +42,11 @@ namespace uiFont
 	// The DPI the dialog was last laid out at.
 	UINT layoutDpi(HWND dialog);
 
+	// The DPI of the monitor the window is on right now.  This is the live
+	// value, so it already reports the new monitor while WM_DPICHANGED is
+	// still being dispatched - layoutDpi() only catches up afterwards.
+	UINT dpiOf(HWND window);
+
 	// Scales every child by the ratio of the two DPIs.  Used by dialogs that
 	// handle WM_DPICHANGED themselves (ResizeDlg and its derived viewers).
 	void scaleDialog(HWND dialog, UINT fromDpi, UINT toDpi);

@@ -10,6 +10,7 @@
 #include "../resource.h"
 #include "VbmEditor.h"
 #include "../VBA.h"
+#include "../UiFont.h"
 #include "../WinResUtil.h"
 #include "../WinText.h"
 
@@ -33,15 +34,47 @@
 #	define LVS_EX_DOUBLEBUFFER 0x00010000	// Vista and later; ignored before
 #endif
 
-#ifndef WM_DPICHANGED
-#	define WM_DPICHANGED 0x02E0			// Vista headers do not have it
-#endif
-
 namespace
 {
 
 VbmEditor *g_editor = NULL;
 HTHEME	   g_buttonTheme = NULL;
+
+// The window size survives closing and reopening the editor within one run of
+// the program.  It is deliberately not written to the settings file: how much
+// of the screen the grid should cover is not a preference, and adding it to
+// the settings would mean a new key for every window that becomes resizable.
+CSize g_lastSize(0, 0);
+
+// Every other dialog in this program is a modal one, and the dialog manager
+// gives those WS_EX_DLGMODALFRAME (from DS_MODALFRAME in the template).  That
+// frame style draws a caption with no icon at all, which is why they look the
+// way they do without anyone asking for it.  This window cannot use it: it is
+// modeless and has a sizing frame, and WS_EX_DLGMODALFRAME would draw the
+// dialog border around it instead.
+//
+// Clearing the icon with WM_SETICON is not enough either: a window with no icon
+// of its own borrows the owner's, and the main window's class was registered
+// around LoadIcon(IDI_ICON) - so the caption went on showing the GBA icon
+// (measured: window icon and class icon both NULL, the caption still drew one).
+// A one pixel, fully transparent icon is the only thing that says "this window
+// has no icon" to the title bar and to the Alt+Tab list.  It is created once
+// and never freed - the process lives as long as it is needed.
+HICON blankIcon()
+{
+	static HICON icon = NULL;
+
+	if (icon == NULL)
+	{
+		// Monochrome masks, one bit per pixel and a row padded to a WORD: 1 in
+		// the AND mask keeps the background, 0 in the XOR mask draws nothing.
+		BYTE andMask[2] = { 0xFF, 0x00 };
+		BYTE xorMask[2] = { 0x00, 0x00 };
+		icon = ::CreateIcon(::GetModuleHandle(NULL), 1, 1, 1, 1, andMask, xorMask);
+	}
+
+	return icon;
+}
 
 // BP_PUSHBUTTON and PBS_* from vssym32.h.  Spelled out because an XP toolset
 // still carries tmschema.h instead of that header; the values are part of the
@@ -213,7 +246,15 @@ VbmEditor::VbmEditor(CWnd *parent)
 	, m_follow(true)
 	, m_uiChecks(-1)
 	, m_uiEnable(-1)
-	, m_selectionRow(-1)
+	, m_focusRow(-1)
+	, m_layoutDpi(0)
+	, m_minTrack(0, 0)
+	, m_fixedHeight(0)
+	, m_fittedWidth(0)
+	, m_fittedFont(NULL)
+	, m_clipSequence(0)
+	, m_clipResult(vbmcsv::Result::Empty)
+	, m_clipBadLine(0)
 {
 	m_cellText[0] = 0;
 }
@@ -253,8 +294,9 @@ void VbmEditor::DoDataExchange(CDataExchange *pDX)
 BEGIN_MESSAGE_MAP(VbmEditor, CDialog)
 ON_WM_DESTROY()
 ON_WM_TIMER()
+ON_WM_SIZE()
+ON_WM_GETMINMAXINFO()
 ON_WM_DRAWITEM()
-ON_MESSAGE(WM_DPICHANGED, OnDpiChanged)
 ON_BN_CLICKED(IDC_VBM_READONLY, OnReadOnlyClicked)
 ON_BN_CLICKED(IDC_VBM_FOLLOW, OnFollowClicked)
 ON_BN_CLICKED(IDC_VBM_PREVMARK, OnPrevMark)
@@ -269,6 +311,11 @@ ON_NOTIFY(LVN_ITEMCHANGED, IDC_VBM_LIST, OnListItemChanged)
 ON_NOTIFY(NM_CLICK, IDC_VBM_LIST, OnListClick)
 ON_NOTIFY(NM_RCLICK, IDC_VBM_LIST, OnListRightClick)
 ON_NOTIFY(LVN_KEYDOWN, IDC_VBM_LIST, OnListKeyDown)
+// The three standard edit commands, so the clipboard is reachable without a
+// keyboard: a WM_COMMAND with these ids is what the accelerators would send.
+ON_COMMAND(ID_EDIT_CUT, OnCut)
+ON_COMMAND(ID_EDIT_COPY, OnCopy)
+ON_COMMAND(ID_EDIT_PASTE, OnPaste)
 END_MESSAGE_MAP()
 
 BOOL VbmEditor::OnInitDialog()
@@ -277,12 +324,52 @@ BOOL VbmEditor::OnInitDialog()
 
 	GetWindowText(m_titleBase);
 
+	// The template carries no icon, so the caption would inherit the
+	// application's and put it in front of the title.  This window stands for a
+	// timeline, not for a document, and the icon only eats caption width.
+	HICON blank = blankIcon();
+	if (blank)
+	{
+		SetIcon(blank, TRUE);	// Alt+Tab and the task list
+		SetIcon(blank, FALSE);	// the caption bar
+	}
+
 	// A virtual list keeps no per-item state, which is the whole point: a
 	// two-hour movie is one SetItemCountEx() and nothing else.
 	m_list.SetExtendedStyle(m_list.GetExtendedStyle() | LVS_EX_FULLROWSELECT
 	                        | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
 
 	SetDlgItemText(IDC_VBM_HINT, winResLoadString(IDS_VBMEDITOR_HINT));
+
+	// The size the template was drawn at gives the narrowest window the frame
+	// allows; taking it from the live window rather than from dialog units
+	// keeps it right at any DPI.  captureLayout() then adds the height floor,
+	// which depends on the header and so cannot be known before the columns
+	// are filled in.
+	CRect window;
+	GetWindowRect(&window);
+	m_minTrack = window.Size();
+	captureLayout();
+
+	// Reopening the editor in the same run keeps the size the user dragged it
+	// to, but never below the floor: a size remembered from before the floor
+	// existed would bring the window back with the grid squeezed out of shape.
+	int restoreWidth	= g_lastSize.cx;
+	int restoreHeight	= g_lastSize.cy;
+	if (restoreWidth > 0 && restoreHeight > 0)
+	{
+		if (restoreWidth < m_minTrack.cx)
+			restoreWidth = m_minTrack.cx;
+		if (restoreHeight < m_minTrack.cy)
+			restoreHeight = m_minTrack.cy;
+
+		// SetWindowPos below arrives in OnSize() as an ordinary resize.
+		if (restoreWidth != window.Width() || restoreHeight != window.Height())
+		{
+			SetWindowPos(NULL, 0, 0, restoreWidth, restoreHeight,
+			             SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+		}
+	}
 
 	// NULL when the desktop runs without themes; OnDrawItem() then falls back
 	// to the classic frame control.
@@ -322,6 +409,45 @@ BOOL VbmEditor::PreTranslateMessage(MSG *msg)
 		}
 	}
 
+	// Ctrl+X/C/V work wherever the focus is except in the frame box, where they
+	// belong to the edit control (copying a frame number out is harmless and
+	// should keep working).
+	if (msg->message == WM_KEYDOWN && GetKeyState(VK_CONTROL) < 0)
+	{
+		CWnd *box = GetDlgItem(IDC_VBM_FRAMENO);
+		if (!box || msg->hwnd != box->GetSafeHwnd())
+		{
+			switch (msg->wParam)
+			{
+			case 'C':
+				copySelection(false);
+				return TRUE;
+			case 'X':
+				copySelection(true);
+				return TRUE;
+			case 'V':
+				paste();
+				return TRUE;
+			default:
+				break;
+			}
+		}
+	}
+
+	// 'M' marks the selection, and it has to be taken away from the list
+	// before the list sees it: a list view treats a typed character as an
+	// incremental search, and for an owner-data list that means asking the
+	// parent for the matching row (LVN_ODFINDITEM).  Nobody answers, the
+	// control takes the default -1-as-0, and it *selects row 0* - so the
+	// multi-selection was gone by the time the key was done.  Swallowing it
+	// here costs nothing: this window owns the key, the grid never searches.
+	if (msg->message == WM_KEYDOWN && msg->wParam == 'M'
+	    && msg->hwnd == m_list.GetSafeHwnd())
+	{
+		toggleMarkSelection();
+		return TRUE;
+	}
+
 	if (m_tip.GetSafeHwnd())
 		m_tip.RelayEvent(msg);
 
@@ -354,6 +480,10 @@ void VbmEditor::OnDestroy()
 	KillTimer(TIMER_REFRESH);
 	g_editor = NULL;
 
+	CRect window;
+	GetWindowRect(&window);
+	g_lastSize = window.Size();
+
 	if (g_buttonTheme)
 	{
 		::CloseThemeData(g_buttonTheme);
@@ -371,16 +501,204 @@ void VbmEditor::OnTimer(UINT_PTR event)
 	CDialog::OnTimer(event);
 }
 
-LRESULT VbmEditor::OnDpiChanged(WPARAM, LPARAM)
+/////////////////////////////////////////////////////////////////////////////
+// resizing
+//
+// The window has a thick frame (see the IDD_VBM_EDITOR style): the grid takes
+// every pixel that is added or removed, the hint and the status line stay
+// glued to the bottom edge, and the frame box with its caption and the two
+// mark buttons follow the right edge.  Nothing is stretched sideways, so the
+// layout at any size is the one the template describes plus a delta - which is
+// also why captureLayout() only has to run again when the DPI changes.
+
+CRect VbmEditor::controlRect(int id) const
 {
-	// By the time this arrives UiFont.cpp has already rescaled the controls
-	// (see its dialogProc).  The column widths are plain pixels and were fitted
-	// to the old client area, so they are measured again for the new one.
-	m_list.SetRedraw(FALSE);
-	fitColumns();
-	m_list.SetRedraw(TRUE);
-	m_list.Invalidate(FALSE);
-	return 0;
+	CRect rect(0, 0, 0, 0);
+
+	CWnd *control = GetDlgItem(id);
+	if (control)
+	{
+		control->GetWindowRect(&rect);
+		ScreenToClient(&rect);
+	}
+
+	return rect;
+}
+
+void VbmEditor::captureLayout()
+{
+	CRect client;
+	GetClientRect(&client);
+
+	m_layout.client	= client.Size();
+	m_layout.list	= controlRect(IDC_VBM_LIST);
+	m_layout.hint	= controlRect(IDC_VBM_HINT);
+	m_layout.status	= controlRect(IDC_VBM_STATUS);
+	m_layout.gotoLabel = controlRect(IDC_VBM_GOTOLABEL);
+	m_layout.frameBox  = controlRect(IDC_VBM_FRAMENO);
+	m_layout.prevMark  = controlRect(IDC_VBM_PREVMARK);
+	m_layout.nextMark  = controlRect(IDC_VBM_NEXTMARK);
+
+	m_layoutDpi = uiFont::dpiOf(m_hWnd);
+
+	// Everything that is not the grid keeps its height while the window is
+	// dragged, so it is a constant that can be measured once here.  It is
+	// measured as a difference rather than added up from the controls so the
+	// caption, the frame and any gap below the status line come along for free,
+	// and so a DPI change only has to take a new snapshot.
+	CRect window;
+	if (::GetWindowRect(m_hWnd, &window))
+		m_fixedHeight = window.Height() - m_layout.list.Height();
+
+	updateHeightFloor();
+}
+
+// The header of the list, in pixels: what the grid keeps when it is squeezed.
+int VbmEditor::listHeaderHeight() const
+{
+	HWND header = (HWND)::SendMessage(m_list.GetSafeHwnd(), LVM_GETHEADER, 0, 0);
+	RECT rect;
+	if (!header || !::GetWindowRect(header, &rect))
+		return 0;
+
+	return rect.bottom - rect.top;
+}
+
+void VbmEditor::updateHeightFloor()
+{
+	// The grid may give up every row it has, but not the header: below that
+	// the columns are a strip of unlabelled numbers.  Because m_fixedHeight
+	// already holds the caption, the transport row, the checkboxes and the two
+	// bottom lines, this floor also keeps all of them on screen - the hint and
+	// the status line land exactly under the shrunken grid, and the frame
+	// would have to clip them for anything smaller.
+	const int header = listHeaderHeight();
+	if (header > 0 && m_fixedHeight > 0)
+		m_minTrack.cy = m_fixedHeight + header;
+}
+
+void VbmEditor::moveControl(int id, const CRect &rect)
+{
+	if (CWnd *control = GetDlgItem(id))
+		control->MoveWindow(&rect);
+}
+
+void VbmEditor::layoutChildren(int cx, int cy)
+{
+	const int dx = cx - m_layout.client.cx;
+	const int dy = cy - m_layout.client.cy;
+
+	// Every control is placed from the captured baseline plus the *total*
+	// delta, never from where it happens to be now.  That keeps the result
+	// identical no matter how many WM_SIZE messages the drag produced, and it
+	// makes the round trip exact: shrinking back to the template size gives
+	// dx = dy = 0, which has to put the controls back where they started
+	// rather than be skipped as "nothing changed".
+
+	CRect list = m_layout.list;
+	list.right += dx;
+	list.bottom += dy;
+
+	// The frame keeps the window above both floors (see OnGetMinMaxInfo), so
+	// these only guard against a SetWindowPos() from somewhere else.
+	if (list.Width() < 1)
+		list.right = list.left + 1;
+	if (list.Height() < 1)
+		list.bottom = list.top + 1;
+
+	// The two bottom lines follow the frame, but they must not climb over the
+	// grid.  At the minimum height the grid is exactly one header tall and they
+	// sit right under it, so this only bites when something shrank the window
+	// past the floor.
+	int bottomDy = dy;
+	if (m_layout.hint.top + bottomDy < list.top + 1)
+		bottomDy = list.top + 1 - m_layout.hint.top;
+
+	CRect hint	 = m_layout.hint;
+	CRect status = m_layout.status;
+	hint.top += bottomDy;
+	hint.bottom += bottomDy;
+	hint.right += dx;
+	status.top += bottomDy;
+	status.bottom += bottomDy;
+	status.right += dx;
+
+	CRect label = m_layout.gotoLabel;
+	CRect box	= m_layout.frameBox;
+	CRect prev	= m_layout.prevMark;
+	CRect next	= m_layout.nextMark;
+	label.OffsetRect(dx, 0);
+	box.OffsetRect(dx, 0);
+	prev.OffsetRect(dx, 0);
+	next.OffsetRect(dx, 0);
+
+	moveControl(IDC_VBM_LIST, list);
+	moveControl(IDC_VBM_HINT, hint);
+	moveControl(IDC_VBM_STATUS, status);
+	moveControl(IDC_VBM_GOTOLABEL, label);
+	moveControl(IDC_VBM_FRAMENO, box);
+	moveControl(IDC_VBM_PREVMARK, prev);
+	moveControl(IDC_VBM_NEXTMARK, next);
+}
+
+void VbmEditor::OnSize(UINT type, int cx, int cy)
+{
+	CDialog::OnSize(type, cx, cy);
+
+	// Nothing has been measured yet (the dialog manager sizes the window
+	// before WM_INITDIALOG) or there is nothing to lay out.
+	if (type == SIZE_MINIMIZED || cx <= 0 || cy <= 0 || m_layout.client.cx <= 0)
+		return;
+
+	// A per-monitor DPI change resizes the window before anything is told
+	// about it: UiFont.cpp scales the children, then applies the suggested
+	// rect (and swallows the WM_DPICHANGED itself, so this is the only place
+	// that sees it).  The controls are already in their new size here, so this
+	// size is taken as the new baseline instead of being applied as a delta on
+	// top of the scaling, and the smallest allowed window follows the ratio.
+	const UINT dpi = uiFont::dpiOf(m_hWnd);
+	if (dpi != m_layoutDpi)
+	{
+		// The width floor is the template width, which scales with the DPI;
+		// the height floor is measured from the new header instead of scaled,
+		// because a font can change height by more than the ratio suggests.
+		if (dpi != 0 && m_layoutDpi != 0)
+			m_minTrack.cx = MulDiv(m_minTrack.cx, dpi, m_layoutDpi);
+		captureLayout();
+	}
+	else
+	{
+		layoutChildren(cx, cy);
+	}
+
+	// Every key column shares whatever the three fixed ones leave over, so a
+	// change in width has to be measured again.  A vertical drag - the reason
+	// the window can be resized at all - does not, and re-measuring per pixel
+	// would repaint the grid for nothing.
+	CRect area;
+	m_list.GetClientRect(&area);
+	if (area.Width() != m_fittedWidth)
+	{
+		m_list.SetRedraw(FALSE);
+		fitColumns();
+		m_list.SetRedraw(TRUE);
+		m_list.Invalidate(FALSE);
+	}
+}
+
+void VbmEditor::OnGetMinMaxInfo(MINMAXINFO *info)
+{
+	CDialog::OnGetMinMaxInfo(info);
+
+	// Below the template width the frame box, the mark buttons and the columns
+	// would be clipped sideways, and there is no horizontal scrolling to fall
+	// back on.  The height is floored at the point where the grid is down to
+	// its column header - one more pixel and the columns lose their labels,
+	// one less and the two bottom lines would be pushed out of the frame.
+	if (m_minTrack.cx > 0)
+		info->ptMinTrackSize.x = m_minTrack.cx;
+	if (m_minTrack.cy > 0)
+		info->ptMinTrackSize.y = m_minTrack.cy;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -390,14 +708,19 @@ void VbmEditor::refresh()
 {
 	const uint32 oldHead = playheadRow();
 
-	// Whatever selected the row - a click, the context menu, a jump - the frame
-	// box shows the selection, so it is re-read here rather than in each place
-	// that moves it.
-	const int selection = selectedRow();
-	if (selection != m_selectionRow)
+	// A per-monitor DPI change and the "modern UI font" option both swap the
+	// font under the list from outside this window (UiFont.cpp does it from a
+	// subclass procedure), and the column widths are measured from that font.
+	// The tick is the only place that reliably runs afterwards and it costs one
+	// GetFont() when nothing changed.
+	CFont *font = m_list.GetFont();
+	if (!m_columns.empty() && (font ? (HFONT)font->GetSafeHandle() : NULL) != m_fittedFont)
 	{
-		m_selectionRow = selection;
-		syncFrameBox();
+		// A taller font means a taller header, so the floor has to move with
+		// it; fitColumns() records the new font, which is what makes this run
+		// once per change rather than once per tick.
+		updateHeightFloor();
+		fitColumns();
 	}
 
 	const bool	 active = VBAMovieIsActive() != 0;
@@ -431,7 +754,7 @@ void VbmEditor::refresh()
 		m_frame		   = NO_ROW;
 		m_generation   = 0;
 		m_usedMask	   = 0;
-		m_selectionRow = -1;
+		m_focusRow	   = -1;
 
 		syncFrameBox();
 		updateTitle();
@@ -457,21 +780,11 @@ void VbmEditor::refresh()
 		resetView();
 	}
 
-	// The column set only depends on the movie's contents (which extra bits
-	// appear) and on the machine it was recorded on, so it is rebuilt only when
-	// the buffer was rewritten, and even then only if the set really changed.
-	if (gen != m_generation || m_columns.empty())
-	{
-		const uint16 used = VBAMovieGetUsedInputMask(0);
-		if (used != m_usedMask || m_columns.empty())
-		{
-			m_usedMask = used;
-			rebuildColumns(used);
-			m_list.Invalidate(FALSE);
-		}
-		m_generation = gen;
-	}
-
+	// The item count comes first: a virtual list only grows a vertical scroll
+	// bar once it has rows, and fitColumns() has to measure the client area it
+	// will actually have.  Built the other way round, the columns were fitted
+	// to a list without a scroll bar and the last key column ended up clipped
+	// by its width.
 	if (length != m_length)
 	{
 		if (m_length != NO_ROW && length == m_length + 1)
@@ -489,7 +802,30 @@ void VbmEditor::refresh()
 		m_length = length;
 	}
 
+	// The column set only depends on the movie's contents (which extra bits
+	// appear) and on the machine it was recorded on, so it is rebuilt only when
+	// the buffer was rewritten, and even then only if the set really changed.
+	if (gen != m_generation || m_columns.empty())
+	{
+		const uint16 used = VBAMovieGetUsedInputMask(0);
+		if (used != m_usedMask || m_columns.empty())
+		{
+			m_usedMask = used;
+			rebuildColumns(used);
+			m_list.Invalidate(FALSE);
+		}
+		m_generation = gen;
+	}
+
 	m_frame = frame;
+
+	// The focus is cached, so it has to be re-validated when the timeline
+	// shrinks under it - a delete, a truncate or another movie.
+	if (m_focusRow >= 0 && (uint32)m_focusRow >= length)
+	{
+		m_focusRow = -1;
+		syncFrameBox();
+	}
 
 	const uint32 newHead = playheadRow();
 	if (newHead != oldHead)
@@ -512,11 +848,11 @@ void VbmEditor::refresh()
 void VbmEditor::resetView()
 {
 	// force the next refresh to rebuild the column set for the new movie
-	m_generation   = 0xFFFFFFFFu;
-	m_usedMask	   = 0;
-	m_length	   = NO_ROW;
-	m_frame		   = NO_ROW;
-	m_selectionRow = -1;
+	m_generation = 0xFFFFFFFFu;
+	m_usedMask	 = 0;
+	m_length	 = NO_ROW;
+	m_frame		 = NO_ROW;
+	m_focusRow	 = -1;
 
 	m_columns.clear();
 	while (m_list.DeleteColumn(0))
@@ -599,6 +935,7 @@ void VbmEditor::rebuildColumns(uint16 usedMask)
 
 	m_columns.swap(columns);
 	fitColumns();
+	updateHeightFloor();		// the header only exists now that there are columns
 
 	m_list.SetRedraw(TRUE);
 	m_list.Invalidate(FALSE);
@@ -606,6 +943,11 @@ void VbmEditor::rebuildColumns(uint16 usedMask)
 
 void VbmEditor::fitColumns()
 {
+	// Whichever way out of this function is taken, the font it measured (or
+	// skipped measuring) with is the current one.
+	CFont *font = m_list.GetFont();
+	m_fittedFont = font ? (HFONT)font->GetSafeHandle() : NULL;
+
 	const int count = (int)m_columns.size();
 	if (count <= COL_FIRST_KEY)
 		return;
@@ -616,7 +958,6 @@ void VbmEditor::fitColumns()
 	CDC *dc = m_list.GetDC();
 	if (dc)
 	{
-		CFont	  *font = m_list.GetFont();
 		CFont	  *old	= font ? dc->SelectObject(font) : NULL;
 		TEXTMETRIC metrics;
 
@@ -679,6 +1020,9 @@ void VbmEditor::fitColumns()
 
 	for (int i = 0; i < count; ++i)
 		m_list.SetColumnWidth(i, m_columns[i].width);
+
+	// Remembered so a WM_SIZE that only changes the height can skip this.
+	m_fittedWidth = client.Width();
 }
 
 int VbmEditor::dlux(int dlu) const
@@ -766,6 +1110,24 @@ bool VbmEditor::editable() const
 	return m_active && m_readOnlyMode == 0 && !m_editLock;
 }
 
+bool VbmEditor::canRestructure() const
+{
+	// The same three refusals the core applies, asked once so the menu and the
+	// commands cannot disagree: a zero-frame or ENDed movie would undo the
+	// insert on the next recorded frame, or cannot take one at all.
+	return editable() && !VBAMovieIsRecording() && m_state != MOVIE_STATE_END;
+}
+
+void VbmEditor::denyRestructure()
+{
+	if (!editable())
+		setStatusRes(m_readOnlyMode == 2 ? IDS_VBMEDITOR_FILE_READONLY : IDS_VBMEDITOR_CANNOT_EDIT);
+	else if (VBAMovieIsRecording())
+		setStatusRes(IDS_VBMEDITOR_RECORD_STATE);
+	else
+		setStatusRes(IDS_VBMEDITOR_END_STATE);
+}
+
 uint32 VbmEditor::playheadRow() const
 {
 	if (!m_active || m_length == 0 || m_length == NO_ROW)
@@ -776,13 +1138,39 @@ uint32 VbmEditor::playheadRow() const
 	return (m_frame < m_length) ? m_frame : m_length - 1;
 }
 
-int VbmEditor::selectedRow()
+int VbmEditor::focusedRow() const
 {
-	POSITION pos = m_list.GetFirstSelectedItemPosition();
-	if (!pos)
-		return -1;
+	// Cached rather than asked for: GetNextItem(LVNI_FOCUSED) walks the list,
+	// and this would otherwise run on every tick of a 100 000-frame movie.
+	return m_focusRow;
+}
 
-	return m_list.GetNextSelectedItem(pos);
+std::vector<uint32> VbmEditor::selectedRows() const
+{
+	std::vector<uint32> rows;
+
+	// GetFirstSelectedItemPosition walks in display order, so the result is
+	// already ascending - which is what VBAMovieDeleteFramesAt() requires.
+	POSITION pos = m_list.GetFirstSelectedItemPosition();
+	while (pos)
+		rows.push_back((uint32)m_list.GetNextSelectedItem(pos));
+
+	return rows;
+}
+
+void VbmEditor::selectOnlyRow(uint32 row)
+{
+	const int target = (int)row;
+	if (target < 0 || target >= m_list.GetItemCount())
+		return;
+
+	// -1 with LVIS_SELECTED clears the whole selection, which is how a jump
+	// turns a multi-selection back into the single row it landed on.
+	m_list.SetItemState(-1, 0, LVIS_SELECTED);
+	m_list.SetItemState(target, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+
+	m_focusRow = target;
+	syncFrameBox();
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -870,8 +1258,8 @@ void VbmEditor::repaintRow(uint32 row)
 void VbmEditor::syncFrameBox()
 {
 	CString text;
-	if (m_selectionRow >= 0)
-		text.Format(_T("%u"), (unsigned)m_selectionRow);
+	if (m_focusRow >= 0)
+		text.Format(_T("%u"), (unsigned)m_focusRow);
 
 	SetDlgItemText(IDC_VBM_FRAMENO, text);
 }
@@ -900,8 +1288,6 @@ void VbmEditor::applyFrameBox()
 		row = m_length - 1;	 // typing past the end means the last frame
 
 	revealRow((uint32)row, true);
-	m_selectionRow = (int)row;
-	syncFrameBox();
 }
 
 int VbmEditor::rowHeight()
@@ -923,7 +1309,9 @@ void VbmEditor::revealRow(uint32 row, bool center)
 	if (target < 0 || target >= m_list.GetItemCount())
 		return;
 
-	m_list.SetItemState(target, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+	// A jump always lands on exactly one row: leaving a multi-selection behind
+	// would make the next Delete act on frames the user is no longer looking at.
+	selectOnlyRow(row);
 	m_list.EnsureVisible(target, FALSE);
 
 	if (!center)
@@ -978,9 +1366,6 @@ void VbmEditor::OnGoToPlayhead()
 	}
 
 	revealRow(head, true);
-
-	m_selectionRow = (int)head;
-	syncFrameBox();
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -1088,10 +1473,19 @@ void VbmEditor::OnListItemChanged(NMHDR *header, LRESULT *result)
 {
 	NMLISTVIEW *info = (NMLISTVIEW *)header;
 
-	if ((info->uChanged & LVIF_STATE) && ((info->uNewState ^ info->uOldState) & LVIS_SELECTED))
+	// Only the focus moves the frame box.  A Ctrl+click changes LVIS_SELECTED
+	// too, and enumerating the selection here would run on every click of a
+	// 100 000-frame movie for nothing.  Focus loss is ignored on purpose: when
+	// focus moves from A to B the control reports A losing it first, and
+	// reacting to that would blank the box for a moment.
+	if ((info->uChanged & LVIF_STATE) && (info->uNewState & LVIS_FOCUSED)
+	    && !(info->uOldState & LVIS_FOCUSED))
 	{
-		m_selectionRow = selectedRow();
-		syncFrameBox();
+		if (info->iItem != m_focusRow)
+		{
+			m_focusRow = info->iItem;
+			syncFrameBox();
+		}
 	}
 
 	*result = 0;
@@ -1102,6 +1496,18 @@ void VbmEditor::OnListItemChanged(NMHDR *header, LRESULT *result)
 
 void VbmEditor::OnListClick(NMHDR *header, LRESULT *result)
 {
+	*result = 0;
+
+	// Ctrl and Shift are selection gestures; a click that changes the
+	// selection must not also flip a key.
+	if (GetKeyState(VK_CONTROL) < 0 || GetKeyState(VK_SHIFT) < 0)
+		return;
+
+	// A cell edit means "this one frame", so it is only offered while exactly
+	// one row is selected.
+	if (selectedRows().size() != 1)
+		return;
+
 	LPNMITEMACTIVATE info = (LPNMITEMACTIVATE)header;
 
 	LVHITTESTINFO hit;
@@ -1111,8 +1517,6 @@ void VbmEditor::OnListClick(NMHDR *header, LRESULT *result)
 	const int row = m_list.SubItemHitTest(&hit);
 	if (row >= 0)
 		toggleCell((uint32)row, hit.iSubItem);
-
-	*result = 0;
 }
 
 void VbmEditor::toggleCell(uint32 row, int column)
@@ -1147,19 +1551,9 @@ void VbmEditor::toggleCell(uint32 row, int column)
 
 void VbmEditor::insertRow(uint32 row)
 {
-	if (!editable())
+	if (!canRestructure())
 	{
-		setStatusRes(m_readOnlyMode == 2 ? IDS_VBMEDITOR_FILE_READONLY : IDS_VBMEDITOR_CANNOT_EDIT);
-		return;
-	}
-	if (VBAMovieIsRecording())
-	{
-		setStatusRes(IDS_VBMEDITOR_RECORD_STATE);
-		return;
-	}
-	if (m_state == MOVIE_STATE_END)
-	{
-		setStatusRes(IDS_VBMEDITOR_END_STATE);
+		denyRestructure();
 		return;
 	}
 
@@ -1173,12 +1567,12 @@ void VbmEditor::insertRow(uint32 row)
 		return;
 	}
 
-	std::set<uint32> moved;
-	for (std::set<uint32>::const_iterator it = m_marks.begin(); it != m_marks.end(); ++it)
-		moved.insert(*it >= row ? *it + 1 : *it);
-	m_marks.swap(moved);
-
+	marksInserted(row, 1);
 	refresh();
+
+	// the new blank row is what the user wants to fill in
+	selectOnlyRow(row);
+	m_list.EnsureVisible((int)row, FALSE);
 
 	CString text;
 	text.Format(winResLoadString(IDS_VBMEDITOR_INSERTED), row);
@@ -1190,72 +1584,417 @@ void VbmEditor::insertRow(uint32 row)
 	setStatus(text);
 }
 
-void VbmEditor::deleteRow(uint32 row)
+bool VbmEditor::deleteRows(const std::vector<uint32> &rows)
 {
-	if (!editable())
+	if (!canRestructure())
 	{
-		setStatusRes(m_readOnlyMode == 2 ? IDS_VBMEDITOR_FILE_READONLY : IDS_VBMEDITOR_CANNOT_EDIT);
-		return;
+		denyRestructure();
+		return false;
 	}
-	if (VBAMovieIsRecording())
-	{
-		setStatusRes(IDS_VBMEDITOR_RECORD_STATE);
-		return;
-	}
-	if (m_state == MOVIE_STATE_END)
-	{
-		setStatusRes(IDS_VBMEDITOR_END_STATE);
-		return;
-	}
+	if (rows.empty())
+		return false;
 
-	const bool shiftsPlayhead = (row <= VBAMovieGetFrameCounter());
+	const uint32 first		   = rows.front();
+	const bool	 shiftsPlayhead = (first <= VBAMovieGetFrameCounter());
 
-	if (VBAMovieDeleteFrameAt(row) != MOVIE_SUCCESS)
+	// One call for the whole selection: the core compacts the timeline once and
+	// truncates the file once, so deleting ten thousand rows is not ten
+	// thousand rewrites of the file.
+	if (VBAMovieDeleteFramesAt(&rows[0], (uint32)rows.size()) != MOVIE_SUCCESS)
 	{
 		setStatusRes(IDS_VBMEDITOR_CANNOT_EDIT);
-		return;
+		return false;
 	}
 
-	std::set<uint32> moved;
-	for (std::set<uint32>::const_iterator it = m_marks.begin(); it != m_marks.end(); ++it)
-	{
-		if (*it == row)
-			continue;	 // the marked frame itself is gone
-		moved.insert(*it > row ? *it - 1 : *it);
-	}
-	m_marks.swap(moved);
-
+	marksDeleted(rows);
 	refresh();
 
+	// Leave the focus where the first deleted row used to be, which is now the
+	// row that followed it - or the last row, if the tail went away.
+	if (m_length != NO_ROW && m_length > 0)
+	{
+		const uint32 target = (first < m_length) ? first : m_length - 1;
+		selectOnlyRow(target);
+		m_list.EnsureVisible((int)target, FALSE);
+	}
+
 	CString text;
-	text.Format(winResLoadString(IDS_VBMEDITOR_DELETED), row);
+	if (rows.size() == 1)
+		text.Format(winResLoadString(IDS_VBMEDITOR_DELETED), first);
+	else
+		text.Format(winResLoadString(IDS_VBMEDITOR_DELETED_MANY), (unsigned)rows.size());
 	if (shiftsPlayhead)
 	{
 		text += _T(' ');
 		text += winResLoadString(IDS_VBMEDITOR_SHIFT_WARNING);
 	}
 	setStatus(text);
+
+	return true;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// clipboard
+//
+// Copy writes the selected rows as vbmcsv text, cut is copy-then-delete, and
+// paste inserts the parsed rows after the focused frame.  Nothing here touches
+// the movie except through the same calls the buttons use, so a paste is just
+// a batch insert with the rows read from the clipboard.
+
+bool VbmEditor::writeClipboard(const std::wstring &text)
+{
+	if (!OpenClipboard())
+		return false;
+
+	bool	ok	 = false;
+	HGLOBAL block = ::GlobalAlloc(GMEM_MOVEABLE, (text.size() + 1) * sizeof(wchar_t));
+
+	::EmptyClipboard();
+
+	if (block)
+	{
+		if (void *target = ::GlobalLock(block))
+		{
+			memcpy(target, text.c_str(), (text.size() + 1) * sizeof(wchar_t));
+			::GlobalUnlock(block);
+
+			if (::SetClipboardData(CF_UNICODETEXT, block))
+			{
+				ok	  = true;
+				block = NULL;	// the clipboard owns it now
+			}
+		}
+
+		if (block)
+			::GlobalFree(block);
+	}
+
+	CloseClipboard();
+	return ok;
+}
+
+VbmEditor::Clip VbmEditor::readClipboard(std::wstring &text)
+{
+	text.clear();
+
+	if (!OpenClipboard())
+		return Clip::Unavailable;
+
+	Clip result = Clip::Unavailable;
+
+	// The character limit is checked before anything is copied, so a runaway
+	// clipboard cannot be turned into a runaway allocation.
+	const size_t maxChars = size_t(vbmcsv::MAX_CHARS);
+
+	if (HANDLE handle = ::GetClipboardData(CF_UNICODETEXT))
+	{
+		const size_t bytes = ::GlobalSize(handle);
+		const size_t limit = bytes / sizeof(wchar_t);
+
+		if (limit > maxChars)
+			result = Clip::TooLarge;
+		else if (const wchar_t *source = (const wchar_t *)::GlobalLock(handle))
+		{
+			size_t length = 0;
+			while (length < limit && source[length] != 0)
+				++length;
+
+			text.assign(source, length);
+			::GlobalUnlock(handle);
+			result = Clip::Ok;
+		}
+	}
+	else if (HANDLE ansi = ::GetClipboardData(CF_TEXT))
+	{
+		// Older tools still put plain text on the clipboard; the core reads
+		// its strings in the process code page, so this is the same door.
+		const size_t bytes = ::GlobalSize(ansi);
+		if (bytes > maxChars)
+			result = Clip::TooLarge;
+		else if (const char *source = (const char *)::GlobalLock(ansi))
+		{
+			text = winWideFromAnsi(source);
+			::GlobalUnlock(ansi);
+			result = Clip::Ok;
+		}
+	}
+
+	CloseClipboard();
+	return result;
+}
+
+void VbmEditor::refreshClipboard()
+{
+	// GetClipboardSequenceNumber() changes whenever any program writes to the
+	// clipboard, so it is exactly the cache key this needs.
+	const DWORD sequence = ::GetClipboardSequenceNumber();
+	if (sequence == m_clipSequence)
+		return;
+
+	m_clipSequence = sequence;
+	m_clipResult   = vbmcsv::Result::Empty;
+	m_clipBadLine  = 0;
+	m_clipButtons.clear();
+
+	std::wstring text;
+	switch (readClipboard(text))
+	{
+	case Clip::Ok:
+		m_clipResult = vbmcsv::parse(text, m_clipButtons, &m_clipBadLine);
+		break;
+	case Clip::TooLarge:
+		m_clipResult = vbmcsv::Result::TooLarge;
+		break;
+	default:
+		break;	// Unavailable: nothing to paste, and nothing to report yet
+	}
+}
+
+void VbmEditor::reportClipboardFailure()
+{
+	switch (m_clipResult)
+	{
+	case vbmcsv::Result::TooLarge:
+	case vbmcsv::Result::TooManyRows:
+		setStatusRes(IDS_VBMEDITOR_CLIPBOARD_LARGE);
+		return;
+	default:
+		break;
+	}
+
+	// A line number is the only thing that makes a rejected paste actionable:
+	// without it the user is looking for one bad field in five hundred rows.
+	if (m_clipBadLine > 0)
+	{
+		CString text;
+		text.Format(winResLoadString(IDS_VBMEDITOR_CLIPBOARD_LINE), m_clipBadLine);
+		setStatus(text);
+	}
+	else
+		setStatusRes(IDS_VBMEDITOR_CLIPBOARD_BAD);
+}
+
+void VbmEditor::copySelection(bool cut)
+{
+	const std::vector<uint32> rows = selectedRows();
+	if (rows.empty())
+	{
+		setStatusRes(IDS_VBMEDITOR_NEED_SELECTION);
+		return;
+	}
+
+	// Cut destroys rows, so it has to be refused before the clipboard is
+	// touched; copy is always allowed, read-only movie or not.
+	if (cut && !canRestructure())
+	{
+		denyRestructure();
+		return;
+	}
+
+	std::vector<vbmcsv::Row> data;
+	data.reserve(rows.size());
+	for (size_t i = 0; i < rows.size(); ++i)
+	{
+		vbmcsv::Row row;
+		row.frame	= rows[i];
+		row.buttons = VBAMovieGetInputAt(rows[i], 0);
+		data.push_back(row);
+	}
+
+	std::wstring text;
+	if (vbmcsv::serialize(data, text) != vbmcsv::Result::Ok || !writeClipboard(text))
+	{
+		setStatusRes(IDS_VBMEDITOR_CLIPBOARD_BAD);
+		return;
+	}
+
+	if (!cut)
+	{
+		CString message;
+		message.Format(winResLoadString(IDS_VBMEDITOR_COPIED), (unsigned)rows.size());
+		setStatus(message);
+		return;
+	}
+
+	// Cut only reports success once the rows are actually gone; if the delete
+	// is refused the clipboard keeps the data and the status says why.
+	const size_t count = rows.size();
+	if (!deleteRows(rows))
+		return;
+
+	CString message;
+	message.Format(winResLoadString(IDS_VBMEDITOR_CUT_DONE), (unsigned)count);
+	setStatus(message);
+}
+
+void VbmEditor::paste()
+{
+	const std::vector<uint32> rows = selectedRows();
+	if (rows.size() != 1)
+	{
+		// Paste has to know where to put the rows, and "the whole selection"
+		// is not a place.
+		setStatusRes(IDS_VBMEDITOR_NEED_ONE_ROW);
+		return;
+	}
+
+	if (!canRestructure())
+	{
+		denyRestructure();
+		return;
+	}
+
+	refreshClipboard();
+	if (m_clipResult != vbmcsv::Result::Ok)
+	{
+		reportClipboardFailure();
+		return;
+	}
+
+	if (m_length == NO_ROW || m_length == 0)
+	{
+		setStatusRes(IDS_VBMEDITOR_NO_MOVIE);
+		return;
+	}
+
+	if (m_clipButtons.size() > size_t(MOVIE_MAX_FRAMES - m_length))
+	{
+		setStatusRes(IDS_VBMEDITOR_PASTE_FULL);
+		return;
+	}
+
+	const uint32 anchor = rows.front();
+	const uint32 count	= (uint32)m_clipButtons.size();
+
+	if (VBAMovieInsertFramesAt(anchor + 1, &m_clipButtons[0], count) != MOVIE_SUCCESS)
+	{
+		setStatusRes(IDS_VBMEDITOR_CANNOT_EDIT);
+		return;
+	}
+
+	marksInserted(anchor + 1, count);
+	refresh();
+
+	const uint32 first = anchor + 1;
+	if (m_length != NO_ROW && first < m_length)
+	{
+		selectOnlyRow(first);
+		m_list.EnsureVisible((int)first, FALSE);
+	}
+
+	CString message;
+	message.Format(winResLoadString(IDS_VBMEDITOR_PASTED), (unsigned)count, anchor);
+	if (anchor <= VBAMovieGetFrameCounter())
+	{
+		message += _T(' ');
+		message += winResLoadString(IDS_VBMEDITOR_SHIFT_WARNING);
+	}
+	setStatus(message);
+}
+
+void VbmEditor::OnCut()
+{
+	copySelection(true);
+}
+
+void VbmEditor::OnCopy()
+{
+	copySelection(false);
+}
+
+void VbmEditor::OnPaste()
+{
+	paste();
 }
 
 /////////////////////////////////////////////////////////////////////////////
 // marks
 
-void VbmEditor::toggleMark(uint32 row)
+void VbmEditor::marksInserted(uint32 at, uint32 count)
 {
-	CString text;
+	// Every mark at or below the insertion point keeps its frame; everything
+	// from there on moved down by count.
+	std::set<uint32> moved;
+	for (std::set<uint32>::const_iterator it = m_marks.begin(); it != m_marks.end(); ++it)
+		moved.insert(*it >= at ? *it + count : *it);
 
-	if (m_marks.erase(row))
+	m_marks.swap(moved);
+}
+
+void VbmEditor::marksDeleted(const std::vector<uint32> &rows)
+{
+	// rows is ascending and unique, so one walk over both sets is enough: the
+	// number of deleted rows below a mark is exactly how far that mark moved.
+	std::set<uint32> moved;
+	size_t			 removed = 0;
+
+	for (std::set<uint32>::const_iterator it = m_marks.begin(); it != m_marks.end(); ++it)
 	{
-		text.Format(winResLoadString(IDS_VBMEDITOR_UNMARKED), row);
+		while (removed < rows.size() && rows[removed] < *it)
+			++removed;
+
+		if (removed < rows.size() && rows[removed] == *it)
+			continue;	// the marked frame itself is gone
+
+		moved.insert(*it - (uint32)removed);
+	}
+
+	m_marks.swap(moved);
+}
+
+void VbmEditor::toggleMarkSelection()
+{
+	std::vector<uint32> rows = selectedRows();
+	if (rows.empty())
+	{
+		// A click on a cell focuses the row without necessarily selecting it,
+		// and the keyboard can act on that row; fall back to it so M still
+		// works on the row the user is looking at.
+		const int focus = focusedRow();
+		if (focus < 0)
+		{
+			setStatusRes(IDS_VBMEDITOR_NEED_SELECTION);
+			return;
+		}
+		rows.push_back((uint32)focus);
+	}
+
+	// One entry, two meanings: a selection that is already marked as a whole is
+	// what the user wants to clear.  Anything else marks all of it, so a mixed
+	// selection converges on "all marked" instead of flipping row by row.
+	bool allMarked = true;
+	for (size_t i = 0; i < rows.size() && allMarked; ++i)
+	{
+		if (m_marks.find(rows[i]) == m_marks.end())
+			allMarked = false;
+	}
+
+	for (size_t i = 0; i < rows.size(); ++i)
+	{
+		if (allMarked)
+			m_marks.erase(rows[i]);
+		else
+			m_marks.insert(rows[i]);
+	}
+
+	// The rows are ascending and all of them changed, so one band repaint does
+	// the whole action - RedrawItems per row would be one message per frame of
+	// a large selection.
+	m_list.RedrawItems((int)rows.front(), (int)rows.back());
+	updateControls();
+
+	CString text;
+	if (rows.size() == 1)
+	{
+		text.Format(winResLoadString(allMarked ? IDS_VBMEDITOR_UNMARKED : IDS_VBMEDITOR_MARKED),
+		            rows.front());
 	}
 	else
 	{
-		m_marks.insert(row);
-		text.Format(winResLoadString(IDS_VBMEDITOR_MARKED), row);
+		text.Format(winResLoadString(allMarked ? IDS_VBMEDITOR_UNMARKED_MANY
+		                                       : IDS_VBMEDITOR_MARKED_MANY),
+		            (unsigned)rows.size());
 	}
-
-	repaintRow(row);
-	updateControls();
 	setStatus(text);
 }
 
@@ -1265,9 +2004,6 @@ void VbmEditor::gotoMark(uint32 row)
 		return;
 
 	revealRow(row, true);
-
-	m_selectionRow = (int)row;
-	syncFrameBox();
 
 	CString text;
 	text.Format(winResLoadString(IDS_VBMEDITOR_MARKED), row);
@@ -1282,8 +2018,10 @@ void VbmEditor::gotoNeighbourMark(int direction)
 		return;
 	}
 
-	const int	 selected = selectedRow();
-	const uint32 start	  = (selected >= 0) ? (uint32)selected : playheadRow();
+	// "next" means next after the row the user is looking at, which is the
+	// focused one - not the first row of a multi-selection.
+	const int	 focused = focusedRow();
+	const uint32 start	 = (focused >= 0) ? (uint32)focused : playheadRow();
 
 	uint32 found = NO_ROW;
 	if (start == NO_ROW)
@@ -1325,25 +2063,35 @@ void VbmEditor::OnNextMark()
 void VbmEditor::OnListKeyDown(NMHDR *header, LRESULT *result)
 {
 	NMLVKEYDOWN *key = (NMLVKEYDOWN *)header;
-	const int	 row = selectedRow();
 
-	if (row >= 0)
+	switch (key->wVKey)
 	{
-		switch (key->wVKey)
-		{
-		case VK_DELETE:
-			deleteRow((uint32)row);
-			break;
-		case VK_INSERT:
-			insertRow((uint32)row);
-			break;
-		case 'M':
-			toggleMark((uint32)row);
-			break;
-		case VK_F2:
-			gotoNeighbourMark(GetKeyState(VK_SHIFT) < 0 ? -1 : +1);
-			break;
-		}
+	case VK_DELETE:
+	{
+		const std::vector<uint32> rows = selectedRows();
+		if (!rows.empty())
+			deleteRows(rows);
+		break;
+	}
+
+	case VK_INSERT:
+	{
+		// Insert before the focused row.  With several rows selected there is
+		// no single "before", so the key does nothing but say so.
+		const std::vector<uint32> rows = selectedRows();
+		if (rows.size() != 1)
+			setStatusRes(IDS_VBMEDITOR_NEED_ONE_ROW);
+		else
+			insertRow(rows.front());
+		break;
+	}
+
+	case VK_F2:
+		gotoNeighbourMark(GetKeyState(VK_SHIFT) < 0 ? -1 : +1);
+		break;
+
+	default:
+		break;
 	}
 
 	*result = 0;
@@ -1361,30 +2109,82 @@ void VbmEditor::OnListRightClick(NMHDR *header, LRESULT *result)
 	hit.pt = info->ptAction;
 
 	const int row = m_list.SubItemHitTest(&hit);
-	if (row >= 0)
+	if (row < 0)
 	{
-		m_list.SetItemState(row, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
-		showContextMenu(CPoint(info->ptAction), (uint32)row);
+		*result = 0;
+		return;
 	}
+
+	// Inside the selection the multi-selection survives (the menu acts on all
+	// of it) and only the focus moves; outside it, the selection collapses to
+	// the row under the cursor.
+	if (m_list.GetItemState(row, LVIS_SELECTED) & LVIS_SELECTED)
+	{
+		m_list.SetItemState(row, LVIS_FOCUSED, LVIS_FOCUSED);
+		if (row != m_focusRow)
+		{
+			m_focusRow = row;
+			syncFrameBox();
+		}
+	}
+	else
+	{
+		selectOnlyRow((uint32)row);
+	}
+
+	showContextMenu(CPoint(info->ptAction), (uint32)row);
 
 	*result = 0;
 }
 
 void VbmEditor::showContextMenu(CPoint point, uint32 row)
 {
-	const bool marked		  = m_marks.find(row) != m_marks.end();
-	const bool canRestructure = editable() && !VBAMovieIsRecording() && m_state != MOVIE_STATE_END;
+	const bool				 restructurable = canRestructure();
+	const std::vector<uint32> selection	 = selectedRows();
+	// Inserting a row needs one unambiguous place to put it; deleting works on
+	// the whole selection.
+	const bool single = (selection.size() == 1);
+	const bool any	  = !selection.empty();
+
+	// The mark entry has two faces: it offers to clear the marks when every
+	// selected row already has one, and to mark them otherwise.  A mixed
+	// selection therefore offers "mark", which is also what the command does.
+	// With nothing selected the entry is about the right-clicked row.
+	bool allMarked = any;
+	for (size_t i = 0; i < selection.size() && allMarked; ++i)
+	{
+		if (m_marks.find(selection[i]) == m_marks.end())
+			allMarked = false;
+	}
+	if (!any)
+		allMarked = m_marks.find(row) != m_marks.end();
+
+	// Paste is only offered when it would actually work, which needs the
+	// clipboard to be read and parsed - once per change, see refreshClipboard().
+	refreshClipboard();
+	const bool canPaste = restructurable && single && m_clipResult == vbmcsv::Result::Ok
+	                   && m_length != NO_ROW && m_length != 0
+	                   && m_clipButtons.size() <= size_t(MOVIE_MAX_FRAMES - m_length);
 
 	CMenu menu;
 	menu.CreatePopupMenu();
 
 	menu.AppendMenu(MF_STRING, CMD_MARK,
-	                winResLoadString(marked ? IDS_VBMEDITOR_UNMARK : IDS_VBMEDITOR_MARK));
+	                winResLoadString(allMarked ? IDS_VBMEDITOR_UNMARK : IDS_VBMEDITOR_MARK));
 	menu.AppendMenu(MF_SEPARATOR);
-	menu.AppendMenu(MF_STRING | (canRestructure ? 0 : MF_GRAYED), CMD_INSERT,
+	menu.AppendMenu(MF_STRING | (restructurable && single ? 0 : MF_GRAYED), CMD_INSERT,
 	                winResLoadString(IDS_VBMEDITOR_INSERT_ROW));
-	menu.AppendMenu(MF_STRING | (canRestructure ? 0 : MF_GRAYED), CMD_DELETE,
+	menu.AppendMenu(MF_STRING | (restructurable && single ? 0 : MF_GRAYED), CMD_INSERT_AFTER,
+	                winResLoadString(IDS_VBMEDITOR_INSERT_ROW_AFTER));
+	menu.AppendMenu(MF_STRING | (restructurable && any ? 0 : MF_GRAYED), CMD_DELETE,
 	                winResLoadString(IDS_VBMEDITOR_DELETE_ROW));
+	menu.AppendMenu(MF_SEPARATOR);
+	menu.AppendMenu(MF_STRING | (restructurable && any ? 0 : MF_GRAYED), CMD_CUT,
+	                winResLoadString(IDS_VBMEDITOR_CUT_MENU));
+	menu.AppendMenu(MF_STRING | (any ? 0 : MF_GRAYED), CMD_COPY,
+	                winResLoadString(IDS_VBMEDITOR_COPY_MENU));
+	menu.AppendMenu(MF_STRING | (canPaste ? 0 : MF_GRAYED), CMD_PASTE,
+	                winResLoadString(IDS_VBMEDITOR_PASTE_MENU));
 	menu.AppendMenu(MF_SEPARATOR);
 	menu.AppendMenu(MF_STRING, CMD_PREV, winResLoadString(IDS_VBMEDITOR_GOTO_PREV));
 	menu.AppendMenu(MF_STRING, CMD_NEXT, winResLoadString(IDS_VBMEDITOR_GOTO_NEXT));
@@ -1399,13 +2199,25 @@ void VbmEditor::showContextMenu(CPoint point, uint32 row)
 	switch (command)
 	{
 	case CMD_MARK:
-		toggleMark(row);
+		toggleMarkSelection();
 		break;
 	case CMD_INSERT:
 		insertRow(row);
 		break;
+	case CMD_INSERT_AFTER:
+		insertRow(row + 1);	// past the last row this appends, as it should
+		break;
 	case CMD_DELETE:
-		deleteRow(row);
+		deleteRows(selection);
+		break;
+	case CMD_CUT:
+		copySelection(true);
+		break;
+	case CMD_COPY:
+		copySelection(false);
+		break;
+	case CMD_PASTE:
+		paste();
 		break;
 	case CMD_PREV:
 		gotoNeighbourMark(-1);

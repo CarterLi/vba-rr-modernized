@@ -4,6 +4,7 @@
 #pragma once
 
 #include "../resource.h"
+#include "VbmFrameCsv.h"
 
 #include <set>
 #include <vector>
@@ -20,6 +21,11 @@
 // The list is a virtual list (LVS_OWNERDATA): only the rows on screen ever ask
 // for their text, so a two-hour movie costs exactly as much as a two-second
 // one and nothing here grows with the frame count.
+//
+// It is also multi-select, but the selection is only a *target set* for the row
+// commands (delete, cut/copy, mark): a plain click on a cell still flips one
+// key of one frame, and Ctrl/Shift are treated as selection gestures, never as
+// a bulk edit.  The frame box always shows the focused row.
 //
 // The transport buttons at the top are not a second player: they forward the
 // File menu's own Pause and Frame Advance commands to the main window, so the
@@ -46,7 +52,8 @@ protected:
 
 	afx_msg void OnDestroy();
 	afx_msg void OnTimer(UINT_PTR event);
-	afx_msg LRESULT OnDpiChanged(WPARAM wParam, LPARAM lParam);
+	afx_msg void OnSize(UINT type, int cx, int cy);
+	afx_msg void OnGetMinMaxInfo(MINMAXINFO *info);
 	afx_msg void OnReadOnlyClicked();
 	afx_msg void OnFollowClicked();
 	afx_msg void OnPrevMark();
@@ -62,6 +69,9 @@ protected:
 	afx_msg void OnListClick(NMHDR *header, LRESULT *result);
 	afx_msg void OnListRightClick(NMHDR *header, LRESULT *result);
 	afx_msg void OnListKeyDown(NMHDR *header, LRESULT *result);
+	afx_msg void OnCut();
+	afx_msg void OnCopy();
+	afx_msg void OnPaste();
 
 	DECLARE_MESSAGE_MAP()
 
@@ -82,9 +92,42 @@ private:
 	void updateControls();
 	void updateTitle();
 
+	// The window is resizable: the grid takes every pixel that is added or
+	// removed, the hint and status lines are glued to the bottom edge, and the
+	// right-hand half of the top row follows the right edge.  The snapshot is
+	// read back from the live controls, so a DPI change only has to take a new
+	// one instead of scaling numbers that are already in pixels.
+	struct Layout
+	{
+		CSize client;
+		CRect list;
+		CRect hint;
+		CRect status;
+		CRect gotoLabel;
+		CRect frameBox;
+		CRect prevMark;
+		CRect nextMark;
+	};
+
+	void  captureLayout();
+	void  layoutChildren(int cx, int cy);
+	void  updateHeightFloor();		// shortest window that still shows the column header
+	int   listHeaderHeight() const;
+	CRect controlRect(int id) const;
+	void  moveControl(int id, const CRect &rect);
+
 	bool   editable() const;		// may the grid change the movie right now?
+	bool   canRestructure() const;	// may rows be inserted or deleted right now?
+	void   denyRestructure();		// say on the status line why they may not
 	uint32 playheadRow() const;		// row the arrow belongs on, or NO_ROW
-	int	   selectedRow();
+
+	// Selection.  The frame box and the keyboard act on the *focused* row, so
+	// it is cached instead of asked for: GetNextItem(LVNI_FOCUSED) walks the
+	// list, and the 50 ms tick must not depend on the frame count.  Only
+	// LVN_ITEMCHANGED and the jumps in this file write it.
+	int	 focusedRow() const;
+	std::vector<uint32> selectedRows() const;	// ascending, empty when nothing is selected
+	void selectOnlyRow(uint32 row);				// drop any multi-selection first
 
 	void setStatus(const CString &text);
 	void setStatusRes(UINT id);
@@ -104,16 +147,45 @@ private:
 
 	void toggleCell(uint32 row, int column);
 	void insertRow(uint32 row);
-	void deleteRow(uint32 row);
-	void toggleMark(uint32 row);
+	bool deleteRows(const std::vector<uint32> &rows);	// false when refused
+	void toggleMarkSelection();		// mark (or unmark, when all are marked) every selected row
 	void gotoMark(uint32 row);
 	void gotoNeighbourMark(int direction);
 	void showContextMenu(CPoint point, uint32 row);
 
+	// The marks follow the timeline through an insert or a delete.
+	void marksInserted(uint32 at, uint32 count);
+	void marksDeleted(const std::vector<uint32> &rows);
+
+	// Clipboard.  The format is vbmcsv's, so a block of frames can go through
+	// Notepad and come back.  readClipboard() also has to say *why* it failed,
+	// because "cannot paste" and "that is too big to paste" are different
+	// things to tell the user.
+	enum class Clip { Ok, Unavailable, TooLarge };
+
+	bool writeClipboard(const std::wstring &text);
+	Clip readClipboard(std::wstring &text);
+	void refreshClipboard();	// read + parse, once per clipboard change
+	void copySelection(bool cut);
+	void paste();
+	void reportClipboardFailure();
+
 	enum { NO_ROW = 0xFFFFFFFFu };
 	enum { TIMER_REFRESH = 1 };
 	enum { REFRESH_MS = 50 };
-	enum { CMD_MARK = 1, CMD_INSERT, CMD_DELETE, CMD_PREV, CMD_NEXT, CMD_CLEAR };
+	enum
+	{
+		CMD_MARK = 1,
+		CMD_INSERT,
+		CMD_INSERT_AFTER,
+		CMD_DELETE,
+		CMD_CUT,
+		CMD_COPY,
+		CMD_PASTE,
+		CMD_PREV,
+		CMD_NEXT,
+		CMD_CLEAR
+	};
 
 	std::vector<Column> m_columns;
 	CListCtrl			m_list;
@@ -142,7 +214,36 @@ private:
 	// not derivable from the marks.
 	int m_uiChecks;
 	int m_uiEnable;
-	int m_selectionRow;	// row the frame box is showing, or -1
+	int m_focusRow;		// row the frame box is showing, or -1
+
+	// Resizing.  m_layout is the last geometry read back from the controls
+	// (taken when the dialog opens and after a DPI change); every WM_SIZE is
+	// applied as a delta against it.  m_minTrack is the smallest window the
+	// frame allows: the template width (the top row and the columns have
+	// nowhere to go sideways) by the height that leaves the grid its header
+	// and nothing more.  m_fixedHeight is everything in the window that is not
+	// the grid - caption, transport row, checkboxes, the two bottom lines - so
+	// the floor is that plus one header, and it is measured rather than
+	// computed from dialog units so a DPI change only needs a new snapshot.
+	// m_fittedWidth and m_fittedFont are what the columns were last measured
+	// for: a vertical drag and an unchanged font do not have to run
+	// fitColumns() again.
+	Layout m_layout;
+	UINT   m_layoutDpi;
+	CSize  m_minTrack;
+	int	   m_fixedHeight;
+	int	   m_fittedWidth;
+	HFONT  m_fittedFont;
+
+	// What the clipboard held the last time it was looked at.  Building the
+	// context menu needs to know whether Paste is possible, and the command
+	// must not parse ten megabytes a second time, so the result is kept here
+	// and keyed by the clipboard sequence number - which changes whenever any
+	// program writes to the clipboard.
+	DWORD				 m_clipSequence;
+	vbmcsv::Result		 m_clipResult;
+	int					 m_clipBadLine;
+	std::vector<uint16>	 m_clipButtons;
 
 	CString m_titleBase;	// the template caption, before the file name
 	CString m_statusText;

@@ -295,15 +295,31 @@ Auto	自动
 Changes above the playhead alter the recording, not the running game.	播放位置之前的修改只改变录像，不影响正在运行的游戏。
 No movie is open.	没有打开录像文件。
 The movie file cannot be written to, so the timeline cannot be edited.	录像文件不可写，无法编辑时间轴。
-&Mark frame	标记该帧(&M)
-&Unmark frame	取消该帧的标记(&M)
+&Mark frames	标记帧(&M)
+&Unmark frames	取消标记帧(&M)
 &Insert a row before this frame	在该帧之前插入一行(&I)
-&Delete this row	删除该行(&D)
+&Delete the selected rows	删除选中的行(&D)
 Go to &previous mark	跳到上一个标记(&P)
 Go to &next mark	跳到下一个标记(&N)
 &Clear all marks	清除所有标记(&C)
 Inserted a row at frame %u.	已在第 %u 帧插入一行。
 Deleted frame %u.	已删除第 %u 帧。
+Deleted %u frames.	已删除 %u 帧。
+Select exactly one frame for this.	请只选中一帧再执行此操作。
+Insert a row &after this frame	在该帧之后插入一行(&A)
+Cu&t	剪切(&T)
+&Copy	复制(&C)
+&Paste	粘贴(&P)
+Copied %u frames.	已复制 %u 帧。
+Cut %u frames.	已剪切 %u 帧。
+Pasted %u frames after frame %u.	已在第 %u 帧之后粘贴 %u 帧。
+Select at least one frame first.	请先选中至少一帧。
+The clipboard does not hold frame data this editor can read.	剪贴板里不是本编辑器能识别的帧数据。
+Line %d of the clipboard is not frame data this editor can read.	剪贴板第 %d 行不是本编辑器能识别的帧数据。
+The clipboard is too large to paste.	剪贴板内容过大，无法粘贴。
+The movie cannot take that many frames.	录像放不下这么多帧。
+Marked %u frames.	已标记 %u 帧。
+Unmarked %u frames.	已取消 %u 帧的标记。
 Marked frame %u.	已标记第 %u 帧。
 Unmarked frame %u.	已取消第 %u 帧的标记。
 There is no mark in that direction.	该方向上没有标记。
