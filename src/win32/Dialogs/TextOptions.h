@@ -104,6 +104,11 @@ private:
 	// the GDI character height that selects that strike; the two differ by the
 	// bitmap's internal leading.
 	int     m_gameDisplaySize;
+	// What the two margin boxes stand for.  They are the value the boxes show
+	// at open and the value applySettings() stores: reading the boxes back
+	// instead would find the zero the spin controls seed them with.
+	int     m_marginLeft;
+	int     m_marginBottom;
 	int     m_currentMode;
 	bool    m_listReady;
 };

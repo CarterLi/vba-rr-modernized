@@ -21,6 +21,8 @@ TextOptions::TextOptions(CWnd*pParent /*=NULL*/)
 	m_screenSize      = 12;
 	m_gameSize        = 8;
 	m_gameDisplaySize = 0;
+	m_marginLeft      = 0;
+	m_marginBottom    = 0;
 	m_currentMode     = 1;
 	m_listReady       = false;
 }
@@ -560,28 +562,36 @@ void TextOptions::updateSizeControl()
 	}
 }
 
+static int clampTextMargin(int value)
+{
+	if (value < TEXT_MARGIN_MIN)
+		return TEXT_MARGIN_MIN;
+	if (value > TEXT_MARGIN_MAX)
+		return TEXT_MARGIN_MAX;
+	return value;
+}
+
+// Shows the margins the dialog holds.  The boxes are filled from m_marginLeft
+// and m_marginBottom rather than read back: an up-down control sets its buddy
+// to "0" when it is created, so the box always starts out holding a zero that
+// is not the stored value.
 void TextOptions::updateMarginControls()
 {
 	const int edits[2] = { IDC_TEXT_MARGIN_LEFT, IDC_TEXT_MARGIN_BOTTOM };
 	const int spins[2] = { IDC_TEXT_MARGIN_LEFT_SPIN, IDC_TEXT_MARGIN_BOTTOM_SPIN };
+	const int values[2] = { m_marginLeft, m_marginBottom };
 
 	for (int i = 0; i < 2; i++)
 	{
-		BOOL translated = FALSE;
-		UINT value = GetDlgItemInt(edits[i], &translated, FALSE);
-		if (!translated)
-			value = (UINT)(i == 0 ? theApp.textMarginLeft : theApp.textMarginBottom);
+		const int value = clampTextMargin(values[i]);
 
-		if (value > (UINT)TEXT_MARGIN_MAX)
-			value = (UINT)TEXT_MARGIN_MAX;
-
-		SetDlgItemInt(edits[i], value, FALSE);
+		SetDlgItemInt(edits[i], (UINT)value, FALSE);
 
 		CSpinButtonCtrl *spin = (CSpinButtonCtrl *)GetDlgItem(spins[i]);
 		if (spin != NULL)
 		{
 			spin->SetRange32(TEXT_MARGIN_MIN, TEXT_MARGIN_MAX);
-			spin->SetPos32((int)value);
+			spin->SetPos32(value);
 		}
 	}
 }
@@ -664,6 +674,11 @@ BOOL TextOptions::OnInitDialog()
 		m_gameSize = 8;
 	m_gameDisplaySize = 0;
 
+	// The margins are typed into boxes, so the dialog is the only place that
+	// can lose them; it starts from what the settings hold.
+	m_marginLeft   = clampTextMargin(theApp.textMarginLeft);
+	m_marginBottom = clampTextMargin(theApp.textMarginBottom);
+
 	updateMarginControls();
 
 	collectFonts();
@@ -723,21 +738,27 @@ void TextOptions::applySettings()
 	theApp.screenTextSize = m_screenSize;
 	theApp.gameTextSize   = m_gameSize;
 
-	BOOL translated = FALSE;
-	UINT leftMargin = GetDlgItemInt(IDC_TEXT_MARGIN_LEFT, &translated, FALSE);
-	if (translated)
+	// The margins are the one setting that is read straight out of its
+	// control: it can be typed into, and the spinner changes it.  A box that
+	// cannot be read keeps what the dialog already holds instead of storing
+	// a zero.
+	const int marginIds[2] = { IDC_TEXT_MARGIN_LEFT, IDC_TEXT_MARGIN_BOTTOM };
+	int *margins[2] = { &m_marginLeft, &m_marginBottom };
+
+	for (int i = 0; i < 2; i++)
 	{
-		if (leftMargin > (UINT)TEXT_MARGIN_MAX)
-			leftMargin = (UINT)TEXT_MARGIN_MAX;
-		theApp.textMarginLeft = (int)leftMargin;
+		BOOL translated = FALSE;
+		const UINT value = GetDlgItemInt(marginIds[i], &translated, FALSE);
+		if (!translated)
+			continue;
+
+		*margins[i] = value > (UINT)TEXT_MARGIN_MAX
+			? TEXT_MARGIN_MAX
+			: (int)value;
 	}
-	UINT bottomMargin = GetDlgItemInt(IDC_TEXT_MARGIN_BOTTOM, &translated, FALSE);
-	if (translated)
-	{
-		if (bottomMargin > (UINT)TEXT_MARGIN_MAX)
-			bottomMargin = (UINT)TEXT_MARGIN_MAX;
-		theApp.textMarginBottom = (int)bottomMargin;
-	}
+
+	theApp.textMarginLeft   = m_marginLeft;
+	theApp.textMarginBottom = m_marginBottom;
 
 	// Show the clamped size if the user typed one outside the range.
 	updateSizeControl();
