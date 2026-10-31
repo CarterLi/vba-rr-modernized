@@ -3,6 +3,7 @@
 
 #include "../stdafx.h"
 #include "../../common/Text.h"
+#include "../BitmapFont.h"
 #include "../GameText.h"
 #include "../resource.h"
 #include "../VBA.h"
@@ -91,28 +92,40 @@ static int CALLBACK enumGameStrike(const LOGFONT *lf, const TEXTMETRIC *tm,
 // Asks GDI which strike a character height really selects.  A family can
 // advertise several character sets or near-duplicate heights, and two of them
 // can map to the same bitmap; the probe keeps the size list to the strikes the
-// renderer can actually reach.
-static int probeRasterHeight(HDC dc, const CString &face, int height)
+// renderer can actually reach.  Fills in what that strike renders at.
+static bool probeRasterStrike(HDC dc, const CString &face, int height,
+                              GameTextStrike *strike)
 {
 	HFONT font = CreateFontW(-height, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
 	                         DEFAULT_CHARSET, OUT_RASTER_PRECIS, CLIP_DEFAULT_PRECIS,
 	                         NONANTIALIASED_QUALITY, DEFAULT_PITCH | FF_DONTCARE,
 	                         face.GetString());
 	if (font == NULL)
-		return 0;
+		return false;
 
 	HGDIOBJ oldFont = SelectObject(dc, font);
 	TEXTMETRICW tm;
-	const int result = GetTextMetricsW(dc, &tm) ? tm.tmHeight : 0;
+	const bool ok = GetTextMetricsW(dc, &tm) != FALSE && tm.tmHeight > 0;
+
+	if (ok)
+	{
+		// A fixed pitch face reports the cell width here, which is the other
+		// number its own name carries ("Terminal 8x12").
+		strike->width      = tm.tmAveCharWidth > 0 ? tm.tmAveCharWidth : 0;
+		strike->height     = tm.tmHeight;
+		strike->charHeight = height;
+	}
+
 	SelectObject(dc, oldFont);
 	DeleteObject(font);
-	return result;
+	return ok;
 }
 
 void TextOptions::collectFonts()
 {
 	m_screenFonts.clear();
-	m_gameFontSizes.clear();
+	m_gameFontStrikes.clear();
+	m_bundledFamilies.clear();
 
 	LOGFONT lf;
 	ZeroMemory(&lf, sizeof(lf));
@@ -141,41 +154,72 @@ void TextOptions::collectFonts()
 		strikes.heights = &candidates;
 		EnumFontFamiliesEx(dc.GetSafeHdc(), &faceLf, enumGameStrike, (LPARAM)&strikes, 0);
 
-		std::map<int, int> &sizes = m_gameFontSizes[*it];
-		if (probeDC == NULL)
-		{
-			for (std::set<int>::const_iterator size = candidates.begin();
-			     size != candidates.end(); ++size)
-				sizes[*size] = *size;
-		}
-		else
-		{
-			// Two character heights can select the same bitmap.  Keep one
-			// entry per reachable strike, preferring the height that equals
-			// the strike's rendered height when the face offers it.
-			std::map<int, int> renderedToHeight;
-			for (std::set<int>::const_iterator size = candidates.begin();
-			     size != candidates.end(); ++size)
-			{
-				const int rendered = probeRasterHeight(probeDC, *it, *size);
-				if (rendered <= 0)
-					continue;
+		// Two character heights can select the same bitmap.  Keep one entry
+		// per reachable strike, preferring the height that equals the
+		// strike's rendered height when the face offers it.  The map is
+		// ordered by rendered height, which is the order the list shows.
+		std::map<int, GameTextStrike> rendered;
 
-				std::map<int, int>::iterator found = renderedToHeight.find(rendered);
-				if (found == renderedToHeight.end() || *size == rendered)
-					renderedToHeight[rendered] = *size;
+		for (std::set<int>::const_iterator size = candidates.begin();
+		     size != candidates.end(); ++size)
+		{
+			GameTextStrike strike;
+			if (probeDC == NULL)
+			{
+				strike.width      = 0;
+				strike.height     = *size;
+				strike.charHeight = *size;
+			}
+			else if (!probeRasterStrike(probeDC, *it, *size, &strike))
+			{
+				continue;
 			}
 
-			// Label each strike with the height it actually renders at, but
-			// remember the character height needed to select it.
-			sizes = renderedToHeight;
+			std::map<int, GameTextStrike>::iterator found = rendered.find(strike.height);
+			if (found == rendered.end() || strike.charHeight == strike.height)
+				rendered[strike.height] = strike;
 		}
 
+		std::vector<GameTextStrike> &sizes = m_gameFontStrikes[*it];
+		for (std::map<int, GameTextStrike>::const_iterator it2 = rendered.begin();
+		     it2 != rendered.end(); ++it2)
+			sizes.push_back(it2->second);
+
 		if (sizes.empty())
-			sizes[8] = 8;
+		{
+			GameTextStrike fallback;
+			fallback.width      = 0;
+			fallback.height     = 8;
+			fallback.charHeight = 8;
+			sizes.push_back(fallback);
+		}
 	}
 	if (probeDC != NULL)
 		DeleteDC(probeDC);
+
+	// The fonts that travel with the executable are not system faces, so GDI
+	// knows nothing about them and they are added by hand.  Each family
+	// ("gse") is one entry in the font combo and each size it was cut in
+	// ("4x6", "8x16_bold") is one entry in the size combo, which is how the
+	// names read anyway.
+	for (int i = 0; i < winBitmapFontCount(); i++)
+	{
+		CString name, family, label;
+		const TextFont *font = winBitmapFontAt(i, &name, &family, &label);
+		if (font == NULL)
+			continue;
+
+		GameTextStrike strike;
+		strike.width      = font->width;
+		strike.height     = font->height;
+		strike.charHeight = font->height;
+		strike.label      = label;
+		strike.font       = name;
+
+		if (m_gameFontStrikes.find(family) == m_gameFontStrikes.end())
+			m_bundledFamilies.push_back(family);
+		m_gameFontStrikes[family].push_back(strike);
+	}
 }
 
 int TextOptions::currentMode()
@@ -186,7 +230,7 @@ int TextOptions::currentMode()
 	return mode;
 }
 
-CString TextOptions::selectedFontName()
+CString TextOptions::selectedFamilyName()
 {
 	CComboBox *combo = (CComboBox *)GetDlgItem(IDC_TEXT_FONT);
 	if (combo == NULL)
@@ -204,14 +248,53 @@ CString TextOptions::selectedFontName()
 	return name;
 }
 
-int TextOptions::selectedSize()
+// The font combo shows a family for the bundled faces, but the renderer and
+// the settings file want the one size of it that is selected.
+CString TextOptions::selectedFontName()
 {
+	const CString family = selectedFamilyName();
+	if (m_currentMode == 2 || family.IsEmpty())
+		return family;
+
 	CComboBox *combo = (CComboBox *)GetDlgItem(IDC_TEXT_SIZE);
 	if (combo != NULL)
 	{
 		const int index = combo->GetCurSel();
-		if (index != CB_ERR)
-			return (int)combo->GetItemData(index);
+		if (index >= 0 && index < (int)m_sizeList.size() &&
+		    !m_sizeList[index].font.IsEmpty())
+			return m_sizeList[index].font;
+	}
+
+	return family;
+}
+
+CString TextOptions::familyForFont(const CString &font)
+{
+	for (std::map<CString, std::vector<GameTextStrike> >::const_iterator it =
+		     m_gameFontStrikes.begin(); it != m_gameFontStrikes.end(); ++it)
+	{
+		for (size_t i = 0; i < it->second.size(); i++)
+		{
+			if (!it->second[i].font.IsEmpty() &&
+			    it->second[i].font.Compare(font) == 0)
+				return it->first;
+		}
+	}
+
+	return font;
+}
+
+int TextOptions::selectedSize()
+{
+	// The size combo of the game modes was filled from m_sizeList, so the
+	// selection indexes straight into it.  The label is "7x11" and cannot be
+	// read back as a number.
+	CComboBox *combo = (CComboBox *)GetDlgItem(IDC_TEXT_SIZE);
+	if (combo != NULL)
+	{
+		const int index = combo->GetCurSel();
+		if (index >= 0 && index < (int)m_sizeList.size())
+			return m_sizeList[index].charHeight;
 	}
 
 	CString text;
@@ -225,12 +308,8 @@ int TextOptions::selectedDisplaySize()
 	if (combo != NULL)
 	{
 		const int index = combo->GetCurSel();
-		if (index != CB_ERR)
-		{
-			CString text;
-			combo->GetLBText(index, text);
-			return _ttoi(text);
-		}
+		if (index >= 0 && index < (int)m_sizeList.size())
+			return m_sizeList[index].height;
 	}
 
 	CString text;
@@ -267,21 +346,36 @@ void TextOptions::rebuildFontList()
 		return;
 	}
 
-	// The built-in 8x8 font is always the first entry.  The stored value is
-	// the stable GAME_TEXT_FONT_BUILTIN string, whatever the label says.
-	CString builtinLabel = winResLoadString(IDS_TEXT_FONT_BUILTIN);
-	if (builtinLabel.IsEmpty())
-		builtinLabel = GAME_TEXT_FONT_BUILTIN;
-	combo->AddString(builtinLabel);
+	// The built-in face is listed first, under the same name the settings
+	// file uses.  It stands next to the bundled families ("gse", "mcs",
+	// "verdana"), and those are not translated either.
+	combo->AddString(GAME_TEXT_FONT_BUILTIN);
 
-	for (std::map<CString, std::map<int, int> >::const_iterator it = m_gameFontSizes.begin();
-	     it != m_gameFontSizes.end(); ++it)
-		combo->AddString(it->first);
+	// Then the bundled faces.  They are always there, unlike the system
+	// faces, and a user looking for one of them should not have to hunt for
+	// it in the middle of what Windows happens to have installed.  One entry
+	// per family; the sizes it offers are the size combo's list.
+	std::set<CString> bundled;
+	for (std::vector<CString>::const_iterator it = m_bundledFamilies.begin();
+	     it != m_bundledFamilies.end(); ++it)
+	{
+		combo->AddString(*it);
+		bundled.insert(*it);
+	}
 
+	for (std::map<CString, std::vector<GameTextStrike> >::const_iterator it = m_gameFontStrikes.begin();
+	     it != m_gameFontStrikes.end(); ++it)
+	{
+		if (bundled.find(it->first) == bundled.end())
+			combo->AddString(it->first);
+	}
+
+	// The stored value names one size of a bundled family ("gse7x11"), so it
+	// has to be looked up as its family before the combo can match it.
 	int index = 0;
 	if (m_gameFont.Compare(GAME_TEXT_FONT_BUILTIN) != 0)
 	{
-		const int found = combo->FindStringExact(-1, m_gameFont);
+		const int found = combo->FindStringExact(-1, familyForFont(m_gameFont));
 		if (found != CB_ERR)
 			index = found;
 	}
@@ -295,6 +389,7 @@ void TextOptions::rebuildSizeList()
 		return;
 
 	combo->ResetContent();
+	m_sizeList.clear();
 
 	// On Screen uses an edit box for the TrueType height, so there is no list
 	// to fill.  Only the In Game / On Game modes offer a list, because their
@@ -302,39 +397,59 @@ void TextOptions::rebuildSizeList()
 	if (m_currentMode == 2)
 		return;
 
-	// The combo shows the rendered pixel height of each strike but stores the
-	// GDI character height that selects it, so the size list stays readable.
-	std::map<int, int> sizes;
-	int reference;
-
-	const CString face = selectedFontName();
+	const CString face = selectedFamilyName();
 	if (face.Compare(GAME_TEXT_FONT_BUILTIN) == 0)
 	{
-		// The built-in font only has its native 8 pixel size.
-		sizes[8] = 8;
+		// The built-in font only has its native 8x8 size.
+		GameTextStrike builtin;
+		builtin.width      = 8;
+		builtin.height     = 8;
+		builtin.charHeight = 8;
+		builtin.label      = GAME_TEXT_FONT_BUILTIN_SIZE;
+		m_sizeList.push_back(builtin);
 	}
 	else
 	{
-		std::map<CString, std::map<int, int> >::const_iterator it = m_gameFontSizes.find(face);
-		if (it != m_gameFontSizes.end())
-			sizes = it->second;
+		std::map<CString, std::vector<GameTextStrike> >::const_iterator it =
+			m_gameFontStrikes.find(face);
+		if (it != m_gameFontStrikes.end())
+			m_sizeList = it->second;
 	}
 
-	if (sizes.empty())
-		sizes[8] = 8;
+	if (m_sizeList.empty())
+	{
+		GameTextStrike fallback;
+		fallback.width      = 0;
+		fallback.height     = 8;
+		fallback.charHeight = 8;
+		m_sizeList.push_back(fallback);
+	}
 
-	// Keep the visible size across a font switch, not the character
-	// height, so "20" stays "20" even when the new face needs a
-	// different height to select its 20 pixel strike.
-	reference = m_gameDisplaySize;
+	// A bundled face keeps the exact size that is stored, bold included: its
+	// sizes are separate fonts, not a face with strikes, so nothing but the
+	// name says which one was meant.
+	int exact = -1;
+	for (size_t i = 0; i < m_sizeList.size(); i++)
+	{
+		if (!m_sizeList[i].font.IsEmpty() &&
+		    m_sizeList[i].font.Compare(m_gameFont) == 0)
+		{
+			exact = (int)i;
+			break;
+		}
+	}
+
+	// Otherwise keep the visible size across a font switch, not the character
+	// height, so a 20 pixel face stays 20 pixels when the new face needs
+	// another height to select its 20 pixel strike.
+	int reference = m_gameDisplaySize;
 	if (reference <= 0)
 	{
-		for (std::map<int, int>::const_iterator it = sizes.begin();
-		     it != sizes.end(); ++it)
+		for (size_t i = 0; i < m_sizeList.size(); i++)
 		{
-			if (it->second == m_gameSize)
+			if (m_sizeList[i].charHeight == m_gameSize)
 			{
-				reference = it->first;
+				reference = m_sizeList[i].height;
 				break;
 			}
 		}
@@ -344,33 +459,43 @@ void TextOptions::rebuildSizeList()
 
 	int best = 0;
 	int bestDiff = -1;
-	int index = 0;
-	for (std::map<int, int>::const_iterator it = sizes.begin(); it != sizes.end(); ++it, ++index)
+	for (size_t i = 0; i < m_sizeList.size(); i++)
 	{
-		CString text;
-		text.Format(_T("%d"), it->first);
-		combo->AddString(text);
-		combo->SetItemData(index, (DWORD_PTR)it->second);
+		const GameTextStrike &strike = m_sizeList[i];
 
-		const int diff = abs(it->first - reference);
+		// A bundled font carries its own label ("4x6", "8x16_bold").  A
+		// system face is labelled with the two numbers it reports; one that
+		// does not report a width shows the height alone.
+		CString text = strike.label;
+		if (text.IsEmpty())
+		{
+			if (strike.width > 0)
+				text.Format(_T("%dx%d"), strike.width, strike.height);
+			else
+				text.Format(_T("%d"), strike.height);
+		}
+		combo->AddString(text);
+
+		if (exact >= 0)
+			continue;
+
+		const int diff = abs(strike.height - reference);
 		if (bestDiff < 0 || diff < bestDiff)
 		{
-			best = index;
+			best = (int)i;
 			bestDiff = diff;
 		}
 	}
 
+	if (exact >= 0)
+		best = exact;
+
 	combo->SetCurSel(best);
 
-	const int chosen = (int)combo->GetItemData(best);
-	if (chosen > 0)
+	if (m_sizeList[best].charHeight > 0)
 	{
-		CString chosenText;
-		combo->GetLBText(best, chosenText);
-		const int chosenDisplay = _ttoi(chosenText);
-
-		m_gameSize = chosen;
-		m_gameDisplaySize = chosenDisplay > 0 ? chosenDisplay : chosen;
+		m_gameSize = m_sizeList[best].charHeight;
+		m_gameDisplaySize = m_sizeList[best].height;
 	}
 }
 
@@ -657,7 +782,15 @@ void TextOptions::OnSelchangeFont()
 	// Game faces have a few fixed strikes; keep the current size as the
 	// reference and pick the closest strike the new face provides.  On Screen
 	// sizes are typed in, so its size does not depend on the face.
+	if (m_currentMode == 2)
+	{
+		storeCurrentSelection();
+		return;
+	}
+
+	// The size list belongs to the family, so it is rebuilt before the
+	// selection is read back: the stored name has to be resolved against the
+	// sizes of the family that is now selected.
+	rebuildSizeList();
 	storeCurrentSelection();
-	if (m_currentMode != 2)
-		rebuildSizeList();
 }

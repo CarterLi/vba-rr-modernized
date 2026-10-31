@@ -973,6 +973,7 @@ call "$(ProjectDir)defaultconfig\CopyWgpu.bat" "$(Platform)" "$(OutDir)"</Comman
     <ClCompile Include="..\src\common\System.cpp" />
     <ClCompile Include="..\src\common\SystemGlobals.cpp" />
     <ClCompile Include="..\src\common\Text.cpp" />
+    <ClCompile Include="..\src\common\TextFont.cpp" />
     <ClCompile Include="..\src\common\ziparchive.cpp" />
     <ClCompile Include="..\src\common\Util.cpp" />
     <ClCompile Include="..\src\gba\agbprint.cpp" />
@@ -1141,6 +1142,7 @@ call "$(ProjectDir)defaultconfig\CopyWgpu.bat" "$(Platform)" "$(OutDir)"</Comman
     <ClCompile Include="..\src\win32\Direct3D11.cpp" />
     <ClCompile Include="..\src\win32\Wgpu.cpp" />
     <ClCompile Include="..\src\win32\TextOverlay.cpp" />
+    <ClCompile Include="..\src\win32\BitmapFont.cpp" />
     <ClCompile Include="..\src\win32\GameText.cpp" />
     <ClCompile Include="..\src\win32\DirectDraw.cpp" />
     <ClCompile Include="..\src\win32\DirectInput.cpp" />
@@ -1189,6 +1191,7 @@ call "$(ProjectDir)defaultconfig\CopyWgpu.bat" "$(Platform)" "$(OutDir)"</Comman
     <ClInclude Include="..\src\common\CoreOptions.h" />
     <ClInclude Include="..\src\common\MovieHost.h" />
     <ClInclude Include="..\src\common\Text.h" />
+    <ClInclude Include="..\src\common\TextFont.h" />
     <ClInclude Include="..\src\common\ziparchive.h" />
     <ClInclude Include="..\src\common\Util.h" />
     <ClInclude Include="..\src\common\vbalua.h" />
@@ -1296,6 +1299,7 @@ call "$(ProjectDir)defaultconfig\CopyWgpu.bat" "$(Platform)" "$(OutDir)"</Comman
     <ClInclude Include="..\src\win32\Dialogs\VbmFrameCsv.h" />
     <ClInclude Include="..\src\win32\Display.h" />
     <ClInclude Include="..\src\win32\TextOverlay.h" />
+    <ClInclude Include="..\src\win32\BitmapFont.h" />
     <ClInclude Include="..\src\win32\GameText.h" />
     <ClInclude Include="..\src\win32\Input.h" />
     <ClInclude Include="..\src\win32\IUpdate.h" />

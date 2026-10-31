@@ -9,6 +9,7 @@
 #include "resource.h"
 #include "VBA.h"
 #include "AVIWrite.h"
+#include "BitmapFont.h"
 #include "DarkMode.h"
 #include "GameText.h"
 #include "Input.h"
@@ -102,8 +103,8 @@ int	 pauseAfterTime = -1;
 // nowhere good to put them to
 
 // True when the text has a character the built-in 8x8 font cannot draw.  That
-// font is a fixed table of 8x8 bitmaps, one per printable ASCII code, and it
-// has nothing beyond them.
+// font carries 256 glyphs, one per code of the Latin-1 range, and nothing
+// beyond them, so it cannot show the letters of a translation.
 static bool hasNonAscii(const wchar_t *text)
 {
 	if (text == NULL)
@@ -746,6 +747,12 @@ BOOL VBA::InitInstance()
 	// Also before the first dialog: this is where the system UI font is
 	// picked up and the hook that applies it to every dialog is installed.
 	uiFont::init();
+
+	// Also before the first window: the display and the in-frame text renderer
+	// draw with fonts that live in the executable's resources, and a resource that
+	// is missing is written to the trace here rather than turning into blank text
+	// when the first message arrives.
+	winBitmapFontInit();
 
 	loadSettings();
 	theApp.LuaFastForward = -1;
@@ -2491,6 +2498,17 @@ __declspec(noinline) static bool renderMethodBuilt(DISPLAY_TYPE method)
 	}
 }
 
+// The settings file keeps the game font as a family and a size under it
+// ("gse" and "7x11").  A system face has no such name for its sizes, so its
+// entry is the character height CreateFont is given, possibly still written
+// as "9x20" by hand, in which case the number after the x is the height.
+static int parseTextSize(const CString &text)
+{
+	const int x = text.Find(_T('x'));
+	const int value = _ttoi(x >= 0 ? text.Mid(x + 1) : text);
+	return value > 0 ? value : 0;
+}
+
 void VBA::loadSettings()
 {
 	CString	buffer;
@@ -2745,11 +2763,38 @@ void VBA::loadSettings()
 	textColor			 = regQueryDwordValue(_T("textColor"), 0);
 	textMethod			 = regQueryDwordValue(_T("textMethod"), 1);
 	screenTextFont		 = regQueryStringValue(_T("screenTextFont"), _T("Consolas"));
-	gameTextFont		 = regQueryStringValue(_T("gameTextFont"), GAME_TEXT_FONT_BUILTIN);
 	screenTextSize		 = regQueryDwordValue(_T("screenTextSize"), 12);
-	gameTextSize		 = regQueryDwordValue(_T("gameTextSize"), 8);
 	textMarginLeft		 = (int)regQueryDwordValue(_T("textMarginLeft"), 0);
 	textMarginBottom	 = (int)regQueryDwordValue(_T("textMarginBottom"), 0);
+
+	// The game font is stored the way the text options dialog shows it: a
+	// family and one of the sizes under it ("gse" and "7x11").  A bundled
+	// family has to be turned back into the font that draws it; a system face
+	// has only its pixel height to remember.
+	{
+		const CString family = regQueryStringValue(_T("gameTextFont"), GAME_TEXT_FONT_BUILTIN);
+		const CString size   = regQueryStringValue(_T("gameTextSize"), GAME_TEXT_FONT_BUILTIN_SIZE);
+
+		gameTextFont = GAME_TEXT_FONT_BUILTIN;
+		gameTextSize = 8;
+
+		if (!family.IsEmpty() && family.Compare(GAME_TEXT_FONT_BUILTIN) != 0)
+		{
+			CString concrete;
+			const TextFont *bundled = winBitmapFontBySize(family, size, &concrete);
+
+			if (bundled != NULL)
+			{
+				gameTextFont = concrete;
+				gameTextSize = bundled->height;
+			}
+			else
+			{
+				gameTextFont = family;
+				gameTextSize = parseTextSize(size);
+			}
+		}
+	}
 
 	// Older builds allowed signed margins; the dialog now accepts 0..9999.
 	if (textMarginLeft < TEXT_MARGIN_MIN)
@@ -3067,9 +3112,29 @@ void VBA::saveSettings()
 	regSetDwordValue(_T("textColor"), textColor);
 	regSetDwordValue(_T("textMethod"), textMethod);
 	regSetStringValue(_T("screenTextFont"), screenTextFont);
-	regSetStringValue(_T("gameTextFont"), gameTextFont);
 	regSetDwordValue(_T("screenTextSize"), screenTextSize);
-	regSetDwordValue(_T("gameTextSize"), gameTextSize);
+
+	// The game font goes out as the family and the size the dialog shows, not
+	// as the one name the renderer knows, so that "gse" and "7x11" are what a
+	// person finds in the settings file.  A system face has no sizes to name,
+	// so its character height is written on its own.
+	{
+		CString family, size;
+
+		if (gameTextFontIsBuiltin())
+		{
+			family = GAME_TEXT_FONT_BUILTIN;
+			size   = GAME_TEXT_FONT_BUILTIN_SIZE;
+		}
+		else if (!winBitmapFontSplit(gameTextFont, &family, &size))
+		{
+			family = gameTextFont;
+			size.Format(_T("%d"), gameTextSize);
+		}
+
+		regSetStringValue(_T("gameTextFont"), family);
+		regSetStringValue(_T("gameTextSize"), size);
+	}
 	regSetDwordValue(_T("textMarginLeft"), (DWORD)textMarginLeft);
 	regSetDwordValue(_T("textMarginBottom"), (DWORD)textMarginBottom);
 	regSetDwordValue(_T("frameCounter"), frameCounter);

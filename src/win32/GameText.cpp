@@ -1,6 +1,7 @@
 #include "stdafx.h"
 
 #include "VBA.h"
+#include "BitmapFont.h"
 #include "GameText.h"
 
 #include "../common/Text.h"
@@ -32,7 +33,7 @@ class GlyphCache
 {
 public:
 	GlyphCache()
-		: dc(NULL), font(NULL), oldFont(NULL), fontHeight(0),
+		: dc(NULL), font(NULL), oldFont(NULL), bitmapFont(NULL), fontHeight(0),
 		  outlineWidth(0), textHeight(0), outlineEnabled(false), configured(false)
 	{}
 
@@ -57,6 +58,7 @@ public:
 		}
 
 		oldFont = NULL;
+		bitmapFont = NULL;
 		face.Empty();
 		glyphs.clear();
 		fontHeight = 0;
@@ -116,6 +118,34 @@ public:
 		return textHeight + 2 * outlineWidth + 1;
 	}
 
+	// How far a glyph sits from the pen position on both sides: the one
+	// pixel that keeps the outline of one character off the next, plus the
+	// outline itself.
+	int margin() const
+	{
+		return 1 + outlineWidth;
+	}
+
+	// The bundled bitmap fonts carry their glyphs in the executable, so there
+	// is nothing to rasterise: the cache only has to know which face it is
+	// and how the outline is to be drawn.  These fonts come in one fixed
+	// height, so the cache is configured once per font.
+	bool configureBitmap(const TextFont &font, int outline, bool outlined)
+	{
+		if (configured && bitmapFont == &font &&
+		    outlineWidth == outline && outlineEnabled == outlined)
+			return true;
+
+		reset();
+
+		bitmapFont = &font;
+		outlineWidth = outline;
+		outlineEnabled = outlined;
+		textHeight = font.height;
+		configured = true;
+		return true;
+	}
+
 	const Glyph *get(wchar_t ch)
 	{
 		std::map<wchar_t, Glyph>::iterator it = glyphs.find(ch);
@@ -143,6 +173,9 @@ public:
 private:
 	bool renderGlyph(wchar_t ch, Glyph &glyph)
 	{
+		if (bitmapFont != NULL)
+			return renderBitmapGlyph(ch, glyph);
+
 		SIZE extent;
 		if (!GetTextExtentPoint32W(dc, &ch, 1, &extent))
 			return false;
@@ -223,36 +256,79 @@ private:
 		DeleteDC(glyphDC);
 		DeleteObject(bitmap);
 
-		if (outlineEnabled)
-		{
-			for (int y = 0; y < chHeight; y++)
-			{
-				for (int x = 0; x < cw; x++)
-				{
-					if (glyph.pixels[(size_t)y * cw + x] != 1)
-						continue;
+		growOutline(glyph);
+		return true;
+	}
 
-					for (int oy = -outlineWidth; oy <= outlineWidth; oy++)
+	// The same mask, built from a bundled font: the glyph bits are already
+	// cut for the pixel grid, so they are copied as they are, and only the
+	// margin and outline are added.  Everything downstream blits one mask
+	// whatever its source was.
+	bool renderBitmapGlyph(wchar_t ch, Glyph &glyph)
+	{
+		const unsigned char *bits = NULL;
+		int width = 0, rows = 0, advance = 0;
+		if (!textFontGlyph(*bitmapFont, (unsigned)ch, &bits, &width, &rows, &advance))
+			return false;
+
+		const int margin = 1 + outlineWidth;
+		const int cw = width + 2 * margin;
+		const int chHeight = rows + 2 * margin;
+
+		glyph.width   = cw;
+		glyph.height  = chHeight;
+		glyph.advance = advance;
+		glyph.pixels.assign((size_t)cw * chHeight, 0);
+
+		const int stride = (width + 7) / 8;
+		for (int y = 0; y < rows; y++)
+		{
+			const unsigned char *row = bits + (size_t)y * stride;
+			for (int x = 0; x < width; x++)
+			{
+				if (row[x >> 3] & (0x80 >> (x & 7)))
+					glyph.pixels[(size_t)(y + margin) * cw + (x + margin)] = 1;
+			}
+		}
+
+		growOutline(glyph);
+		return true;
+	}
+
+	void growOutline(Glyph &glyph)
+	{
+		if (!outlineEnabled)
+			return;
+
+		const int cw = glyph.width;
+		const int chHeight = glyph.height;
+
+		for (int y = 0; y < chHeight; y++)
+		{
+			for (int x = 0; x < cw; x++)
+			{
+				if (glyph.pixels[(size_t)y * cw + x] != 1)
+					continue;
+
+				for (int oy = -outlineWidth; oy <= outlineWidth; oy++)
+				{
+					for (int ox = -outlineWidth; ox <= outlineWidth; ox++)
 					{
-						for (int ox = -outlineWidth; ox <= outlineWidth; ox++)
-						{
-							const int nx = x + ox;
-							const int ny = y + oy;
-							if (nx >= 0 && nx < cw && ny >= 0 && ny < chHeight &&
-							    glyph.pixels[(size_t)ny * cw + nx] == 0)
-								glyph.pixels[(size_t)ny * cw + nx] = 2;
-						}
+						const int nx = x + ox;
+						const int ny = y + oy;
+						if (nx >= 0 && nx < cw && ny >= 0 && ny < chHeight &&
+						    glyph.pixels[(size_t)ny * cw + nx] == 0)
+							glyph.pixels[(size_t)ny * cw + nx] = 2;
 					}
 				}
 			}
 		}
-
-		return true;
 	}
 
 	HDC dc;
 	HFONT font;
 	HGDIOBJ oldFont;
+	const TextFont *bitmapFont;
 	CString face;
 	std::map<wchar_t, Glyph> glyphs;
 	int fontHeight;
@@ -293,6 +369,15 @@ bool configureGlyphs(int pixelHeight)
 	CString face = theApp.gameTextFont;
 	if (face.IsEmpty())
 		return false;
+
+	// A font that travels with the executable has one fixed height, so the
+	// requested size only decides how thick the outline is: the glyphs are
+	// drawn at the size they were cut for, which is also the size the options
+	// dialog offers for it.
+	const TextFont *font = winBitmapFont(face);
+	if (font != NULL)
+		return gameGlyphs().configureBitmap(*font, scaledOutline(font->height),
+		                                    outlinedText);
 
 	pixelHeight = clampTextHeight(pixelHeight);
 	return gameGlyphs().configure(face, pixelHeight,
@@ -404,10 +489,12 @@ void drawGameText(u8 *dest, int pitch, int x, int y, int maxY,
 	if (!configureGlyphs(pixelHeight))
 		return;
 
-	pixelHeight = clampTextHeight(pixelHeight);
-
 	GlyphCache &cache = gameGlyphs();
-	const int margin = 1 + scaledOutline(pixelHeight);
+
+	// The margin comes from the cache, not from pixelHeight: a bundled font
+	// keeps the outline its own height asks for, whatever size was stored
+	// with it, and the glyph was built with that same margin.
+	const int margin = cache.margin();
 	const char *colors = (colorList != NULL && *colorList != 0) ? colorList : NULL;
 
 	int loCol, hiCol, outCol;

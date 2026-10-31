@@ -217,7 +217,6 @@
 #define IDS_TEXT_PREFILTER_TIP          212
 #define IDS_TEXT_POSTFILTER_TIP         213
 #define IDS_TEXT_POSTRENDER_TIP         214
-#define IDS_TEXT_FONT_BUILTIN           215
 #define IDS_TEXT_GAME_FONT_TIP          216
 #define IDS_TEXT_SCREEN_FONT_TIP        217
 #define IDS_TEXT_SIZE_TIP               218

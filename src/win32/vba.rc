@@ -214,9 +214,52 @@ LANCZOS3_GLSL             RCDATA                  "upscalers\\libretro\\lanczos3
 BICUBIC_GLSL              RCDATA                  "upscalers\\libretro\\bicubic.glsl"
 #endif // VBA_ENABLE_OPENGL
 
-
-
-/////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// Bitmap fonts
+//
+// The 8x8 face the on screen display draws with, and the embedded raster
+// fonts of AGG 2.5 that DeSmuME offers for its HUD.  They all use one
+// container, described in src/common/TextFont.h, and their bytes are in
+// resources/font, with where they came from in resources/font/README.txt.
+//
+// The 8x8 face is first: it is what the display falls back to.
+FONT_8X8                    RCDATA                "resources\\font\\font8x8.bin"
+FONT_GSE4X6                 RCDATA                "resources\\font\\gse4x6.bin"
+FONT_GSE4X8                 RCDATA                "resources\\font\\gse4x8.bin"
+FONT_GSE5X7                 RCDATA                "resources\\font\\gse5x7.bin"
+FONT_GSE5X9                 RCDATA                "resources\\font\\gse5x9.bin"
+FONT_GSE6X9                 RCDATA                "resources\\font\\gse6x9.bin"
+FONT_GSE6X12                RCDATA                "resources\\font\\gse6x12.bin"
+FONT_GSE7X11                RCDATA                "resources\\font\\gse7x11.bin"
+FONT_GSE7X11_BOLD           RCDATA                "resources\\font\\gse7x11_bold.bin"
+FONT_GSE7X15                RCDATA                "resources\\font\\gse7x15.bin"
+FONT_GSE7X15_BOLD           RCDATA                "resources\\font\\gse7x15_bold.bin"
+FONT_GSE8X16                RCDATA                "resources\\font\\gse8x16.bin"
+FONT_GSE8X16_BOLD           RCDATA                "resources\\font\\gse8x16_bold.bin"
+FONT_MCS11_PROP             RCDATA                "resources\\font\\mcs11_prop.bin"
+FONT_MCS11_PROP_CONDENSED   RCDATA                "resources\\font\\mcs11_prop_condensed.bin"
+FONT_MCS12_PROP             RCDATA                "resources\\font\\mcs12_prop.bin"
+FONT_MCS13_PROP             RCDATA                "resources\\font\\mcs13_prop.bin"
+FONT_MCS5X10_MONO           RCDATA                "resources\\font\\mcs5x10_mono.bin"
+FONT_MCS5X11_MONO           RCDATA                "resources\\font\\mcs5x11_mono.bin"
+FONT_MCS6X10_MONO           RCDATA                "resources\\font\\mcs6x10_mono.bin"
+FONT_MCS6X11_MONO           RCDATA                "resources\\font\\mcs6x11_mono.bin"
+FONT_MCS7X12_MONO_HIGH      RCDATA                "resources\\font\\mcs7x12_mono_high.bin"
+FONT_MCS7X12_MONO_LOW       RCDATA                "resources\\font\\mcs7x12_mono_low.bin"
+FONT_VERDANA12              RCDATA                "resources\\font\\verdana12.bin"
+FONT_VERDANA12_BOLD         RCDATA                "resources\\font\\verdana12_bold.bin"
+FONT_VERDANA13              RCDATA                "resources\\font\\verdana13.bin"
+FONT_VERDANA13_BOLD         RCDATA                "resources\\font\\verdana13_bold.bin"
+FONT_VERDANA14              RCDATA                "resources\\font\\verdana14.bin"
+FONT_VERDANA14_BOLD         RCDATA                "resources\\font\\verdana14_bold.bin"
+FONT_VERDANA16              RCDATA                "resources\\font\\verdana16.bin"
+FONT_VERDANA16_BOLD         RCDATA                "resources\\font\\verdana16_bold.bin"
+FONT_VERDANA17              RCDATA                "resources\\font\\verdana17.bin"
+FONT_VERDANA17_BOLD         RCDATA                "resources\\font\\verdana17_bold.bin"
+FONT_VERDANA18              RCDATA                "resources\\font\\verdana18.bin"
+FONT_VERDANA18_BOLD         RCDATA                "resources\\font\\verdana18_bold.bin"
+///////////////
 //
 // Dialog
 //
@@ -2903,7 +2946,6 @@ BEGIN
     IDS_TEXT_PREFILTER_TIP  "Drawn into the emulated frame before video filters.\nFilters and AVI recording include this text."
     IDS_TEXT_POSTFILTER_TIP "Drawn into the emulated frame after video filters.\nStays sharp, but still scales with the window."
     IDS_TEXT_POSTRENDER_TIP "Overlaid on the final window after rendering.\nNot affected by filters and not recorded to AVI."
-    IDS_TEXT_FONT_BUILTIN   "Built-in 8x8"
     IDS_TEXT_GAME_FONT_TIP  "Font used by In Game and On Game.\nOnly bitmap fonts are listed; sizes follow the fixed pixel strikes the face provides (the built-in font has only 8)."
     IDS_TEXT_SCREEN_FONT_TIP "Font used by On Screen.\nScalable fixed-width fonts are drawn with ClearType antialiasing."
     IDS_TEXT_SIZE_TIP       "Size in pixels. TrueType sizes range from 8 to 60; bitmap fonts only offer their fixed strikes."

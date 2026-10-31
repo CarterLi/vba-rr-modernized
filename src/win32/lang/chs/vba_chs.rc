@@ -39,7 +39,7 @@ LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
 // resources and may be missing strings, controls or whole dialogs.  An
 // unchanged vba.rc keeps the value, so the version changes only when the
 // English resources do.
-#define VBA_L10N_VERSION "e35b96b49627f06af86afa815e287dea4e6a63653d84b58d54d8cb3cbfeeb9e1"
+#define VBA_L10N_VERSION "f62bef3b3e260b1d9150a97f8ac661cd54c54fa5e136ae62514cedf7cbfe39b2"
 
 // The About box shows the application icon; its dialog template lives here,
 // so the icon has to be here too or the control comes up empty.
@@ -2249,7 +2249,6 @@ BEGIN
     IDS_TEXT_PREFILTER_TIP  "绘制到模拟画面中，位于视频滤镜之前。\n文字会被滤镜处理，并写入 AVI 录制。"
     IDS_TEXT_POSTFILTER_TIP "绘制到模拟画面中，位于视频滤镜之后。\n不受滤镜影响，但仍跟随窗口缩放。"
     IDS_TEXT_POSTRENDER_TIP "渲染完成后叠加在最终窗口上。\n不受滤镜影响，也不会写入 AVI 录制。"
-    IDS_TEXT_FONT_BUILTIN   "内置 8x8"
     IDS_TEXT_GAME_FONT_TIP  "游戏内和游戏上模式使用的字体。\n只列出位图字体，字号跟随该字体提供的固定像素字号（内置字体只有 8）。"
     IDS_TEXT_SCREEN_FONT_TIP "屏幕上模式使用的字体。\n可缩放等宽字体使用 ClearType 抗锯齿绘制。"
     IDS_TEXT_SIZE_TIP       "字号（像素）。TrueType 字号范围为 8 到 60；位图字体只提供固定的几个字号。"

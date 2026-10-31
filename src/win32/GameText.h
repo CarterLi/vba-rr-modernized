@@ -13,10 +13,13 @@
 
 #pragma once
 
-// The built-in font is always the first item of the game font list.  The
-// string is a stable registry value, not the label the combo shows, so
-// translating the dialog must not change what a stored setting means.
-#define GAME_TEXT_FONT_BUILTIN _T("Built-in 8x8")
+// The name of the built-in 8x8 face.  It is stored in the settings file as a
+// font name, next to the bundled families ("gse"), so it is not a label a
+// translation may change.
+#define GAME_TEXT_FONT_BUILTIN      _T("Built-in")
+
+// The built-in face has this one size, and the size combo labels it so.
+#define GAME_TEXT_FONT_BUILTIN_SIZE _T("8x8")
 
 // True when the In Game / On Game modes keep the built-in 8x8 bitmap font.
 bool gameTextFontIsBuiltin();

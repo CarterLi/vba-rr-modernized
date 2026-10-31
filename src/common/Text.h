@@ -18,4 +18,11 @@ extern void drawTextGetColors(int colorNum, int &lo, int &hi, int &out);
 extern bool outlinedText, transparentText;
 extern int  textColor, textMethod;
 
+// Installs the built-in 8x8 font.  The glyphs live in the executable's
+// resources (vba.rc, RCDATA FONT_8X8) rather than in this library, so the
+// win32 side hands them over before the first frame is drawn; the bytes are
+// in the container described in TextFont.h.  Returns false when they are not
+// a font this renderer can draw.
+extern bool textSetBuiltinFont(const void *data, int bytes);
+
 #endif // VBA_TEXT_H

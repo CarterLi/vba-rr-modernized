@@ -133,7 +133,6 @@ When deleting a cheat, write its original value back to memory to undo the cheat
 Drawn into the emulated frame before video filters.\nFilters and AVI recording include this text.	绘制到模拟画面中，位于视频滤镜之前。\n文字会被滤镜处理，并写入 AVI 录制。
 Drawn into the emulated frame after video filters.\nStays sharp, but still scales with the window.	绘制到模拟画面中，位于视频滤镜之后。\n不受滤镜影响，但仍跟随窗口缩放。
 Overlaid on the final window after rendering.\nNot affected by filters and not recorded to AVI.	渲染完成后叠加在最终窗口上。\n不受滤镜影响，也不会写入 AVI 录制。
-Built-in 8x8	内置 8x8
 Font used by In Game and On Game.\nOnly bitmap fonts are listed; sizes follow the fixed pixel strikes the face provides (the built-in font has only 8).	游戏内和游戏上模式使用的字体。\n只列出位图字体，字号跟随该字体提供的固定像素字号（内置字体只有 8）。
 Font used by On Screen.\nScalable fixed-width fonts are drawn with ClearType antialiasing.	屏幕上模式使用的字体。\n可缩放等宽字体使用 ClearType 抗锯齿绘制。
 Size in pixels. TrueType sizes range from 8 to 60; bitmap fonts only offer their fixed strikes.	字号（像素）。TrueType 字号范围为 8 到 60；位图字体只提供固定的几个字号。

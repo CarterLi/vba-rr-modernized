@@ -206,6 +206,10 @@ public:
 	// Head-up display fonts.  The On Screen overlay can use any installed
 	// face, while the In Game and On Game modes draw into the emulated frame
 	// and therefore use a raster font (or the built-in 8x8 bitmap font).
+	//
+	// gameTextFont holds the name the renderer knows, which for a bundled
+	// family is the one size of it ("gse7x11"); the settings file keeps the
+	// family and the size instead, see VBA::saveSettings().
 	CString	  screenTextFont;
 	CString	  gameTextFont;
 	int		  screenTextSize;   // On Screen font height in pixels
