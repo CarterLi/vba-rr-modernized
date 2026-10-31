@@ -596,6 +596,17 @@ void TextOptions::updateMarginControls()
 	}
 }
 
+// Apply has nothing to show in the In Game mode: it paints the messages into
+// the emulated frame, and this dialog holds the emulator still, so the change
+// cannot appear before the dialog closes.  The other two modes draw their text
+// while the picture is presented and do show it straight away.
+void TextOptions::updateApplyButton()
+{
+	CWnd *apply = GetDlgItem(IDC_TEXT_APPLY);
+	if (apply != NULL)
+		apply->EnableWindow(m_currentMode != 0);
+}
+
 void TextOptions::changeMode()
 {
 	storeCurrentSelection();
@@ -604,6 +615,7 @@ void TextOptions::changeMode()
 	rebuildFontList();
 	rebuildSizeList();
 	updateSizeControl();
+	updateApplyButton();
 	updateFontTip();
 }
 
@@ -685,6 +697,7 @@ BOOL TextOptions::OnInitDialog()
 	rebuildFontList();
 	rebuildSizeList();
 	updateSizeControl();
+	updateApplyButton();
 	m_listReady = true;
 	populateTooltips();
 

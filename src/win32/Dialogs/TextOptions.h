@@ -60,6 +60,7 @@ private:
 	void updateFontTip();
 	void updateSizeControl();
 	void updateMarginControls();
+	void updateApplyButton();
 	void populateTooltips();
 
 	int currentMode();
