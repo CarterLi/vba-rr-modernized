@@ -39,7 +39,7 @@ LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
 // resources and may be missing strings, controls or whole dialogs.  An
 // unchanged vba.rc keeps the value, so the version changes only when the
 // English resources do.
-#define VBA_L10N_VERSION "d99985ed8318623ef8cab141350dd1c05b9cc77f5992c2a48620aa911e065373"
+#define VBA_L10N_VERSION "c2f1e96f8a6d985484e3f83b7d8b758cabfc1e8126ef7e55f16a84ba142c19d4"
 
 // The About box shows the application icon; its dialog template lives here,
 // so the icon has to be here too or the control comes up empty.
@@ -1732,6 +1732,7 @@ BEGIN
             MENUITEM "AMD &FSR 1.0",                ID_OPTIONS_VIDEO_UPSCALER_FSR
             MENUITEM "&xBRZ（Freescale）",           ID_OPTIONS_VIDEO_UPSCALER_XBRZ
             MENUITEM SEPARATOR
+            MENUITEM "双三次(&B)",                    ID_OPTIONS_VIDEO_UPSCALER_BICUBIC
             MENUITEM "xBR &lv2",                    ID_OPTIONS_VIDEO_UPSCALER_XBR_LV2
             MENUITEM "xBR lv2 无混合(&N)",           ID_OPTIONS_VIDEO_UPSCALER_XBR_LV2_NOBLEND
             MENUITEM "xBR l&v3",                    ID_OPTIONS_VIDEO_UPSCALER_XBR_LV3

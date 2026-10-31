@@ -66,6 +66,10 @@ enum
 // single pass one in Direct3D11.cpp, or one of the two chains below it and in
 // OpenGL3.cpp for the libretro shaders, which the two backends do not run the
 // same way round.
+//
+// The value is what the settings file holds as well, so moving an entry moves
+// every entry below it: a menu reorder is also a change of meaning for the
+// choice an older build saved.
 enum
 {
 	UPSCALER_OFF,   // sampler filtering only
@@ -75,11 +79,13 @@ enum
 	// above it does not reconstruct the frame but filters it, at whatever size
 	// the emulation thread produced it, the way a CPU pixel filter would.
 	UPSCALER_XBRZ,
+	// Bicubic, the resampler of the cubic folder: four taps per axis, which
+	// rounds the edges off where Lanczos rings at them.
+	UPSCALER_BICUBIC,
 	// The libretro shaders of src/win32/upscalers/libretro, which filter the
 	// frame rather than reconstruct it, in the order of the folders they come
-	// from: the xbr folder, then scalefx, then the handheld one.  Lanczos, the
-	// resampler of the windowed folder, is last because the values above it
-	// are what the settings file of an older build holds.
+	// from: the xbr folder, then scalefx, then the handheld one, with Lanczos
+	// and its windowed resampling last.
 	UPSCALER_XBR_LV2,
 	UPSCALER_XBR_LV2_NOBLEND,
 	UPSCALER_XBR_LV3,

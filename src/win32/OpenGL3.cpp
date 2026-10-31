@@ -837,8 +837,15 @@ static const LibretroPass g_lanczos3Passes[] =
 	{ "LANCZOS3_GLSL", 0, false },
 };
 
+// Bicubic, from the cubic folder: four taps per axis, also at texel centres.
+static const LibretroPass g_bicubicPasses[] =
+{
+	{ "BICUBIC_GLSL", 0, false },
+};
+
 static const LibretroShader g_libretroShaders[] =
 {
+	{ UPSCALER_BICUBIC,           "Bicubic",              g_bicubicPasses,            1 },
 	{ UPSCALER_XBR_LV2,           "xBR lv2",              g_xbrLv2Passes,             1 },
 	{ UPSCALER_XBR_LV2_NOBLEND,   "xBR lv2 no-blend",     g_xbrLv2NoBlendPasses,      1 },
 	{ UPSCALER_XBR_LV3,           "xBR lv3",              g_xbrLv3Passes,             1 },

@@ -166,6 +166,14 @@ expanded, which asks for a `SourceSampler` that does not exist.
   the same texel either way.
 * The quad comes out of `@builtin(vertex_index)`; a pass binds no vertex
   buffer and reads no attribute.
+* **`pow()` of a negative base is undefined in all three languages**, and
+  bicubic hands half of its taps a negative distance: it writes the square of
+  its argument as `pow(x, 2.0)`, with `x` running from -2 to 2.  The three
+  copies here write the product it means.  A GLSL driver that folds
+  `pow(x, 2.0)` into `x * x` - which is what makes the upstream shader work at
+  all - agrees with them; one that lowers it to `exp2(2 * log2(x))` would not,
+  and that is a difference in the OpenGL backend, which compiles the upstream
+  file as it is.
 * Constants are written once, when the frame, the window or the scale cap
   changes - not per frame.
 
@@ -181,10 +189,26 @@ Two levels, both cheap once set up:
   cancel there); at 3x it is compared against the translated version, and
   against a CPU reference where one exists.
 
-The twenty-two files of the eleven chains ported so far all came out at **0/255
-in every colour channel** against the translated shaders.  Alpha is not
-compared: upstream writes `.rgb` only, and the renderer draws with blending
-off.
+The twenty-two files of the eleven chains that went through `refcheck`/
+`refcheck2`/`refcheckN` all came out at **0/255 in every colour channel**
+against the translated shaders.  Alpha is not compared: upstream writes `.rgb`
+only, and the renderer draws with blending off.  Bicubic has not been through
+those programs yet - it is a single pass of the same shape as Lanczos, which
+did - so its port rests on `fxc` taking the HLSL, on `naga` turning the WGSL
+into a SPIR-V module, and on being read against the upstream file, and nothing
+else so far.
+
+Bicubic is also the one resampler that does **not** hand the frame back at
+1:1, so for it the 1:1 line of those programs would prove nothing anyway:
+Mitchell-Netravali keeps 0.89 of the texel and 0.056 of each neighbour, and
+the frame comes out slightly soft by design.  Only the 3x comparison is worth
+running when it does go through them.
+
+Its two coefficients are 0.3333 in all three of our copies, which is what the
+shader's own no-parameter branch carries and therefore what the OpenGL backend
+compiles, since the renderer defines no parameters.  Upstream's parameter
+default is 0.33 (`#pragma parameter`), and RetroArch runs that; the difference
+is a percent of the kernel and was left alone rather than patched into the file.
 
 PT SkyWalker is the first that reads two textures, and both of them are the
 frame: upstream's second one is the raw frame, before RetroArch's palette

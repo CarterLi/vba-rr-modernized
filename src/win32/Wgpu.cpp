@@ -811,6 +811,7 @@ struct WgpuUpscalerSource
 // HLSL, and wgpu compiles neither.
 static const char *const g_xbrzResources[] = { "XBRZ_FREESCALE_WGSL" };
 static const char *const g_lanczos3Resources[] = { "LANCZOS3_WGSL" };
+static const char *const g_bicubicResources[] = { "BICUBIC_WGSL" };
 static const char *const g_xbrLv2Resources[]   = { "XBR_LV2_WGSL" };
 static const char *const g_xbrLv2NoBlendResources[] = { "XBR_LV2_NOBLEND_WGSL" };
 static const char *const g_xbrLv3Resources[]   = { "XBR_LV3_WGSL" };
@@ -839,6 +840,7 @@ static const char *const g_xbrMlv4Resources[] = { "XBR_MLV4_PASS1_WGSL", "XBR_ML
 
 static const int g_xbrzScales[] = { 0 };
 static const int g_lanczos3Scales[] = { 0 };
+static const int g_bicubicScales[] = { 0 };
 static const int g_xbrLv2Scales[]   = { 0 };
 static const int g_xbrLv2NoBlendScales[] = { 0 };
 static const int g_xbrLv3Scales[]   = { 0 };
@@ -851,6 +853,7 @@ static const int g_xbrMlv4Scales[] = { 1, 1, 2, 0 };
 
 static const int g_xbrzSeconds[] = { -1 };
 static const int g_lanczos3Seconds[] = { -1 };
+static const int g_bicubicSeconds[] = { -1 };
 static const int g_xbrLv2Seconds[]   = { -1 };
 static const int g_xbrLv2NoBlendSeconds[] = { -1 };
 static const int g_xbrLv3Seconds[]   = { -1 };
@@ -864,6 +867,7 @@ static const int g_xbrMlv4Seconds[] = { -1, 0, 0, 0 };
 static const WgpuUpscalerSource g_wgpuUpscalers[] =
 {
 	{ UPSCALER_XBRZ,              "xBRZ",              g_xbrzResources,            g_xbrzScales,           g_xbrzSeconds,           1 },
+	{ UPSCALER_BICUBIC,           "Bicubic",           g_bicubicResources,         g_bicubicScales,        g_bicubicSeconds,        1 },
 	{ UPSCALER_LANCZOS3,          "Lanczos",           g_lanczos3Resources,        g_lanczos3Scales,       g_lanczos3Seconds,       1 },
 	{ UPSCALER_XBR_LV2,           "xBR lv2",           g_xbrLv2Resources,          g_xbrLv2Scales,         g_xbrLv2Seconds,         1 },
 	{ UPSCALER_XBR_LV2_NOBLEND,   "xBR lv2 no-blend",  g_xbrLv2NoBlendResources,   g_xbrLv2NoBlendScales,  g_xbrLv2NoBlendSeconds,  1 },

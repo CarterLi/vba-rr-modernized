@@ -141,6 +141,9 @@ PT_SKYWALKER541_SHADER  RCDATA                  "upscalers\\libretro\\PT_SkyWalk
 // Lanczos, the resampler of the windowed folder
 LANCZOS3_SHADER         RCDATA                  "upscalers\\libretro\\Lanczos3.hlsl"
 
+// Bicubic, the resampler of the cubic folder
+BICUBIC_SHADER          RCDATA                  "upscalers\\libretro\\Bicubic.hlsl"
+
 // The WGSL ports of the libretro shaders.  Only the WebGPU renderer runs
 // them, so they are only in the executable when that backend is built; the
 // switch is VBA_ENABLE_WGPU in WgpuConfig.h.  They are 200 kB of shader
@@ -165,6 +168,7 @@ SCALEFX_PASS3_WGSL        RCDATA                  "upscalers\\libretro\\ScaleFxP
 SCALEFX_PASS4_WGSL        RCDATA                  "upscalers\\libretro\\ScaleFxPass4.wgsl"
 PT_SKYWALKER541_WGSL      RCDATA                  "upscalers\\libretro\\PT_SkyWalker541.wgsl"
 LANCZOS3_WGSL             RCDATA                  "upscalers\\libretro\\Lanczos3.wgsl"
+BICUBIC_WGSL              RCDATA                  "upscalers\\libretro\\Bicubic.wgsl"
 XBR_LV2_WGSL              RCDATA                  "upscalers\\libretro\\XbrLv2.wgsl"
 XBR_LV2_NOBLEND_WGSL      RCDATA                  "upscalers\\libretro\\XbrLv2NoBlend.wgsl"
 XBR_LV3_WGSL              RCDATA                  "upscalers\\libretro\\XbrLv3.wgsl"
@@ -207,6 +211,7 @@ SCALEFX_PASS3_GLSL        RCDATA                  "upscalers\\libretro\\scalefx-
 SCALEFX_PASS4_GLSL        RCDATA                  "upscalers\\libretro\\scalefx-pass4.glsl"
 PT_SKYWALKER541_GLSL      RCDATA                  "upscalers\\libretro\\PT_SkyWalker541.glsl"
 LANCZOS3_GLSL             RCDATA                  "upscalers\\libretro\\lanczos3.glsl"
+BICUBIC_GLSL              RCDATA                  "upscalers\\libretro\\bicubic.glsl"
 #endif // VBA_ENABLE_OPENGL
 
 
@@ -2268,6 +2273,7 @@ BEGIN
             MENUITEM "AMD &FSR 1.0",                ID_OPTIONS_VIDEO_UPSCALER_FSR
             MENUITEM "&xBRZ (Freescale)",           ID_OPTIONS_VIDEO_UPSCALER_XBRZ
             MENUITEM SEPARATOR
+            MENUITEM "&Bicubic",                    ID_OPTIONS_VIDEO_UPSCALER_BICUBIC
             MENUITEM "xBR &lv2",                    ID_OPTIONS_VIDEO_UPSCALER_XBR_LV2
             MENUITEM "xBR lv2 &No-Blend",           ID_OPTIONS_VIDEO_UPSCALER_XBR_LV2_NOBLEND
             MENUITEM "xBR l&v3",                    ID_OPTIONS_VIDEO_UPSCALER_XBR_LV3

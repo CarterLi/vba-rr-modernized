@@ -1646,9 +1646,17 @@ static const UpscalerPassSource g_lanczos3Passes[] =
 	{ "LANCZOS3_SHADER", "main", 0, -1 },
 };
 
+// Bicubic is the other resampler: four taps per axis at texel centres, the
+// Mitchell-Netravali kernel of the cubic folder over the whole window.
+static const UpscalerPassSource g_bicubicPasses[] =
+{
+	{ "BICUBIC_SHADER", "main", 0, -1 },
+};
+
 static const UpscalerSource g_upscalers[] =
 {
 	{ UPSCALER_XBRZ,              "xBRZ",              g_xbrzPasses,             1, "ps_4_0" },
+	{ UPSCALER_BICUBIC,           "Bicubic",           g_bicubicPasses,          1, "ps_4_0" },
 	{ UPSCALER_XBR_LV2,           "xBR lv2",           g_xbrLv2Passes,           1, "ps_4_0" },
 	{ UPSCALER_XBR_LV2_NOBLEND,   "xBR lv2 no-blend",  g_xbrLv2NoBlendPasses,    1, "ps_4_0" },
 	{ UPSCALER_XBR_LV3,           "xBR lv3",           g_xbrLv3Passes,           1, "ps_4_0" },

@@ -115,6 +115,9 @@ libretro/PT_SkyWalker541.wgsl       -> PT_SKYWALKER541_WGSL
 libretro/lanczos3.glsl              -> LANCZOS3_GLSL             windowed/shaders
 libretro/Lanczos3.hlsl              -> LANCZOS3_SHADER
 libretro/Lanczos3.wgsl              -> LANCZOS3_WGSL
+libretro/bicubic.glsl               -> BICUBIC_GLSL              cubic/shaders
+libretro/Bicubic.hlsl               -> BICUBIC_SHADER
+libretro/Bicubic.wgsl               -> BICUBIC_WGSL
 libretro/XbrLv2.wgsl                -> XBR_LV2_WGSL              xbr/shaders
 libretro/XbrLv2NoBlend.wgsl         -> XBR_LV2_NOBLEND_WGSL      xbr/shaders
 libretro/XbrLv3.wgsl                -> XBR_LV3_WGSL              xbr/shaders
@@ -131,6 +134,7 @@ The chains, in the order the presets of those directories run them:
     ScaleFX                              1x four times, then the target size
     PT SkyWalker541                      1 pass,  at the target size
     Lanczos                              1 pass,  at the target size
+    Bicubic                              1 pass,  at the target size
 
 Both renderers run all of them.  A pass that reads a second texture names it
 in the table of Direct3D11.cpp as an index of the outputs of the chain - 0 is
@@ -163,9 +167,10 @@ and the taps that upstream computes in its vertex stage computed in the pixel
 shader instead, because the renderer has one quad vertex shader for every
 upscaler.  Where a pass takes its taps with textureOffset() it needs neither.
 The xBR and ScaleFX sources are MIT, Hyllian's and Sp00kyFox's respectively, and
-each port carries the notice of the shader it came from; PT_SkyWalker541.glsl
-carries no licence statement upstream, only its credit, and lanczos3.glsl
-neither.
+each port carries the notice of the shader it came from; bicubic.glsl is GPL,
+Team XBMC's and Stefanos A.'s, and its two ports carry that notice in full;
+PT_SkyWalker541.glsl carries no licence statement upstream, only its credit, and
+lanczos3.glsl neither.
 
 The first ScaleFX and PT ports were produced by translating the GLSL with
 glslang and SPIRV-Cross, then given the same treatment by hand: the names, the
