@@ -2524,7 +2524,6 @@ BEGIN
             MENUITEM "&Palette Viewer...",          ID_TOOLS_PALETTEVIEW
             MENUITEM "&Tile Viewer...",             ID_TOOLS_TILEVIEWER
             MENUITEM SEPARATOR
-            MENUITEM "&AGB Print",                  ID_OPTIONS_EMULATOR_AGBPRINT
             POPUP "&GDB"
             BEGIN
                 MENUITEM "&Wait For Connection...",     ID_TOOLS_DEBUG_GDB

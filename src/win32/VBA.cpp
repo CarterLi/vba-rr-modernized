@@ -26,7 +26,6 @@
 
 #include "../gba/GBA.h"
 #include "../gba/GBAGlobals.h"
-#include "../gba/agbprint.h"
 #include "../gb/GB.h"
 #include "../gb/gbGlobals.h"
 #include "../gb/gbPrinter.h"
@@ -2719,7 +2718,6 @@ void VBA::loadSettings()
 
 	autoIPS = regQueryDwordValue(_T("autoIPS"), true) ? true : false;
 
-	agbPrintEnable(regQueryDwordValue(_T("agbPrint"), 0) ? true : false);
 	winRtcEnable = regQueryDwordValue(_T("rtcEnabled"), 0) ? true : false;
 	rtcEnable(winRtcEnable);
 
@@ -3084,7 +3082,6 @@ void VBA::saveSettings()
 	regSetDwordValue(_T("useOldGBTiming"), useOldFrameTiming);
 	regSetDwordValue(_T("useOldSync"), useOldSync);
 
-	regSetDwordValue(_T("agbPrint"), agbPrintIsEnabled());
 	regSetDwordValue(_T("rtcEnabled"), winRtcEnable);
 
 	regSetDwordValue(_T("saveType"), winSaveType);

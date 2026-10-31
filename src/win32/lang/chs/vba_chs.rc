@@ -39,7 +39,7 @@ LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
 // resources and may be missing strings, controls or whole dialogs.  An
 // unchanged vba.rc keeps the value, so the version changes only when the
 // English resources do.
-#define VBA_L10N_VERSION "f62bef3b3e260b1d9150a97f8ac661cd54c54fa5e136ae62514cedf7cbfe39b2"
+#define VBA_L10N_VERSION "ee4a1b1440e178538b447dcb204d9c860656ed869efeb52a4b1af0266ebaebe3"
 
 // The About box shows the application icon; its dialog template lives here,
 // so the icon has to be here too or the control comes up empty.
@@ -1940,7 +1940,6 @@ BEGIN
             MENUITEM "调色板查看器(&P)...",          ID_TOOLS_PALETTEVIEW
             MENUITEM "图块查看器(&T)...",             ID_TOOLS_TILEVIEWER
             MENUITEM SEPARATOR
-            MENUITEM "&AGB 打印",                  ID_OPTIONS_EMULATOR_AGBPRINT
             POPUP "&GDB"
             BEGIN
                 MENUITEM "等待连接(&W)...",     ID_TOOLS_DEBUG_GDB

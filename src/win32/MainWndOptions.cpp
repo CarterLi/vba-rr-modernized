@@ -20,7 +20,6 @@
 #include "../gba/GBA.h"
 #include "../gba/GBAGlobals.h"
 #include "../gba/Flash.h"
-#include "../gba/agbprint.h"
 #include "../gb/GB.h"
 #include "../gb/gbGlobals.h"
 #include "../gb/gbPrinter.h"
@@ -1162,16 +1161,6 @@ void MainWnd::OnOptionsEmulatorAutomaticallyipspatch()
 void MainWnd::OnUpdateOptionsEmulatorAutomaticallyipspatch(CCmdUI*pCmdUI)
 {
 	pCmdUI->SetCheck(theApp.autoIPS);
-}
-
-void MainWnd::OnOptionsEmulatorAgbprint()
-{
-	agbPrintEnable(!agbPrintIsEnabled());
-}
-
-void MainWnd::OnUpdateOptionsEmulatorAgbprint(CCmdUI*pCmdUI)
-{
-	pCmdUI->SetCheck(agbPrintIsEnabled());
 }
 
 void MainWnd::OnOptionsEmulatorRealtimeclock()

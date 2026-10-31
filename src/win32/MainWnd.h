@@ -370,8 +370,6 @@ protected:
 	afx_msg void OnUpdateOptionsEmulatorRemoveintrosgba(CCmdUI*pCmdUI);
 	afx_msg void OnOptionsEmulatorAutomaticallyipspatch();
 	afx_msg void OnUpdateOptionsEmulatorAutomaticallyipspatch(CCmdUI*pCmdUI);
-	afx_msg void OnOptionsEmulatorAgbprint();
-	afx_msg void OnUpdateOptionsEmulatorAgbprint(CCmdUI*pCmdUI);
 	afx_msg void OnOptionsEmulatorRealtimeclock();
 	afx_msg void OnUpdateOptionsEmulatorRealtimeclock(CCmdUI*pCmdUI);
 	afx_msg void OnOptionsEmulatorAutohidemenu();
