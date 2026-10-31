@@ -39,7 +39,7 @@ LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
 // resources and may be missing strings, controls or whole dialogs.  An
 // unchanged vba.rc keeps the value, so the version changes only when the
 // English resources do.
-#define VBA_L10N_VERSION "c2f1e96f8a6d985484e3f83b7d8b758cabfc1e8126ef7e55f16a84ba142c19d4"
+#define VBA_L10N_VERSION "e35b96b49627f06af86afa815e287dea4e6a63653d84b58d54d8cb3cbfeeb9e1"
 
 // The About box shows the application icon; its dialog template lives here,
 // so the icon has to be here too or the control comes up empty.
@@ -1730,7 +1730,6 @@ BEGIN
             MENUITEM SEPARATOR
             MENUITEM "NVIDIA &NIS（Direct3D 11）",   ID_OPTIONS_VIDEO_UPSCALER_NIS
             MENUITEM "AMD &FSR 1.0",                ID_OPTIONS_VIDEO_UPSCALER_FSR
-            MENUITEM "&xBRZ（Freescale）",           ID_OPTIONS_VIDEO_UPSCALER_XBRZ
             MENUITEM SEPARATOR
             MENUITEM "双三次(&B)",                    ID_OPTIONS_VIDEO_UPSCALER_BICUBIC
             MENUITEM "xBR &lv2",                    ID_OPTIONS_VIDEO_UPSCALER_XBR_LV2
@@ -1739,6 +1738,7 @@ BEGIN
             MENUITEM "xBR lv3 多遍(&M)",          ID_OPTIONS_VIDEO_UPSCALER_XBR_LV3_MULTIPASS
             MENUITEM "&2xBR",                       ID_OPTIONS_VIDEO_UPSCALER_XBR_2X
             MENUITEM "xBR-&mlv4",                   ID_OPTIONS_VIDEO_UPSCALER_XBR_MLV4
+            MENUITEM "&xBRZ（Freescale）",           ID_OPTIONS_VIDEO_UPSCALER_XBRZ
             MENUITEM "&Super xBR",                  ID_OPTIONS_VIDEO_UPSCALER_SUPER_XBR
             MENUITEM "Scale&FX",                    ID_OPTIONS_VIDEO_UPSCALER_SCALEFX
             MENUITEM "&PT SkyWalker541（LCD）",      ID_OPTIONS_VIDEO_UPSCALER_PT_SKYWALKER

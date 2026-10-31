@@ -75,10 +75,6 @@ enum
 	UPSCALER_OFF,   // sampler filtering only
 	UPSCALER_NIS,   // NVIDIA Image Scaling
 	UPSCALER_FSR,   // AMD FidelityFX Super Resolution 1.0 (EASU + RCAS)
-	// xBRZ as a pixel filter shader of the same backend.  Unlike the two SDKs
-	// above it does not reconstruct the frame but filters it, at whatever size
-	// the emulation thread produced it, the way a CPU pixel filter would.
-	UPSCALER_XBRZ,
 	// Bicubic, the resampler of the cubic folder: four taps per axis, which
 	// rounds the edges off where Lanczos rings at them.
 	UPSCALER_BICUBIC,
@@ -92,6 +88,11 @@ enum
 	UPSCALER_XBR_LV3_MULTIPASS,
 	UPSCALER_XBR_2X,
 	UPSCALER_XBR_MLV4,
+	// xBRZ, the same family of filter, but a pixel filter shader of the
+	// backend rather than a libretro file.  Unlike NIS and FSR it does not
+	// reconstruct the frame but filters it, at whatever size the emulation
+	// thread produced it, the way a CPU pixel filter would.
+	UPSCALER_XBRZ,
 	UPSCALER_SUPER_XBR,
 	UPSCALER_SCALEFX,
 	UPSCALER_PT_SKYWALKER,

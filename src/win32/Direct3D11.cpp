@@ -1655,7 +1655,6 @@ static const UpscalerPassSource g_bicubicPasses[] =
 
 static const UpscalerSource g_upscalers[] =
 {
-	{ UPSCALER_XBRZ,              "xBRZ",              g_xbrzPasses,             1, "ps_4_0" },
 	{ UPSCALER_BICUBIC,           "Bicubic",           g_bicubicPasses,          1, "ps_4_0" },
 	{ UPSCALER_XBR_LV2,           "xBR lv2",           g_xbrLv2Passes,           1, "ps_4_0" },
 	{ UPSCALER_XBR_LV2_NOBLEND,   "xBR lv2 no-blend",  g_xbrLv2NoBlendPasses,    1, "ps_4_0" },
@@ -1663,6 +1662,7 @@ static const UpscalerSource g_upscalers[] =
 	{ UPSCALER_XBR_LV3_MULTIPASS, "xBR lv3 multipass", g_xbrLv3MultipassPasses,  2, "ps_4_0" },
 	{ UPSCALER_XBR_2X,            "2xBR",              g_xbr2xPasses,            2, "ps_4_0" },
 	{ UPSCALER_XBR_MLV4,          "xBR-mlv4",          g_xbrMlv4Passes,          4, "ps_4_0" },
+	{ UPSCALER_XBRZ,              "xBRZ",              g_xbrzPasses,             1, "ps_4_0" },
 	{ UPSCALER_SUPER_XBR,         "super-xBR",         g_superXbrPasses,         3, "ps_4_0" },
 	{ UPSCALER_SCALEFX,           "ScaleFX",           g_scalefxPasses,          5, "ps_4_0" },
 	{ UPSCALER_PT_SKYWALKER,      "PT SkyWalker541",   g_ptSkyWalkerPasses,      1, "ps_4_0" },

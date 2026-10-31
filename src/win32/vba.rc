@@ -2271,7 +2271,6 @@ BEGIN
             MENUITEM SEPARATOR
             MENUITEM "NVIDIA &NIS (Direct3D 11)",   ID_OPTIONS_VIDEO_UPSCALER_NIS
             MENUITEM "AMD &FSR 1.0",                ID_OPTIONS_VIDEO_UPSCALER_FSR
-            MENUITEM "&xBRZ (Freescale)",           ID_OPTIONS_VIDEO_UPSCALER_XBRZ
             MENUITEM SEPARATOR
             MENUITEM "&Bicubic",                    ID_OPTIONS_VIDEO_UPSCALER_BICUBIC
             MENUITEM "xBR &lv2",                    ID_OPTIONS_VIDEO_UPSCALER_XBR_LV2
@@ -2280,6 +2279,7 @@ BEGIN
             MENUITEM "xBR lv3 &Multipass",          ID_OPTIONS_VIDEO_UPSCALER_XBR_LV3_MULTIPASS
             MENUITEM "&2xBR",                       ID_OPTIONS_VIDEO_UPSCALER_XBR_2X
             MENUITEM "xBR-&mlv4",                   ID_OPTIONS_VIDEO_UPSCALER_XBR_MLV4
+            MENUITEM "&xBRZ (Freescale)",           ID_OPTIONS_VIDEO_UPSCALER_XBRZ
             MENUITEM "&Super xBR",                  ID_OPTIONS_VIDEO_UPSCALER_SUPER_XBR
             MENUITEM "Scale&FX",                    ID_OPTIONS_VIDEO_UPSCALER_SCALEFX
             MENUITEM "&PT SkyWalker541 (LCD)",      ID_OPTIONS_VIDEO_UPSCALER_PT_SKYWALKER

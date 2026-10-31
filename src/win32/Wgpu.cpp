@@ -866,7 +866,6 @@ static const int g_xbrMlv4Seconds[] = { -1, 0, 0, 0 };
 
 static const WgpuUpscalerSource g_wgpuUpscalers[] =
 {
-	{ UPSCALER_XBRZ,              "xBRZ",              g_xbrzResources,            g_xbrzScales,           g_xbrzSeconds,           1 },
 	{ UPSCALER_BICUBIC,           "Bicubic",           g_bicubicResources,         g_bicubicScales,        g_bicubicSeconds,        1 },
 	{ UPSCALER_LANCZOS3,          "Lanczos",           g_lanczos3Resources,        g_lanczos3Scales,       g_lanczos3Seconds,       1 },
 	{ UPSCALER_XBR_LV2,           "xBR lv2",           g_xbrLv2Resources,          g_xbrLv2Scales,         g_xbrLv2Seconds,         1 },
@@ -877,6 +876,7 @@ static const WgpuUpscalerSource g_wgpuUpscalers[] =
 	{ UPSCALER_SCALEFX,           "ScaleFX",           g_scalefxResources,         g_scalefxScales,        g_scalefxSeconds,        5 },
 	{ UPSCALER_XBR_2X,            "2xBR",              g_xbr2xResources,           g_xbr2xScales,          g_xbr2xSeconds,          2 },
 	{ UPSCALER_XBR_MLV4,          "xBR-mlv4",          g_xbrMlv4Resources,         g_xbrMlv4Scales,        g_xbrMlv4Seconds,        4 },
+	{ UPSCALER_XBRZ,              "xBRZ",              g_xbrzResources,            g_xbrzScales,           g_xbrzSeconds,           1 },
 	{ UPSCALER_PT_SKYWALKER,      "PT SkyWalker541",   g_ptSkyWalkerResources,     g_ptSkyWalkerScales,    g_ptSkyWalkerSeconds,    1 },
 };
 
