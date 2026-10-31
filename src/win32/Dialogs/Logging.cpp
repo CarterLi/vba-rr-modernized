@@ -88,6 +88,9 @@ void Logging::OnClear()
 
 void Logging::OnVerboseAgbprint()
 {
+	// This bit is the AGBPrint switch now: the core only accepts the debug
+	// writes and only consumes SWI 0xFA while it is set, so there is nothing
+	// else to keep in sync here.
 	systemVerbose ^= 512;
 }
 
@@ -204,7 +207,7 @@ BOOL Logging::OnInitDialog()
 	m_dma2      = (systemVerbose & 64) != 0;
 	m_dma3      = (systemVerbose & 128) != 0;
 	m_undefined = (systemVerbose & 256) != 0;
-	m_agbprint  = (systemVerbose & 256) != 0;
+	m_agbprint  = (systemVerbose & 512) != 0; // VERBOSE_AGBPRINT, also the AGBPrint switch
 	UpdateData(FALSE);
 
 	m_log.LimitText(-1);

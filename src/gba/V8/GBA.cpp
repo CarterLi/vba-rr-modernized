@@ -1914,8 +1914,15 @@ void CPUSoftwareInterrupt(int comment)
 #endif
 	if (comment == 0xfa)
 	{
-		agbPrintFlush();
-		return;
+		// Stay out of the way while the AGBPrint bit is off: a retail BIOS
+		// knows nothing about 0xFA and simply returns, so an unconditional
+		// intercept would make the core differ from hardware for any ROM that
+		// happens to use that number for something else.
+		if (agbPrintIsEnabled())
+		{
+			agbPrintFlush();
+			return;
+		}
 	}
 #ifdef SDL
 	if (comment == 0xf9)
@@ -3287,10 +3294,17 @@ void CPUInit()
 	{
 		*((u16 *)&rom[0x1fe209c]) = 0xdffa; // SWI 0xFA
 		*((u16 *)&rom[0x1fe209e]) = 0x4770; // BX LR
+		// This stub is what a ROM's AGBPrint entry point ends up executing, so
+		// both the stub and the permission have to be re-established on every
+		// load: a previous oversized ROM turned the channel off, and nothing
+		// else turns it back on.
+		agbPrintSetAvailable(true);
 	}
 	else
 	{
-		agbPrintEnable(false);
+		// No room for the stub, so a ROM calling the entry point would execute
+		// its own data instead.
+		agbPrintSetAvailable(false);
 	}
 
 	gbaSaveType = 0;
@@ -3301,6 +3315,11 @@ void CPUInit()
 void CPUReset()
 {
 	systemReset();
+
+	// The AGBPrint protection latch is not part of the CPU state that
+	// systemReset() clears, so drop it here too: a ROM that never sets it must
+	// not inherit it from the previous one.
+	agbPrintReset();
 
 	if (gbaSaveType == 0)
 	{

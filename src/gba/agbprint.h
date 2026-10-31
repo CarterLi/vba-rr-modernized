@@ -3,9 +3,9 @@
 
 #pragma once
 
-extern void agbPrintEnable(bool);
 extern bool agbPrintIsEnabled();
 extern void agbPrintReset();
+extern void agbPrintSetAvailable(bool);
 extern bool agbPrintWrite(u32, u16);
 extern void agbPrintFlush();
 
