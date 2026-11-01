@@ -350,6 +350,39 @@
 // Marks apply to the whole selection, so they need a plural sentence.
 #define IDS_VBMEDITOR_MARKED_MANY      348
 #define IDS_VBMEDITOR_UNMARKED_MANY    349
+#define IDS_CHEAT_DB_TITLE              350
+#define IDS_CHEAT_DB_CHOOSE             351
+#define IDS_FILTER_CHEAT_DATABASE       352
+#define IDS_CHEAT_DB_ERR_FILE           353
+#define IDS_CHEAT_DB_ERR_ARCHIVE        354
+#define IDS_CHEAT_DB_ERR_INDEX          355
+#define IDS_CHEAT_DB_ERR_INDEX_DATA     356
+#define IDS_CHEAT_DB_ERR_ENTRY          357
+#define IDS_CHEAT_DB_NO_CHEATS          358
+#define IDS_CHEAT_DB_EMPTY              359
+#define IDS_CHEAT_DB_FULL               360
+#define IDS_CHEAT_DB_COUNT              361
+#define IDS_CHEAT_DB_SKIPPED            362
+#define IDS_CHEAT_DB_DETAILS_TITLE      364
+#define IDS_CHEAT_DB_PROBLEM_SECTION    365
+#define IDS_CHEAT_DB_PROBLEM_LINE       366
+#define IDS_CHEAT_DB_PROBLEM_ADDRESS    367
+#define IDS_CHEAT_DB_PROBLEM_VALUE      368
+#define IDS_CHEAT_DB_PROBLEM_EMPTY      369
+#define IDS_CHEAT_DB_PROBLEM_LIMIT      370
+#define IDS_CHEAT_DB_INDEX_SKIPPED      371
+#define IDS_CHEAT_DB_NEEDS_GBA          372
+#define IDS_CHEAT_DB_PARTIAL            373
+#define IDS_CHEAT_DB_ADDRESS            374
+#define IDS_CHEAT_DB_AREA_FILE          375
+#define IDS_CHEAT_DB_AREA_IWRAM         376
+#define IDS_CHEAT_DB_AREA_EW0           377
+#define IDS_CHEAT_DB_AREA_EW1           378
+#define IDS_CHEAT_DB_AREA_EW2           379
+#define IDS_CHEAT_DB_AREA_EW3           380
+#define IDS_CHEAT_DB_TRUNCATED          381
+#define IDS_CHEAT_DB_PROBLEM_CODE       382
+#define IDS_CHEAT_DB_MANY_FILES         383
 #define IDS_LUA_ABOUT_TITLE            324
 // Version of the English resource script a build was made from.  A language
 // module carries the same value; see winResL10nVersionMatches in
@@ -535,6 +568,11 @@
 #define IDC_ADD_GSA                     1105
 #define IDC_ADD_CODE                    1106
 #define IDC_ADD_CODEBREAKER             1107
+#define IDC_LOAD_DATABASE               1108
+#define IDC_CHEAT_DB_LIST               1109
+#define IDC_CHEAT_DB_STATUS             1110
+#define IDC_CHEAT_DB_PROBLEMS           1111
+#define IDC_CHEAT_DB_AREA               1112
 #define IDC_FRAME_0                     1113
 #define IDC_FRAME_1                     1114
 #define IDC_BG0                         1115
@@ -1274,6 +1312,7 @@
 #define ID_MOVIE_TOOL_AUTO_CONVERT      40541
 #define ID_MOVIE_TOOL_EXTRACT_FROM_SAVEGAME 40560
 #define ID_MOVIE_TOOL_CONVERT_FILE      40561
+#define ID_CHEATS_LOADFROMDB            40570
 #define ID_WATCHES_MOVEUP               40664
 #define ID_WATCHES_MOVEDOWN             40665
 #define ID_WATCHES_EDITWATCH            40666
@@ -1395,6 +1434,7 @@
 // Recording settings dialog (see Dialogs/RecordSettings.cpp)
 #define IDD_RECORD_SETTINGS             566
 #define IDD_VBM_EDITOR                  567
+#define IDD_CHEAT_DB                    568
 #define IDC_ENC_VIDEO                   1501
 #define IDC_ENC_AUDIO                   1502
 #define IDC_ENC_VIDEO_BITRATE           1503

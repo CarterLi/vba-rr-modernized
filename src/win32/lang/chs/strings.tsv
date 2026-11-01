@@ -158,7 +158,7 @@ Rewind to Slot %d	回退到存档位 %d
 Loaded cheats	已读取金手指
 Add GameGenie code	添加 GameGenie 代码
 Add GameShark code	添加 GameShark 代码
-Add GamesharkAdvance code	添加 GameShark Advance 代码
+Add GameShark/CodeBreaker code	添加 GameShark/CodeBreaker 代码
 Pocket Printer	便携打印机
 Unknown	未知
 None	无
@@ -341,3 +341,35 @@ Add Watch	添加监视项
 Searches again after every frame while the game runs, so the list keeps only the values that still match the comparison above. Tick it, then play on until a few addresses are left.\n\nTicking the box searches once with the current settings. When the results run out you are asked whether to reset the search and keep going.	每帧自动重搜一次，列表只留下仍然符合上面比较条件的值：勾选后直接继续玩游戏，让结果自己缩到只剩几个地址。\n\n勾选时会立刻按当前设置搜一次；结果被筛空时会询问是否重置搜索并继续。
 RAM Watch	RAM 监视
 Address %08X with this size and type is already in the watch list.	地址 %08X（相同大小和类型）已经在监视列表中了。
+Load cheats from database: %s	从金手指数据库加载：%s
+Select cheat database	选择金手指数据库
+Cheat database (*.zip; *.cht)_*.zip;*.cht_All Files_*.*__	金手指数据库 (*.zip; *.cht)_*.zip;*.cht_所有文件_*.*__
+Cannot open the cheat database:\n%s	无法打开金手指数据库：\n%s
+This is not a readable cheat package:\n%s	这不是可读的金手指包：\n%s
+The package has no GameID2cht.bin, so it is not an EZ-Flash cheat database:\n%s	包里没有 GameID2cht.bin，不是 EZ-Flash 金手指数据库：\n%s
+The cheat index is empty or damaged:\n%s	金手指索引为空或已损坏：\n%s
+A file inside the package cannot be extracted:\n%s	无法从包中解出文件：\n%s
+The database has no cheats for this game (code %s).	数据库里没有这个游戏的金手指（游戏码 %s）。
+The cheat file for this game has no usable cheats:\n%s	这个游戏的金手指文件里没有可用条目：\n%s
+The cheat list is full: %d slots are needed, %d are free.	金手指列表满了：需要 %d 个位置，只剩 %d 个。
+%d cheats	%d 条金手指
+%d lines skipped	跳过 %d 行
+Skipped lines	跳过的行
+line %d: section header without a closing bracket, line ignored: %s	第 %d 行：段名缺少右方括号，已忽略该行：%s
+line %d: unrecognised line ignored: %s	第 %d 行：无法识别的行，已忽略：%s
+line %d: address the format cannot express, line ignored: %s	第 %d 行：地址超出该格式能表达的范围，已忽略该行：%s
+line %d: value is not a byte sequence: %s	第 %d 行：数据不是合法的字节序列：%s
+line %d: entry has no data, ignored: %s	第 %d 行：条目没有数据，已忽略：%s
+line %d: entry too long, the rest was ignored: %s	第 %d 行：条目过长，其余部分已忽略：%s
+%d damaged index records skipped	跳过 %d 条损坏的索引记录
+Load a Game Boy Advance game before using the cheat database.	请先载入 Game Boy Advance 游戏，再使用金手指数据库。
+%d of %d cheats could not be added to the list.	有 %d/%d 条金手指没能加入列表。
+As stored (IWRAM)	按文件原样（IWRAM）
+IWRAM 03000000	IWRAM 03000000
+EWRAM 02000000	EWRAM 02000000
+EWRAM 02010000	EWRAM 02010000
+EWRAM 02020000	EWRAM 02020000
+EWRAM 02030000	EWRAM 02030000
+%d addresses lost their memory area	有 %d 个地址丢失了所在内存区
+cheat %d: no code this emulator can use: %s	第 %d 条：没有本模拟器能用的代码：%s
+This archive holds %d .cht files but no GameID2cht.bin, so there is no way to tell which one belongs to this game:\n%s\n\nChoose the .cht file directly, or use the complete package.	这个压缩包里有 %d 个 cht 文件，但没有 GameID2cht.bin，无法确定哪一个属于当前游戏：\n%s\n\n请直接选择 .cht 文件，或改用完整的数据库包。

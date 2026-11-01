@@ -8,6 +8,7 @@
 #include "Dialogs/FileDlg.h"
 #include "Dialogs/GBACheatsDlg.h"
 #include "Dialogs/GBCheatsDlg.h"
+#include "Dialogs/CheatDbDlg.h"
 
 #include "../gba/GBA.h"
 #include "../gba/GBAGlobals.h"
@@ -81,6 +82,16 @@ void MainWnd::OnCheatsCheatlist()
 void MainWnd::OnUpdateCheatsCheatlist(CCmdUI*pCmdUI)
 {
 	pCmdUI->Enable(emulating);
+}
+
+void MainWnd::OnCheatsLoadfromdb()
+{
+	winLoadCheatsFromDatabase(this, false);
+}
+
+void MainWnd::OnUpdateCheatsLoadfromdb(CCmdUI*pCmdUI)
+{
+	pCmdUI->Enable(emulating && systemCartridgeType == IMAGE_GBA);
 }
 
 void MainWnd::OnCheatsAutomaticsaveloadcheats()

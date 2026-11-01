@@ -501,6 +501,8 @@ protected:
 	afx_msg void OnUpdateCheatsSearchforcheats(CCmdUI*pCmdUI);
 	afx_msg void OnCheatsCheatlist();
 	afx_msg void OnUpdateCheatsCheatlist(CCmdUI*pCmdUI);
+	afx_msg void OnCheatsLoadfromdb();
+	afx_msg void OnUpdateCheatsLoadfromdb(CCmdUI*pCmdUI);
 	afx_msg void OnCheatsAutomaticsaveloadcheats();
 	afx_msg void OnCheatsPauseDuringCheatSearch();
 	afx_msg void OnCheatsLoadcheatlist();

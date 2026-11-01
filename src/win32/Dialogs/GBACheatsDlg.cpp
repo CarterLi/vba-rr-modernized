@@ -5,6 +5,7 @@
 #include "../resource.h"
 #include "GBACheatsDlg.h"
 #include "CheatExplain.h"
+#include "CheatDbDlg.h"
 #include "../StringTokenizer.h"
 #include "../Reg.h"
 #include "../WinResUtil.h"
@@ -13,6 +14,7 @@
 #include "../UiFont.h"
 
 #include "../../common/CheatSearch.h"
+#include "../../common/cheatcodetext.h"
 #include "../../gba/GBACheats.h"
 #include "../../gba/GBAGlobals.h"
 #include "../../NLS.h"
@@ -231,97 +233,37 @@ static bool processRawCheatCodes(const CString &buffer, const CString &desc, boo
 
 static bool processGsaCbaCodes(const CString &buffer, const CString &desc, bool apply, int *codeCount = NULL)
 {
-	StringTokenizer st(buffer, " \t\n\r");
-	CString part1;
-	CString errors;
-	int count = 0;
+	std::vector<CheatCodeText> codes;
+	CheatSplitCodes(winAnsiFromWide(buffer), codes);
 
-	LPCTSTR t = st.next();
-	if (!t)
+	if (codes.empty())
 	{
 		systemMessage(0, N_("Code cannot be empty"));
 		return false;
 	}
 
-	while (t)
+	CString errors;
+	int count = 0;
+	for (size_t i = 0; i < codes.size(); i++)
 	{
-		CString token = t;
-		token.MakeUpper();
-		if (token.GetLength() == 16)
+		const char *code = codes[i].text.c_str();
+		bool ok = codes[i].gsa ? cheatsValidateGSACode(code, false)
+		                       : cheatsValidateCBACode(code, false);
+		if (!ok)
 		{
-			if (!cheatsValidateGSACode(winAnsiFromWide(token), false))
-			{
-				if (!apply)
-					addInvalidCode(errors, token);
-			}
-			else
-			{
-				if (apply)
-					cheatsAddGSACode(winAnsiFromWide(token), winAnsiFromWide(desc), false);
-				count++;
-			}
-		}
-		else if (token.GetLength() == 12)
-		{
-			CString code = token.Left(8) + " " + token.Right(4);
-			if (!cheatsValidateCBACode(winAnsiFromWide(code), false))
-			{
-				if (!apply)
-					addInvalidCode(errors, code);
-			}
-			else
-			{
-				if (apply)
-					cheatsAddCBACode(winAnsiFromWide(code), winAnsiFromWide(desc));
-				count++;
-			}
-		}
-		else if (part1.IsEmpty())
-			part1 = token;
-		else
-		{
-			CString code;
-			if (token.GetLength() == 4)
-			{
-				code = part1 + " " + token;
-				if (!cheatsValidateCBACode(winAnsiFromWide(code), false))
-				{
-					if (!apply)
-						addInvalidCode(errors, code);
-				}
-				else
-				{
-					if (apply)
-						cheatsAddCBACode(winAnsiFromWide(code), winAnsiFromWide(desc));
-					count++;
-				}
-			}
-			else
-			{
-				code = part1 + token;
-				if (!cheatsValidateGSACode(winAnsiFromWide(code), false))
-				{
-					if (!apply)
-						addInvalidCode(errors, code);
-				}
-				else
-				{
-					if (apply)
-						cheatsAddGSACode(winAnsiFromWide(code), winAnsiFromWide(desc), true);
-					count++;
-				}
-			}
-			part1.Empty();
+			if (!apply)
+				addInvalidCode(errors, winWideFromAnsi(codes[i].text));
+			continue;
 		}
 
-		t = st.next();
-	}
-
-	if (!part1.IsEmpty())
-	{
-		// an odd number of tokens was entered
-		if (!apply)
-			addInvalidCode(errors, part1);
+		if (apply)
+		{
+			if (codes[i].gsa)
+				cheatsAddGSACode(code, winAnsiFromWide(desc), codes[i].v3);
+			else
+				cheatsAddCBACode(code, winAnsiFromWide(desc));
+		}
+		count++;
 	}
 
 	if (!apply && reportInvalidCodes(errors))
@@ -1187,8 +1129,8 @@ BEGIN_MESSAGE_MAP(GBACheatList, CDialog)
 //{{AFX_MSG_MAP(GBACheatList)
 ON_BN_CLICKED(IDC_ADD_CHEAT, OnAddCheat)
 ON_BN_CLICKED(IDC_ADD_CODE, OnAddCode)
-ON_BN_CLICKED(IDC_ADD_CODEBREAKER, OnAddCodebreaker)
 ON_BN_CLICKED(IDC_ADD_GAMESHARK, OnAddGameshark)
+ON_BN_CLICKED(IDC_LOAD_DATABASE, OnLoadDatabase)
 ON_BN_CLICKED(IDC_ENABLE, OnEnable)
 ON_BN_CLICKED(IDC_EDIT, OnEdit)
 ON_BN_CLICKED(IDC_EXPLAIN_CHEAT, OnExplain)
@@ -1219,17 +1161,18 @@ void GBACheatList::OnAddCode()
 	refresh();
 }
 
-void GBACheatList::OnAddCodebreaker()
+void GBACheatList::OnAddGameshark()
 {
-	AddCBACode dlg;
+	// One dialog for both formats: processGsaCbaCodes() already tells them apart
+	// by token length, so a second button would only repeat the same box.
+	AddGSACode dlg;
 	dlg.DoModal();
 	refresh();
 }
 
-void GBACheatList::OnAddGameshark()
+void GBACheatList::OnLoadDatabase()
 {
-	AddGSACode dlg;
-	dlg.DoModal();
+	winLoadCheatsFromDatabase(this, true);
 	refresh();
 }
 

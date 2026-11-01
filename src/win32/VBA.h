@@ -249,6 +249,7 @@ public:
 	bool &	  useBiosFile		  = g_core.useBiosFile;
 	bool &	  skipBiosIntro		  = g_core.skipBiosIntro;
 	CString	  biosFileName;
+	CString	  cheatDbPath;		  // last EZ-Flash cheat package the user opened
 	bool	  allowLeftRight;
 	bool	  autofireAccountForLag;
 	bool	  nextframeAccountForLag;

@@ -477,11 +477,11 @@ BEGIN
     PUSHBUTTON      "E&xplain",IDC_EXPLAIN_CHEAT,206,183,64,14,WS_DISABLED
     PUSHBUTTON      "&Code...",IDC_ADD_CODE,9,208,64,14,WS_GROUP
     PUSHBUTTON      "C&heat...",IDC_ADD_CHEAT,75,208,64,14
-    PUSHBUTTON      "&Gameshark...",IDC_ADD_GAMESHARK,141,208,64,14
-    PUSHBUTTON      "CodeBreaker...",IDC_ADD_CODEBREAKER,206,208,64,14
+    PUSHBUTTON      "&Gameshark/CodeBreaker...",IDC_ADD_GAMESHARK,141,208,129,14
     PUSHBUTTON      "&Edit",IDC_EDIT,9,230,64,14
     PUSHBUTTON      "&Remove",IDC_REMOVE,75,230,64,14
     PUSHBUTTON      "&Enable/Dis.",IDC_ENABLE,141,230,64,14
+    PUSHBUTTON      "Load &Database...",IDC_LOAD_DATABASE,206,230,64,14
     DEFPUSHBUTTON   "Start Recording",ID_OK,174,270,60,14
     CONTROL         "",IDC_CHEAT_LIST,"SysListView32",LVS_REPORT | WS_BORDER | WS_GROUP | WS_TABSTOP,5,15,269,156
     LTEXT           "Status legend:",IDC_STATIC,6,3,46,8
@@ -489,6 +489,20 @@ BEGIN
     LTEXT           "E: Enabled",IDC_STATIC,188,3,36,8
     LTEXT           "D: Disabled",IDC_STATIC,234,3,38,8
     GROUPBOX        "Add",IDC_STATIC,5,199,268,27
+END
+
+IDD_CHEAT_DB DIALOG 0, 0, 300, 260
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Cheats from database"
+FONT 8, "MS Sans Serif"
+BEGIN
+    CONTROL         "",IDC_CHEAT_DB_LIST,"SysListView32",LVS_REPORT | WS_BORDER | WS_GROUP | WS_TABSTOP,5,5,290,204
+    LTEXT           "",IDC_CHEAT_DB_STATUS,5,213,290,9
+    LTEXT           "&Memory area:",IDC_STATIC,5,228,56,9
+    COMBOBOX        IDC_CHEAT_DB_AREA,61,226,94,58,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    PUSHBUTTON      "&Details...",IDC_CHEAT_DB_PROBLEMS,130,242,58,14,WS_DISABLED
+    DEFPUSHBUTTON   "Add",ID_OK,192,242,50,14
+    PUSHBUTTON      "Cancel",ID_CANCEL,244,242,50,14
 END
 
 IDD_CHEAT_EXPLAIN DIALOG 0, 0, 320, 200
@@ -1616,6 +1630,14 @@ BEGIN
         BOTTOMMARGIN, 243
     END
 
+    IDD_CHEAT_DB, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 293
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 253
+    END
+
     IDD_ASSOCIATIONS, DIALOG
     BEGIN
         LEFTMARGIN, 7
@@ -2503,6 +2525,7 @@ BEGIN
         MENUITEM "&Pause During Cheat Search",  ID_CHEATS_PAUSEDURINGCHEATSEARCH
         MENUITEM SEPARATOR
         MENUITEM "&View Cheat List...",         ID_CHEATS_CHEATLIST
+        MENUITEM "Load Cheats from &Database...", ID_CHEATS_LOADFROMDB
         MENUITEM "&Load Cheat List...",         ID_CHEATS_LOADCHEATLIST
         MENUITEM "&Save Cheat List...",         ID_CHEATS_SAVECHEATLIST
         MENUITEM "&Auto Save/Load Cheat List",  ID_CHEATS_AUTOMATICSAVELOADCHEATS
@@ -2974,7 +2997,7 @@ BEGIN
     IDS_LOADED_CHEATS       "Loaded cheats"
     IDS_ADD_GG_CODE         "Add GameGenie code"
     IDS_ADD_GS_CODE         "Add GameShark code"
-    IDS_ADD_GSA_CODE        "Add GamesharkAdvance code"
+    IDS_ADD_GSA_CODE        "Add GameShark/CodeBreaker code"
     IDS_POCKET_PRINTER      "Pocket Printer"
     IDS_UNKNOWN             "Unknown"
     IDS_NONE                "None"
@@ -3237,6 +3260,43 @@ END
 // the value written into its generated script, so rebuilding it after vba.rc
 // changed does not make it pass.
 //
+STRINGTABLE
+BEGIN
+    IDS_CHEAT_DB_TITLE              "Load cheats from database: %s"
+    IDS_CHEAT_DB_CHOOSE             "Select cheat database"
+    IDS_FILTER_CHEAT_DATABASE       "Cheat database (*.zip; *.cht)_*.zip;*.cht_All Files_*.*__"
+    IDS_CHEAT_DB_ERR_FILE           "Cannot open the cheat database:\n%s"
+    IDS_CHEAT_DB_ERR_ARCHIVE        "This is not a readable cheat package:\n%s"
+    IDS_CHEAT_DB_ERR_INDEX          "The package has no GameID2cht.bin, so it is not an EZ-Flash cheat database:\n%s"
+    IDS_CHEAT_DB_ERR_INDEX_DATA     "The cheat index is empty or damaged:\n%s"
+    IDS_CHEAT_DB_ERR_ENTRY          "A file inside the package cannot be extracted:\n%s"
+    IDS_CHEAT_DB_NO_CHEATS          "The database has no cheats for this game (code %s)."
+    IDS_CHEAT_DB_EMPTY              "The cheat file for this game has no usable cheats:\n%s"
+    IDS_CHEAT_DB_FULL               "The cheat list is full: %d slots are needed, %d are free."
+    IDS_CHEAT_DB_COUNT              "%d cheats"
+    IDS_CHEAT_DB_SKIPPED            "%d lines skipped"
+    IDS_CHEAT_DB_DETAILS_TITLE      "Skipped lines"
+    IDS_CHEAT_DB_PROBLEM_SECTION    "line %d: section header without a closing bracket, line ignored: %s"
+    IDS_CHEAT_DB_PROBLEM_LINE       "line %d: unrecognised line ignored: %s"
+    IDS_CHEAT_DB_PROBLEM_ADDRESS    "line %d: address the format cannot express, line ignored: %s"
+    IDS_CHEAT_DB_PROBLEM_VALUE      "line %d: value is not a byte sequence: %s"
+    IDS_CHEAT_DB_PROBLEM_EMPTY      "line %d: entry has no data, ignored: %s"
+    IDS_CHEAT_DB_PROBLEM_LIMIT      "line %d: entry too long, the rest was ignored: %s"
+    IDS_CHEAT_DB_INDEX_SKIPPED      "%d damaged index records skipped"
+    IDS_CHEAT_DB_NEEDS_GBA          "Load a Game Boy Advance game before using the cheat database."
+    IDS_CHEAT_DB_PARTIAL            "%d of %d cheats could not be added to the list."
+    IDS_CHEAT_DB_ADDRESS            "Address"
+    IDS_CHEAT_DB_AREA_FILE          "As stored (IWRAM)"
+    IDS_CHEAT_DB_AREA_IWRAM         "IWRAM 03000000"
+    IDS_CHEAT_DB_AREA_EW0           "EWRAM 02000000"
+    IDS_CHEAT_DB_AREA_EW1           "EWRAM 02010000"
+    IDS_CHEAT_DB_AREA_EW2           "EWRAM 02020000"
+    IDS_CHEAT_DB_AREA_EW3           "EWRAM 02030000"
+    IDS_CHEAT_DB_TRUNCATED          "%d addresses lost their memory area"
+    IDS_CHEAT_DB_PROBLEM_CODE       "cheat %d: no code this emulator can use: %s"
+    IDS_CHEAT_DB_MANY_FILES         "This archive holds %d .cht files but no GameID2cht.bin, so there is no way to tell which one belongs to this game:\n%s\n\nChoose the .cht file directly, or use the complete package."
+END
+
 STRINGTABLE
 BEGIN
     IDS_L10N_VERSION VBA_L10N_VERSION

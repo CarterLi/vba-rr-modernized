@@ -172,8 +172,8 @@ protected:
 	//{{AFX_MSG(GBACheatList)
 	afx_msg void OnAddCheat();
 	afx_msg void OnAddCode();
-	afx_msg void OnAddCodebreaker();
 	afx_msg void OnAddGameshark();
+	afx_msg void OnLoadDatabase();
 	afx_msg void OnEnable();
 	afx_msg void OnEdit();
 	afx_msg void OnExplain();

@@ -2714,6 +2714,7 @@ void VBA::loadSettings()
 	{
 		biosFileName = buffer;
 	}
+	cheatDbPath = regQueryStringValue(_T("cheatDbPath"), _T(""));
 //	removeIntros = regQueryDwordValue("removeIntros", false) ? true : false;
 
 	autoIPS = regQueryDwordValue(_T("autoIPS"), true) ? true : false;
@@ -3067,6 +3068,7 @@ void VBA::saveSettings()
 	regSetDwordValue(_T("skipBios"), skipBiosIntro);
 	if (!biosFileName.IsEmpty())
 		regSetStringValue(_T("biosFile"), biosFileName);
+		regSetStringValue(_T("cheatDbPath"), cheatDbPath);
 //	regSetDwordValue("removeIntros", removeIntros);
 
 	regSetDwordValue(_T("autoIPS"), autoIPS);
