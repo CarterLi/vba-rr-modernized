@@ -34,6 +34,19 @@ enum LuaMemHookType
 };
 void CallRegisteredLuaMemHook(unsigned int address, int size, unsigned int value, LuaMemHookType hookType);
 
+// "Is anything hooked?" latch, for the one place that matters: the CPU core
+// calls CallRegisteredLuaMemHook once per executed instruction and has to read
+// the instruction word out of the memory map to build the value argument.  The
+// call itself is already free when no script is running, but that read was
+// unconditional, so a plain interpreter paid a memory-map lookup and a load per
+// instruction for nothing.  Testing this byte first costs one load and a
+// branch, and skips the read.
+//
+// Written only by CalculateMemHookRegions(), the same function that rebuilds
+// hookedRegions[], so the two can never disagree.  Zero-initialised, which is
+// also the correct state before any script has loaded.
+extern unsigned char luaMemHookActive[LUAMEMHOOK_COUNT];
+
 enum LuaJoypadType
 {
 	LUAJOYPAD_USER,

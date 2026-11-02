@@ -1,4 +1,5 @@
 #include "../GBAinline.h"
+#include "GBACpu.h"
 #include "../../common/System.h"
 #include "../../common/SystemGlobals.h"
 #include "../../common/vbalua.h"
@@ -697,48 +698,57 @@ unwritable:
 	}
 }
 
+// See the matching comment in V8/GBAMemory.cpp: testing the latch here keeps
+// the no-script case down to a byte load and a not-taken branch.
 void CPUWriteMemory(u32 address, u32 value)
 {
 	CPUWriteMemoryWrapped(address, value);
-	CallRegisteredLuaMemHook(address, 4, value, LUAMEMHOOK_WRITE);
+	if (UNLIKELY(luaMemHookActive[LUAMEMHOOK_WRITE]))
+		CallRegisteredLuaMemHook(address, 4, value, LUAMEMHOOK_WRITE);
 }
 
 void CPUWriteHalfWord(u32 address, u16 value)
 {
 	CPUWriteHalfWordWrapped(address, value);
-	CallRegisteredLuaMemHook(address, 2, value, LUAMEMHOOK_WRITE);
+	if (UNLIKELY(luaMemHookActive[LUAMEMHOOK_WRITE]))
+		CallRegisteredLuaMemHook(address, 2, value, LUAMEMHOOK_WRITE);
 }
 
 void CPUWriteByte(u32 address, u8 b)
 {
 	CPUWriteByteWrapped(address, b);
-	CallRegisteredLuaMemHook(address, 1, b, LUAMEMHOOK_WRITE);
+	if (UNLIKELY(luaMemHookActive[LUAMEMHOOK_WRITE]))
+		CallRegisteredLuaMemHook(address, 1, b, LUAMEMHOOK_WRITE);
 }
 
 u32 CPUReadMemory(u32 address)
 {
 	u32 value = CPUReadMemoryWrapped(address);
-	CallRegisteredLuaMemHook(address, 4, value, LUAMEMHOOK_READ);
+	if (UNLIKELY(luaMemHookActive[LUAMEMHOOK_READ]))
+		CallRegisteredLuaMemHook(address, 4, value, LUAMEMHOOK_READ);
 	return value;
 }
 
 u32 CPUReadHalfWord(u32 address)
 {
 	u32 value = CPUReadHalfWordWrapped(address);
-	CallRegisteredLuaMemHook(address, 2, value, LUAMEMHOOK_READ);
+	if (UNLIKELY(luaMemHookActive[LUAMEMHOOK_READ]))
+		CallRegisteredLuaMemHook(address, 2, value, LUAMEMHOOK_READ);
 	return value;
 }
 
 u16 CPUReadHalfWordSigned(u32 address)
 {
 	u16 value = CPUReadHalfWordSignedWrapped(address);
-	CallRegisteredLuaMemHook(address, 2, value, LUAMEMHOOK_READ);
+	if (UNLIKELY(luaMemHookActive[LUAMEMHOOK_READ]))
+		CallRegisteredLuaMemHook(address, 2, value, LUAMEMHOOK_READ);
 	return value;
 }
 
 u8 CPUReadByte(u32 address)
 {
 	u8 value = CPUReadByteWrapped(address);
-	CallRegisteredLuaMemHook(address, 1, value, LUAMEMHOOK_READ);
+	if (UNLIKELY(luaMemHookActive[LUAMEMHOOK_READ]))
+		CallRegisteredLuaMemHook(address, 1, value, LUAMEMHOOK_READ);
 	return value;
 }

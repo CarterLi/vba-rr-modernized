@@ -3758,12 +3758,21 @@ void CPULoop(int _ticks)
 		{
 			if (armState)
 			{
-				CallRegisteredLuaMemHook(armNextPC, 4, CPUReadMemoryQuick(armNextPC), LUAMEMHOOK_EXEC);
+				// The instruction word is only needed to feed the hook; reading
+				// it costs a memory-map lookup per instruction even when no
+				// script is loaded, so test the latch first.
+				if (UNLIKELY(luaMemHookActive[LUAMEMHOOK_EXEC]))
+				{
+					CallRegisteredLuaMemHook(armNextPC, 4, CPUReadMemoryQuick(armNextPC), LUAMEMHOOK_EXEC);
+				}
 #include "arm-new.h"
 			}
 			else
 			{
-				CallRegisteredLuaMemHook(armNextPC, 2, CPUReadHalfWordQuick(armNextPC), LUAMEMHOOK_EXEC);
+				if (UNLIKELY(luaMemHookActive[LUAMEMHOOK_EXEC]))
+				{
+					CallRegisteredLuaMemHook(armNextPC, 2, CPUReadHalfWordQuick(armNextPC), LUAMEMHOOK_EXEC);
+				}
 #include "thumb.h"
 			}
 		}

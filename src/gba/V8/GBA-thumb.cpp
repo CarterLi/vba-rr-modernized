@@ -1686,7 +1686,10 @@ int thumbExecute()
 {
 	do
 	{
-		CPUMasterCodeCheck();
+		// See the matching comment in GBA-arm.cpp: with no master code the call
+		// would return immediately, so test its first condition here instead.
+		if (UNLIKELY(mastercode && mastercode == armNextPC))
+			CPUMasterCodeCheck();
 
 		//if ((armNextPC & 0x0803FFFF) == 0x08020000)
 		//    busPrefetchCount=0x100;
@@ -1708,7 +1711,10 @@ int thumbExecute()
 		}
 #endif
 
-		CallRegisteredLuaMemHook(armNextPC, 2, CPUReadHalfWordQuick(armNextPC), LUAMEMHOOK_EXEC);
+		// Same wasted argument as in GBA-arm.cpp: the halfword read only exists
+		// to feed the hook, so do not perform it when nothing is hooked.
+		if (UNLIKELY(luaMemHookActive[LUAMEMHOOK_EXEC]))
+			CallRegisteredLuaMemHook(armNextPC, 2, CPUReadHalfWordQuick(armNextPC), LUAMEMHOOK_EXEC);
 
 		armNextPC  = reg[15].I;
 		reg[15].I += 2;

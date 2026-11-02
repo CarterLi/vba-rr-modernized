@@ -2310,7 +2310,13 @@ int armExecute()
 {
 	do
 	{
-		CPUMasterCodeCheck();
+		// CPUMasterCodeCheck() tests "cheatsEnabled && mastercode != 0" and then
+		// compares the PC, so with no master code - the usual case - it is a
+		// call that always returns immediately.  Gate the call on the same
+		// condition it would have tested first; the function still does its own
+		// checks, this only keeps the call off the hot path.
+		if (UNLIKELY(mastercode && mastercode == armNextPC))
+			CPUMasterCodeCheck();
 
 		if ((armNextPC & 0x0803FFFF) == 0x08020000)
 			busPrefetchCount = 0x100;
@@ -2332,7 +2338,11 @@ int armExecute()
 		}
 #endif
 
-		CallRegisteredLuaMemHook(armNextPC, 4, CPUReadMemoryQuick(armNextPC), LUAMEMHOOK_EXEC);
+		// The value argument is evaluated before the call, and building it
+		// means a memory-map lookup plus a load - on every instruction, whether
+		// or not a script asked for it.  Test the latch first.
+		if (UNLIKELY(luaMemHookActive[LUAMEMHOOK_EXEC]))
+			CallRegisteredLuaMemHook(armNextPC, 4, CPUReadMemoryQuick(armNextPC), LUAMEMHOOK_EXEC);
 
 		armNextPC  = reg[15].I;
 		reg[15].I += 4;

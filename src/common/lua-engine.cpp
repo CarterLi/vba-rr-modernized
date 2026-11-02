@@ -1344,6 +1344,11 @@ void CallRegisteredLuaFunctions(LuaCallID calltype)
 // individual scripts.
 static TieredRegion hookedRegions[LUAMEMHOOK_COUNT];
 
+// Mirror of hookedRegions[].NotEmpty(), read by the CPU core on every
+// instruction.  Kept in the same function that rebuilds the regions so it is
+// impossible for the two to drift.
+unsigned char luaMemHookActive[LUAMEMHOOK_COUNT] = { 0 };
+
 static void CalculateMemHookRegions(LuaMemHookType hookType)
 {
 	std::vector<unsigned int> unionBytes;
@@ -1376,6 +1381,7 @@ static void CalculateMemHookRegions(LuaMemHookType hookType)
 	}
 
 	hookedRegions[hookType].Calculate(unionBytes);
+	luaMemHookActive[hookType] = hookedRegions[hookType].NotEmpty() ? 1 : 0;
 }
 
 static void CallRegisteredLuaMemHook_InScript(VbaLuaState *state, unsigned int address, int size, unsigned int value, LuaMemHookType hookType)
