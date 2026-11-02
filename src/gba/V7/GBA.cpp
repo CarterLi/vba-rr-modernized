@@ -24,6 +24,7 @@
 #include "../../common/Util.h"
 #include "../../common/movie.h"
 #include "../../common/vbalua.h"
+#include "../jit/JitCache.h"
 
 #ifdef PROFILING
 #include "../prof/prof.h"
@@ -1014,9 +1015,15 @@ bool CPUReadStateFromStream(gzFile gzFile)
 		remove(tempBackupName);
 		tempSaveAttempts = 0;
 	}
+	// The recompiler's blocks are derived state: a load can change memoryMap,
+	// the wait tables and the code in RAM, so nothing that was decoded before
+	// this point may be reused.  (JIT state is deliberately not part of the
+	// save file.)
+	jitResetCache();
 	return true;
 
 failedLoad:
+	jitResetCache();
 	if (tempSaveSafe)
 	{
 		tempSaveAttempts++;
@@ -3161,6 +3168,11 @@ void CPUInit()
 
 void CPUReset()
 {
+	// Nothing decoded before the reset survives it: memoryMap, the wait tables
+	// and the contents of RAM all change.  Doing this first also covers the
+	// memset(workRAM/internalRAM) below, which bypasses the write hooks.
+	jitResetCache();
+
 	systemReset();
 
 	// The AGBPrint protection latch is not part of the CPU state that
@@ -3690,6 +3702,54 @@ static inline void CPUFrameBoundaryWork()
 	systemFrameBoundaryWork();
 }
 
+// ---------------------------------------------------------------------------
+// Single-instruction reference for the differential verifier
+// (src/gba/jit/JitVerify.cpp, "-jitverify N").
+//
+// arm-new.h / thumb.h are written to be #included into CPULoop's loop body and
+// take exactly one local from it: clockTicks.  Wrapping each of them in its own
+// function therefore gives "run one instruction with interpreter semantics and
+// report its cycles" - the reference the IR interpreter is compared against.
+//
+// The wrapper returns void on purpose: the headers contain two `return;`
+// statements on the BKPT_SUPPORT path, which only compile in a void function.
+// The count comes back through refTicks (0 if the BKPT path was taken, which
+// the verifier skips anyway).
+//
+// No event bookkeeping happens here: cpuNextEvent/lcdTicks are untouched, so
+// this must only be used for instructions that cannot call CPUCheckDMA (the
+// verifier never feeds it an IO store).
+// ---------------------------------------------------------------------------
+static int refTicks;
+
+static void armExecuteOneBody()
+{
+	int clockTicks = 0;
+#include "arm-new.h"
+	refTicks = clockTicks;
+}
+
+static void thumbExecuteOneBody()
+{
+	int clockTicks = 0;
+#include "thumb.h"
+	refTicks = clockTicks;
+}
+
+int armExecuteOne()
+{
+	refTicks = 0;
+	armExecuteOneBody();
+	return refTicks;
+}
+
+int thumbExecuteOne()
+{
+	refTicks = 0;
+	thumbExecuteOneBody();
+	return refTicks;
+}
+
 void CPULoop(int _ticks)
 {
 	CPUBeforeEmulation();
@@ -3756,8 +3816,23 @@ void CPULoop(int _ticks)
 
 		if (!holdState)
 		{
-			if (armState)
+			// The block runner has the interpreter's contract in reverse: it
+			// returns the cycles it executed and CPULoop assigns them to
+			// clockTicks.  -1 means "nothing executed, run one instruction
+			// here", which is also what happens for the single instruction a
+			// block refused to model (jitForceInterp).
+			int jitTicks = -1;
+			if (jitEnabled && !jitForceInterp)
+				jitTicks = jitExecute();
+
+			if (jitTicks >= 0)
 			{
+				clockTicks = jitTicks;
+			}
+			else if (armState)
+			{
+				jitForceInterp = false;
+
 				// The instruction word is only needed to feed the hook; reading
 				// it costs a memory-map lookup per instruction even when no
 				// script is loaded, so test the latch first.
@@ -3769,6 +3844,8 @@ void CPULoop(int _ticks)
 			}
 			else
 			{
+				jitForceInterp = false;
+
 				if (UNLIKELY(luaMemHookActive[LUAMEMHOOK_EXEC]))
 				{
 					CallRegisteredLuaMemHook(armNextPC, 2, CPUReadHalfWordQuick(armNextPC), LUAMEMHOOK_EXEC);

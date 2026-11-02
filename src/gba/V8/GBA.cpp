@@ -24,6 +24,7 @@
 #include "../../common/Util.h"
 #include "../../common/movie.h"
 #include "../../common/vbalua.h"
+#include "../jit/JitCache.h"
 
 #ifdef PROFILING
 #include "../prof/prof.h"
@@ -990,6 +991,9 @@ bool CPUReadStateFromStream(gzFile gzFile)
 		remove(tempBackupName);
 		tempSaveAttempts = 0;
 	}
+
+	// The cached blocks describe the machine we just replaced.
+	jitResetCache();
 	return true;
 
 failedLoad:
@@ -1573,6 +1577,13 @@ int CPULoadRom(const char *szFile)
 	romSize = size;
 
 	return size;
+}
+
+// The recompiler's verifier walks the ROM through memoryMap[8], so it needs to
+// know how much of it is real.
+u32 CPUGetRomSize()
+{
+	return (u32)romSize;
 }
 
 void CPUDoMirroring(bool b)
@@ -3474,6 +3485,9 @@ void CPUReset()
 	armNextPC  = reg[15].I;
 	reg[15].I += 4;
 
+	// Every cached block belongs to the previous program.
+	jitResetCache();
+
 	// reset internal state
 	intState  = false;
 	stopState = false;
@@ -3917,7 +3931,15 @@ void CPULoop(int _ticks)
 
 		if (!holdState && !SWITicks)
 		{
-			if (armState)
+			// jitExecute() has armExecute()'s contract and falls back to it
+			// (or to thumbExecute()) whenever it cannot run a block, so the
+			// only difference when the recompiler is off is one branch.
+			if (UNLIKELY(jitEnabled))
+			{
+				if (!jitExecute())
+					return;
+			}
+			else if (armState)
 			{
 				if (!armExecute())
 					return;

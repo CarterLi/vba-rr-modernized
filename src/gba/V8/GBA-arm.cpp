@@ -2280,6 +2280,18 @@ static insnfunc_t armInsnTable[4096] = {
 	REP256(armF00), // F00
 };
 
+// Does the dispatch table route this word to armUnknownInsn?  Only the JIT
+// differential verifier uses this (src/gba/jit/JitVerify.cpp).  It has to skip
+// such words instead of running them: armUnknownInsn ends up in the BIOS
+// handler, which pops a modal dialog when no BIOS file is loaded, and the words
+// in question are ROM data that merely looks like an instruction.  The table is
+// the authority - it is what the emulator does, and the recompiler's contract
+// is to reproduce the emulator, typos included.
+bool armInsnUndefined(u32 opcode)
+{
+	return armInsnTable[((opcode >> 16) & 0xFF0) | ((opcode >> 4) & 0x0F)] == armUnknownInsn;
+}
+
 // Wrapper routine (execution loop) ///////////////////////////////////////
 
 #if 0
@@ -2330,6 +2342,10 @@ int armExecute()
 
 		clockTicks = 0;
 		u32 oldArmNextPC = armNextPC;
+#if 0	// JIT_PC_TRACE diagnostic, see src/gba/jit/JitCache.h
+		extern void jitTracePc(u32);
+		jitTracePc(oldArmNextPC);
+#endif
 
 #ifndef FINAL_VERSION
 		if (armNextPC == armStopAddr)

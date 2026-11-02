@@ -944,14 +944,23 @@ void BIOS_ObjAffineSet()
 	}
 }
 
+// Defined in src/gba/jit/JitCache.cpp.  Declared here rather than by including
+// that header: this file is a single TU of the V7 core and pulling in the JIT's
+// includes at this point is not worth the ordering risk.
+extern void jitResetCache();
+
 void BIOS_RegisterRamReset(u32 flags)
 {
-	// no need to trace here. this is only called directly from GBA.cpp
-	// to emulate bios initialization
+// no need to trace here. this is only called directly from GBA.cpp
+// to emulate bios initialization
 
-	if (flags)
-	{
-		if (flags & 0x01)
+if (flags)
+{
+// The memsets below wipe RAM without going through CPUWriteMemory, so the
+// recompiler's page versions would not move.  Nothing decoded before this
+// point survives.
+jitResetCache();
+if (flags & 0x01)
 		{
 			// clear work RAM
 			memset(workRAM, 0, 0x40000);
@@ -1200,6 +1209,10 @@ void BIOS_SoftReset()
 	u8 b = internalRAM[0x7ffa];
 
 	memset(&internalRAM[0x7e00], 0, 0x200);
+
+	// The memset above writes RAM without going through the store hooks, and
+	// the jump target may be code that was already decoded.
+	jitResetCache();
 
 	if (b)
 	{

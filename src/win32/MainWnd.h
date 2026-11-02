@@ -399,6 +399,9 @@ protected:
 #endif
 	afx_msg void OnOptionsEmulatorUseOldGBTiming();
 	afx_msg void OnUpdateOptionsEmulatorUseOldGBTiming(CCmdUI*pCmdUI);
+
+	afx_msg void OnOptionsEmulatorJit();
+	afx_msg void OnUpdateOptionsEmulatorJit(CCmdUI*pCmdUI);
 #ifdef USE_GB_CORE_V7
 	afx_msg void OnOptionsEmulatorUseGBNullInputHack();
 	afx_msg void OnUpdateOptionsEmulatorUseGBNullInputHack(CCmdUI*pCmdUI);

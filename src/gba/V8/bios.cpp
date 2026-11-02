@@ -7,6 +7,7 @@
 #include "../GBA.h"
 #include "../GBAinline.h"
 #include "../GBAGlobals.h"
+#include "../jit/JitCache.h"
 
 s16 sineTable[256] = {
 	(s16)0x0000, (s16)0x0192, (s16)0x0323, (s16)0x04B5, (s16)0x0645, (s16)0x07D5, (s16)0x0964, (s16)0x0AF1,
@@ -958,6 +959,13 @@ void BIOS_RegisterRamReset(u32 flags)
 
 	CPUUpdateRegister(0x0, 0x80);
 
+	// These memsets bypass CPUWriteMemory(), which is where the recompiler
+	// bumps its page versions, so clearing work or internal RAM has to drop
+	// every cached block by hand.  The other flags only touch video memory,
+	// which can never hold code.
+	if (flags & 0x03)
+		jitResetCache();
+
 	if (flags)
 	{
 		if (flags & 0x01)
@@ -1207,6 +1215,11 @@ void BIOS_SoftReset()
 	u8 b = internalRAM[0x7ffa];
 
 	memset(&internalRAM[0x7e00], 0, 0x200);
+
+	// A soft reset restarts the program at 0x02000000 or 0x08000000.  The
+	// memset above bypasses CPUWriteMemory() and the jump goes somewhere the
+	// cache may already hold blocks for, so drop them all.
+	jitResetCache();
 
 	if (b)
 	{

@@ -1,5 +1,6 @@
 #include "../GBAinline.h"
 #include "GBACpu.h"
+#include "../jit/JitCache.h"
 #include "../../common/System.h"
 #include "../../common/SystemGlobals.h"
 #include "../../common/vbalua.h"
@@ -897,9 +898,15 @@ unwritable:
 // CallRegisteredLuaMemHook so that the common "no script running" case costs a
 // byte load and a not-taken branch instead of a call into another translation
 // unit.  luaMemHookActive[] is the same condition the callee tests first.
+//
+// The recompiler's invalidation rides along: 0x02/0x03 are the only writable
+// regions that can hold code, so one masked compare covers EWRAM and IWRAM and
+// every other store skips the call entirely.
 void CPUWriteMemory(u32 address, u32 value)
 {
 	CPUWriteMemoryWrapped(address, value);
+	if (UNLIKELY(jitEnabled && (address & 0x0E000000) == 0x02000000))
+		jitCodeWritten(address, 4);
 	if (UNLIKELY(luaMemHookActive[LUAMEMHOOK_WRITE]))
 		CallRegisteredLuaMemHook(address, 4, value, LUAMEMHOOK_WRITE);
 }
@@ -907,6 +914,8 @@ void CPUWriteMemory(u32 address, u32 value)
 void CPUWriteHalfWord(u32 address, u16 value)
 {
 	CPUWriteHalfWordWrapped(address, value);
+	if (UNLIKELY(jitEnabled && (address & 0x0E000000) == 0x02000000))
+		jitCodeWritten(address, 2);
 	if (UNLIKELY(luaMemHookActive[LUAMEMHOOK_WRITE]))
 		CallRegisteredLuaMemHook(address, 2, value, LUAMEMHOOK_WRITE);
 }
@@ -914,6 +923,8 @@ void CPUWriteHalfWord(u32 address, u16 value)
 void CPUWriteByte(u32 address, u8 b)
 {
 	CPUWriteByteWrapped(address, b);
+	if (UNLIKELY(jitEnabled && (address & 0x0E000000) == 0x02000000))
+		jitCodeWritten(address, 1);
 	if (UNLIKELY(luaMemHookActive[LUAMEMHOOK_WRITE]))
 		CallRegisteredLuaMemHook(address, 1, b, LUAMEMHOOK_WRITE);
 }

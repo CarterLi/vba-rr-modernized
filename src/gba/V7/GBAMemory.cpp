@@ -11,6 +11,7 @@
 #include "../EEprom.h"
 #include "../Flash.h"
 #include "../RTC.h"
+#include "../jit/JitCache.h"
 
 #include <intrin.h>
 
@@ -700,9 +701,20 @@ unwritable:
 
 // See the matching comment in V8/GBAMemory.cpp: testing the latch here keeps
 // the no-script case down to a byte load and a not-taken branch.
+//
+// The recompiler's page-version bump goes here, not inside the *Wrapped
+// functions: every writer - the CPU, DMA (doDMA calls these three) and the BIOS
+// helpers - funnels through these, and the region test is one AND.
+#define JIT_CODE_WRITE(address, size) \
+	do { \
+		if ((address & 0x0E000000) == 0x02000000) \
+			jitCodeWritten(address, size); \
+	} while (0)
+
 void CPUWriteMemory(u32 address, u32 value)
 {
 	CPUWriteMemoryWrapped(address, value);
+	JIT_CODE_WRITE(address, 4);
 	if (UNLIKELY(luaMemHookActive[LUAMEMHOOK_WRITE]))
 		CallRegisteredLuaMemHook(address, 4, value, LUAMEMHOOK_WRITE);
 }
@@ -710,6 +722,7 @@ void CPUWriteMemory(u32 address, u32 value)
 void CPUWriteHalfWord(u32 address, u16 value)
 {
 	CPUWriteHalfWordWrapped(address, value);
+	JIT_CODE_WRITE(address, 2);
 	if (UNLIKELY(luaMemHookActive[LUAMEMHOOK_WRITE]))
 		CallRegisteredLuaMemHook(address, 2, value, LUAMEMHOOK_WRITE);
 }
@@ -717,6 +730,7 @@ void CPUWriteHalfWord(u32 address, u16 value)
 void CPUWriteByte(u32 address, u8 b)
 {
 	CPUWriteByteWrapped(address, b);
+	JIT_CODE_WRITE(address, 1);
 	if (UNLIKELY(luaMemHookActive[LUAMEMHOOK_WRITE]))
 		CallRegisteredLuaMemHook(address, 1, b, LUAMEMHOOK_WRITE);
 }

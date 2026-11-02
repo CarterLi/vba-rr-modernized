@@ -20,6 +20,7 @@
 #include "../gba/GBA.h"
 #include "../gba/GBAGlobals.h"
 #include "../gba/Flash.h"
+#include "../gba/jit/JitCache.h"
 #include "../gb/GB.h"
 #include "../gb/gbGlobals.h"
 #include "../gb/gbPrinter.h"
@@ -1416,6 +1417,22 @@ void MainWnd::OnUpdateOptionsEmulatorUseOldGBTiming(CCmdUI*pCmdUI)
 {
 	pCmdUI->SetCheck(useOldFrameTiming);
 	pCmdUI->Enable(!VBAMovieIsActive() || GetAsyncKeyState(VK_CONTROL));
+}
+
+// Options > Emulation > CPU Recompiler (JIT).  The core has always had the
+// switch (jitSetEnabled()); this is the same one as -jit / -nojit and the
+// "jit" key in vba.ini.  Toggling it clears the block cache in the core, so
+// the next instruction is decoded again either way; a running movie is left
+// alone unless Ctrl is held, like the other settings that change emulation.
+void MainWnd::OnOptionsEmulatorJit()
+{
+	jitSetEnabled(!jitEnabled);
+}
+
+void MainWnd::OnUpdateOptionsEmulatorJit(CCmdUI*pCmdUI)
+{
+	pCmdUI->SetCheck(jitEnabled);
+	pCmdUI->Enable(jitAvailable() && (!VBAMovieIsActive() || GetAsyncKeyState(VK_CONTROL)));
 }
 
 #ifdef USE_GB_CORE_V7

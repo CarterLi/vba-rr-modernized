@@ -993,6 +993,12 @@ call "$(ProjectDir)defaultconfig\CopyWgpu.bat" "$(Platform)" "$(OutDir)"</Comman
     <ClCompile Include="..\src\gba\GBAGfx.cpp" />
     <ClCompile Include="..\src\gba\GBAGlobals.cpp" />
     <ClCompile Include="..\src\gba\GBAMemory.cpp" />
+    <ClCompile Include="..\src\gba\jit\JitCache.cpp" />
+    <ClCompile Include="..\src\gba\jit\JitDecodeArm.cpp" />
+    <ClCompile Include="..\src\gba\jit\JitDecodeThumb.cpp" />
+    <ClCompile Include="..\src\gba\jit\JitDump.cpp" />
+    <ClCompile Include="..\src\gba\jit\JitInterp.cpp" />
+    <ClCompile Include="..\src\gba\jit\JitVerify.cpp" />
     <ClCompile Include="..\src\gba\Mode0.cpp" />
     <ClCompile Include="..\src\gba\Mode1.cpp" />
     <ClCompile Include="..\src\gba\Mode2.cpp" />
@@ -1230,6 +1236,8 @@ call "$(ProjectDir)defaultconfig\CopyWgpu.bat" "$(Platform)" "$(OutDir)"</Comman
     <ClInclude Include="..\src\gba\GBA.h" />
     <ClInclude Include="..\src\gba\GBAGfx.h" />
     <ClInclude Include="..\src\gba\GBAinline.h" />
+    <ClInclude Include="..\src\gba\jit\JitIr.h" />
+    <ClInclude Include="..\src\gba\jit\JitVerify.h" />
     <ClInclude Include="..\src\gba\GBAGlobals.h" />
     <ClInclude Include="..\src\gba\RTC.h" />
     <ClInclude Include="..\src\gba\GBASound.h" />

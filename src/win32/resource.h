@@ -1377,6 +1377,9 @@
 #define ID_OPTIONS_EMULATOR_ALWAYSONTOP 42402
 #define ID_OPTIONS_EMULATOR_BACKGROUNDINPUT 42403
 #define ID_OPTIONS_EMULATOR_MODERNFONT  42417
+// Options > Emulation > CPU Recompiler (JIT).  The same switch is `-jit` /
+// `-nojit` on the command line and "jit" in vba.ini.
+#define ID_OPTIONS_EMULATOR_JIT         42471
 #define ID_OPTIONS_VIDEO_X9             42418
 #define ID_OPTIONS_VIDEO_X10            42419
 #define ID_OPTIONS_VIDEO_X11            42420
@@ -1482,7 +1485,7 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        193
-#define _APS_NEXT_COMMAND_VALUE         42463
+#define _APS_NEXT_COMMAND_VALUE         42472
 #define _APS_NEXT_CONTROL_VALUE         1501
 #define _APS_NEXT_SYMED_VALUE           43513
 #endif

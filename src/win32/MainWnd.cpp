@@ -5,6 +5,7 @@
 
 #include "resource.h"
 #include "MainWnd.h"
+#include "../gba/jit/JitVerify.h"
 
 #include "CmdAccelOb.h"
 #include "Reg.h"
@@ -479,6 +480,8 @@ ON_UPDATE_COMMAND_UI(ID_EMULATOR_GBALAG, OnUpdateOptionsEmulatorGBALag)
 #endif
 ON_COMMAND(ID_EMULATOR_USE_OLD_FRAME_TIMING, OnOptionsEmulatorUseOldGBTiming)
 ON_UPDATE_COMMAND_UI(ID_EMULATOR_USE_OLD_FRAME_TIMING, OnUpdateOptionsEmulatorUseOldGBTiming)
+ON_COMMAND(ID_OPTIONS_EMULATOR_JIT, OnOptionsEmulatorJit)
+ON_UPDATE_COMMAND_UI(ID_OPTIONS_EMULATOR_JIT, OnUpdateOptionsEmulatorJit)
 #ifdef USE_GB_CORE_V7
 ON_COMMAND(ID_EMULATOR_USE_GB_INPUT_HACK, OnOptionsEmulatorUseGBNullInputHack)
 ON_UPDATE_COMMAND_UI(ID_EMULATOR_USE_GB_INPUT_HACK, OnUpdateOptionsEmulatorUseGBNullInputHack)
@@ -2129,6 +2132,45 @@ void MainWnd::winFileClose(bool reopening)
 	systemSetTitle(_T(VBA_NAME_AND_VERSION));
 }
 
+// --- JIT verifier -----------------------------------------------------------
+// The MFC frontend has no console, so the verifier makes one, prints into it
+// and waits for a key.  Reached from -jitverify <count> on the command line.
+//
+// When the caller redirected stdout (`vba.exe -rom game.gba -jitverify 20000
+// > jitverify.log`) there is nothing to allocate: the text goes into that file
+// and the run ends without waiting for a key, which is what makes the verifier
+// usable from a script.
+static int g_jitVerifyInsns = 0;
+
+void winSetJitVerify(int insns)
+{
+	g_jitVerifyInsns = insns;
+}
+
+static void winRunJitVerify()
+{
+	// The report must land somewhere the caller can read.  A redirected stdout
+	// is already a file; with no usable handle, point stdout at jitverify.log
+	// instead of opening a console window nobody can script.
+	const HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+	if (out == NULL || out == INVALID_HANDLE_VALUE)
+	{
+		FILE *f = NULL;
+		freopen_s(&f, "jitverify.log", "w", stdout);
+	}
+
+	printf("JIT verifier: up to %d instructions per pass\n\n", g_jitVerifyInsns);
+	const int bad = jitVerifyRun(g_jitVerifyInsns, 1);
+
+	if (bad == 0)
+		printf("\nOK - decoder, IR interpreter and block runner agree with the interpreter\n");
+	else if (bad < 0)
+		printf("\nnot available (no ROM loaded)\n");
+	else
+		printf("\nFAILED - %d mismatches, see above\n", bad);
+	fflush(stdout);
+}
+
 bool MainWnd::winFileRun(bool reopening)
 {
 	int prevCartridgeType = systemCartridgeType;
@@ -2254,6 +2296,11 @@ bool MainWnd::winFileRun(bool reopening)
 		CPUInit();
 		systemLoadBIOS(winAnsiFromWide(theApp.biosFileName), theApp.useBiosFile ? true : false);
 		CPUReset();
+			if (g_jitVerifyInsns > 0)
+			{
+				winRunJitVerify();
+				exit(0);
+			}
 
 		if (reopening)
 		{

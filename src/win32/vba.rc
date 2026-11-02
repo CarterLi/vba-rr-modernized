@@ -2439,6 +2439,7 @@ BEGIN
             MENUITEM "Use &Old Frame Timing",       ID_EMULATOR_USE_OLD_FRAME_TIMING
             MENUITEM "    Use v20 &GB Frame Kludge", ID_EMULATION_V20_GB_FRAME_HACK
             MENUITEM "Use &GB Null Input Kludge",   ID_EMULATOR_USE_GB_INPUT_HACK
+            MENUITEM "CPU &Recompiler (JIT)",       ID_OPTIONS_EMULATOR_JIT
             MENUITEM SEPARATOR
             MENUITEM "&Use BIOS File",              ID_OPTIONS_EMULATOR_USEBIOSFILE
             MENUITEM "Skip BIOS &Intro",            ID_OPTIONS_EMULATOR_SKIPBIOS

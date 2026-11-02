@@ -55,6 +55,7 @@ extern bool CPUWriteState(const char *);
 extern bool CPUReadStateFromStream(gzFile);
 extern bool CPUWriteStateToStream(gzFile);
 extern int  CPULoadRom(const char *);
+extern u32  CPUGetRomSize();
 extern void CPUMasterCodeCheck();
 extern void CPUDoMirroring(bool);
 extern void CPUUpdateRegister(u32, u16);

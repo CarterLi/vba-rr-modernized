@@ -26,6 +26,7 @@
 
 #include "../gba/GBA.h"
 #include "../gba/GBAGlobals.h"
+#include "../gba/jit/JitCache.h"
 #include "../gb/GB.h"
 #include "../gb/gbGlobals.h"
 #include "../gb/gbPrinter.h"
@@ -786,6 +787,9 @@ BOOL VBA::InitInstance()
 		parseCommandLine(m_lpCmdLine, argv);
 
 		bool gotFlag = false, enoughArgs = false;
+		// -jit / -nojit.  Kept until the whole line has been read, because a
+		// bare ROM argument loads the settings again; -1 means "use vba.ini".
+		int jitOverride = -1;
 		for (int i = 0; i < argc; i++)
 		{
 			if (argv[i][0] == '-' || gotFlag)
@@ -859,6 +863,16 @@ BOOL VBA::InitInstance()
 					if (i + 1 >= argc || argv[i + 1][0] == '-') { --i; goto invalidArgument; }
 					playMovieFileReadOnly = _ttoi(argv[++i]) != 0;
 				}
+				else if (_tcsicmp(argv[i], _T("-jitverify")) == 0)
+				{
+					// Differential test of the recompiler's IR against the
+					// interpreter; see src/gba/jit/JitVerify.h.
+					// e.g. vba.exe -rom game.gba -jitverify 20000
+					extern void winSetJitVerify(int);
+					if (i + 1 >= argc || argv[i + 1][0] == '-')
+						goto invalidArgument;
+					winSetJitVerify(_ttoi(argv[++i]));
+				}
 				else if (_tcsicmp(argv[i], _T("-vsync")) == 0)
 				{
 					// Vertical sync used to be menu/ini only; benchmarks
@@ -866,6 +880,23 @@ BOOL VBA::InitInstance()
 					if (i + 1 >= argc || argv[i + 1][0] == '-')
 						goto invalidArgument;
 					vsync = _ttoi(argv[++i]) != 0;
+				}
+				else if (_tcsicmp(argv[i], _T("-jit")) == 0)
+				{
+					// Turn the recompiler on for this run.  Off by default
+					// while it is still being brought up; the same switch is
+					// under Options > Emulation and in vba.ini.  Applied after
+					// the whole command line so that a ROM argument cannot
+					// load the settings again and undo it.
+					// e.g. vba.exe -rom game.gba -jit
+					jitOverride = 1;
+				}
+				else if (_tcsicmp(argv[i], _T("-nojit")) == 0)
+				{
+					// Force the interpreter for this run, for HashTrace
+					// comparisons against a settings file that has jit=1.
+					// e.g. vba.exe -rom game.gba -play movie.vbm 1 -nojit
+					jitOverride = 0;
 				}
 				else if (_tcsicmp(argv[i], _T("-hashtrace")) == 0)
 				{
@@ -985,6 +1016,8 @@ invalidArgument:
 					            L"-videoScale val \t\t sets the video size (val = 1..8 for 1X..8X)\n"
 					            L"-hideMenu \t\t hides the menu until program exit\n"
 					            L"-vsync val \t\t sets vertical sync (0 = off, 1 = on)\n"
+					            L"-jit \t\t\t use the CPU recompiler instead of the interpreter\n"
+					            L"-nojit \t\t\t force the interpreter for this run\n"
 					            L"\n"
 					            L"-videoLog args \t does (nesvideos) video+audio logging with the given arguments\n"
 					            L"-logToFile \t tells logging to use fopen/fclose of args, if logging is enabled\n"
@@ -1002,6 +1035,9 @@ invalidArgument:
 				loadSettings();
 			}
 		}
+
+		if (jitOverride >= 0)
+			jitSetEnabled(jitAvailable() && jitOverride != 0);
 
 /*
         int index = filename.ReverseFind('.');
@@ -2714,6 +2750,12 @@ void VBA::loadSettings()
 	gbV20GBFrameTimingHackTemp = gbV20GBFrameTimingHack;
 #endif
 	useOldSync		  = regQueryDwordValue(_T("useOldSync"), 0) ? TRUE : FALSE;
+
+	// CPU core.  A boolean for now: the alternative to the interpreter is the
+	// block recompiler, and until a machine-code backend replaces the IR
+	// interpreter it is slower, so it stays off unless asked for.  The V7
+	// build has no recompiler and reports false from jitAvailable().
+	jitSetEnabled(jitAvailable() && regQueryDwordValue(_T("jit"), 0) != 0);
 	useOldFrameTiming = regQueryDwordValue(_T("useOldGBTiming"), false) ? true : false;
 
 	useBiosFile	  = regQueryDwordValue(_T("useBios"), 0) ? true : false;
@@ -3092,6 +3134,9 @@ void VBA::saveSettings()
 #endif
 	regSetDwordValue(_T("useOldGBTiming"), useOldFrameTiming);
 	regSetDwordValue(_T("useOldSync"), useOldSync);
+
+	// Options > Emulation > CPU Recompiler (JIT); also set by -jit / -nojit.
+	regSetDwordValue(_T("jit"), jitEnabled ? 1 : 0);
 
 	regSetDwordValue(_T("rtcEnabled"), winRtcEnable);
 

@@ -1680,6 +1680,14 @@ static insnfunc_t thumbInsnTable[1024] = {
 	thumbF8,	thumbF8,	thumbF8,	thumbF8,	thumbF8,	thumbF8,	thumbF8,	thumbF8,
 };
 
+// Does the dispatch table route this halfword to thumbUnknownInsn?  Same use
+// as the ARM version in GBA-arm.cpp: only the JIT differential verifier calls
+// it, to skip words the emulator itself refuses to execute.
+bool thumbInsnUndefined(u32 opcode)
+{
+	return thumbInsnTable[opcode >> 6] == thumbUnknownInsn;
+}
+
 // Wrapper routine (execution loop) ///////////////////////////////////////
 
 int thumbExecute()
@@ -1703,6 +1711,10 @@ int thumbExecute()
 
 		clockTicks = 0;
 		u32 oldArmNextPC = armNextPC;
+#if 0	// JIT_PC_TRACE diagnostic, see src/gba/jit/JitCache.h
+		extern void jitTracePc(u32);
+		jitTracePc(oldArmNextPC);
+#endif
 
 #ifndef FINAL_VERSION
 		if (armNextPC == armStopAddr)
