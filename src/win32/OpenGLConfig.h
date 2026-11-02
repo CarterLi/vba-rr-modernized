@@ -25,7 +25,7 @@
 #pragma once
 
 #ifndef VBA_ENABLE_OPENGL
-#define VBA_ENABLE_OPENGL 0
+#define VBA_ENABLE_OPENGL 1
 #endif
 
 #endif // VBA_WIN32_OPENGLCONFIG_H
