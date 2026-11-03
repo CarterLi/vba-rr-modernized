@@ -648,6 +648,30 @@ void systemMessage(int number, const char *defaultMsg, ...)
 	winShowSystemMessage(message);
 }
 
+// A colour list is one id per character of the message, not text: the core
+// fills a fixed-size buffer (VBAUpdateFrameCountDisplay() fills every byte of
+// it) and the narrow buffer this layer used to keep was copied with strncpy(),
+// which is where the terminator came from.  Cut the list at the 40 characters
+// the message keeps and terminate the copy here, so that winWideFromAnsi()
+// has an end to read instead of running off the end of the caller's array.
+static CString wideFromColorList(const char *colorList)
+{
+	char colors[41];
+	int  count = 0;
+
+	if (colorList != NULL)
+	{
+		while (count < 40 && colorList[count] != '\0')
+		{
+			colors[count] = colorList[count];
+			++count;
+		}
+	}
+	colors[count] = '\0';
+
+	return winWideFromAnsi(colors);
+}
+
 // The single place a message is stored, in both of its renderings.  See the
 // comment on the buffers in VBA.h for why there are two.
 static void storeScreenMessage(int slot, int duration, const char *colorList,
@@ -661,7 +685,7 @@ static void storeScreenMessage(int slot, int duration, const char *colorList,
 	theApp.screenMessageDuration[slot]	  = duration;
 	theApp.screenMessageBuffer[slot]	  = localizedText;
 	theApp.screenMessageAsciiBuffer[slot] = asciiText;
-	theApp.screenMessageColorBuffer[slot] = winWideFromAnsi(colorList);
+	theApp.screenMessageColorBuffer[slot] = wideFromColorList(colorList);
 
 	// 40 characters is what a row of the picture has room for.  The status
 	// bar ellipsises on its own, but it reads the same buffer.

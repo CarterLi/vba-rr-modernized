@@ -1169,8 +1169,8 @@ void VBAUpdateButtonPressDisplay()
 	const bool eraseAll = !g_core.inputDisplay;
 	char grayList[BufferSize]; // FIXME: no grey available at the moment
 	char colorList[BufferSize];
-	memset(grayList, 4, strnlen(buffer, BufferSize));
-	memset(colorList, 1, strnlen(buffer, BufferSize));
+	memset(grayList, 4, BufferSize);
+	memset(colorList, 1, BufferSize);
 
 	u32	autoHeldKeys = eraseAll ? 0 : g_core.autoHold & BUTTON_REGULAR_RECORDING_MASK;
 	u32	autoFireKeys = eraseAll ? 0 : (g_core.autoFire | g_core.autoFire2) & BUTTON_REGULAR_RECORDING_MASK;
@@ -1189,6 +1189,8 @@ void VBAUpdateButtonPressDisplay()
 			buffer[whiteOffset + i] = ((nextKeys & mask) != 0) ? KeyMap[j] : ' ';
 		}
 	}
+	// One entry per character, ended where the message ends.
+	grayList[strlen(buffer)] = '\0';
 	systemScreenMessage(buffer, 3, -1, grayList);
 
 	if (!eraseAll)
@@ -1218,6 +1220,7 @@ void VBAUpdateButtonPressDisplay()
 			buffer[whiteOffset + i] = pressed ? KeyMap[j] : ' ';
 		}
 	}
+	colorList[strlen(buffer)] = '\0';
 	systemScreenMessage(buffer, 2, -1, colorList);
 
 	lastKeys  = currKeys;
@@ -1333,6 +1336,9 @@ void VBAUpdateFrameCountDisplay()
 	{
 		frameDisplayString[0] = '\0';
 	}
+	// The array was filled to its last byte, so the list ends where the text
+	// ends; without this the renderer reads past the end looking for it.
+	colorList[strlen(frameDisplayString)] = '\0';
 	systemScreenMessage(frameDisplayString, 1, -1, colorList);
 #else
 	/// SDL FIXME
