@@ -190,26 +190,27 @@ private:
 		if (cw <= 0 || chHeight <= 0 || cw > 1024 || chHeight > 1024)
 			return false;
 
-		BITMAPINFO bmi;
-		ZeroMemory(&bmi, sizeof(bmi));
-		bmi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
-		bmi.bmiHeader.biWidth       = cw;
-		bmi.bmiHeader.biHeight      = -chHeight; // top-down
-		bmi.bmiHeader.biPlanes      = 1;
-		bmi.bmiHeader.biBitCount    = 1;
-		bmi.bmiHeader.biCompression = BI_RGB;
-		bmi.bmiHeader.biClrUsed     = 2;
-		bmi.bmiColors[0].rgbRed     = 0;
-		bmi.bmiColors[0].rgbGreen   = 0;
-		bmi.bmiColors[0].rgbBlue    = 0;
-		bmi.bmiColors[0].rgbReserved = 0;
-		bmi.bmiColors[1].rgbRed     = 255;
-		bmi.bmiColors[1].rgbGreen   = 255;
-		bmi.bmiColors[1].rgbBlue    = 255;
-		bmi.bmiColors[1].rgbReserved = 0;
+		alignas(BITMAPINFO) unsigned char bitmapInfoBuffer[sizeof(BITMAPINFO) + sizeof(RGBQUAD)];
+		BITMAPINFO* bmi = (BITMAPINFO*)bitmapInfoBuffer;
+		ZeroMemory(bitmapInfoBuffer, sizeof(bitmapInfoBuffer));
+		bmi->bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
+		bmi->bmiHeader.biWidth       = cw;
+		bmi->bmiHeader.biHeight      = -chHeight; // top-down
+		bmi->bmiHeader.biPlanes      = 1;
+		bmi->bmiHeader.biBitCount    = 1;
+		bmi->bmiHeader.biCompression = BI_RGB;
+		bmi->bmiHeader.biClrUsed     = 2;
+		bmi->bmiColors[0].rgbRed     = 0;
+		bmi->bmiColors[0].rgbGreen   = 0;
+		bmi->bmiColors[0].rgbBlue    = 0;
+		bmi->bmiColors[0].rgbReserved = 0;
+		bmi->bmiColors[1].rgbRed     = 255;
+		bmi->bmiColors[1].rgbGreen   = 255;
+		bmi->bmiColors[1].rgbBlue    = 255;
+		bmi->bmiColors[1].rgbReserved = 0;
 
 		void *bits = NULL;
-		HBITMAP bitmap = CreateDIBSection(dc, &bmi, DIB_RGB_COLORS, &bits, NULL, 0);
+		HBITMAP bitmap = CreateDIBSection(dc, bmi, DIB_RGB_COLORS, &bits, NULL, 0);
 		if (bitmap == NULL || bits == NULL)
 		{
 			if (bitmap != NULL)
