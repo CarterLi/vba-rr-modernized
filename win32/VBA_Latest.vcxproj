@@ -998,6 +998,7 @@ call "$(ProjectDir)defaultconfig\CopyWgpu.bat" "$(Platform)" "$(OutDir)"</Comman
     <ClCompile Include="..\src\gba\jit\JitDecodeThumb.cpp" />
     <ClCompile Include="..\src\gba\jit\JitDump.cpp" />
     <ClCompile Include="..\src\gba\jit\JitInterp.cpp" />
+    <ClCompile Include="..\src\gba\jit\JitEmit.cpp" Condition="'$(Platform)'!='x64'" />
     <ClCompile Include="..\src\gba\jit\JitVerify.cpp" />
     <ClCompile Include="..\src\gba\Mode0.cpp" />
     <ClCompile Include="..\src\gba\Mode1.cpp" />
@@ -1354,4 +1355,301 @@ call "$(ProjectDir)defaultconfig\CopyWgpu.bat" "$(Platform)" "$(OutDir)"</Comman
       <UserProperties RESOURCE_FILE="" />
     </VisualStudio>
   </ProjectExtensions>
+  <!-- third_party\asmjit: the machine-code assembler behind the JIT backends.
+       Only the x64 configurations compile it, because JitEmit.cpp is the only
+       consumer and it is architecture specific.  asmjit needs C++20 while the
+       rest of the project stays on C++17, and ASMJIT_STATIC keeps its public
+       classes from being declared dllimport, so both are set per file. -->
+  <ItemGroup>
+    <ClCompile Include="..\src\gba\jit\JitEmit.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\arm\a64_assembler.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\arm\a64_builder.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\arm\a64_compiler.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\arm\a64_emit_helper.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\arm\a64_formatter.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\arm\a64_func.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\arm\a64_inst_api.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\arm\a64_inst_db.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\arm\a64_ra_pass.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\arm\arm_formatter.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\axl\arena.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\axl\arena_bit_set.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\axl\arena_hash.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\axl\arena_vector.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\arch_traits.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\assembler.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\builder.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\code_holder.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\code_writer.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\compiler.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\const_pool.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\cpu_info.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\debug_utils.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\emit_helper.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\emitter.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\emitter_utils.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\environment.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\error.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\error_handler.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\formatter.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\func.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\func_args_context.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\inst.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\inst_db.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\jit_allocator.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\jit_runtime.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\logger.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\pauth.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\ra_local.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\ra_pass.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\ra_stack.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\string.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\target.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\type.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\core\virt_mem.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\ujit\uni_compiler_a64.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\ujit\uni_compiler_x86.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\ujit\vec_const_table.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\x86\x86_assembler.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\x86\x86_builder.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\x86\x86_compiler.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\x86\x86_emit_helper.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\x86\x86_formatter.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\x86\x86_func.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\x86\x86_inst_api.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\x86\x86_inst_db.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\third_party\asmjit\asmjit\x86\x86_ra_pass.cpp" Condition="'$(Platform)'=='x64'">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>ASMJIT_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\third_party\asmjit;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemGroup>
 </Project>

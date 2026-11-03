@@ -1,8 +1,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <intrin.h>
 
 #include "JitCache.h"
+#include "JitEmit.h"
 #include "JitIr.h"
 
 #include "../GBA.h"
@@ -41,8 +43,11 @@ namespace {
 // open when VBA_JIT_PCTRACE named one, so the cost otherwise is one load and a
 // not-taken branch.  Compiled out unless JIT_PC_TRACE is on (JitCache.h).
 #if JIT_PC_TRACE
-FILE *jitPcTrace	 = NULL;
-u32	  jitPcTraceLeft = 1000000;
+FILE *jitPcTrace	  = NULL;
+u32	  jitPcTraceLeft  = 1000000;
+// VBA_JIT_PCTRACE_SKIP: instructions to pass over before the window starts, so
+// the same 16 MB window can be slid over a later part of a long recording.
+u32	  jitPcTraceSkip  = 0;
 #endif
 
 // --- the cache -------------------------------------------------------------
@@ -55,17 +60,49 @@ u32	  jitPcTraceLeft = 1000000;
 // differs.
 // ---------------------------------------------------------------------------
 
-#define JIT_CACHE_BLOCKS 1024
+#define JIT_CACHE_BLOCKS 4096
 
 struct JitCacheEntry
 {
 	u32		 tag;		// guestPc | thumb; 0xFFFFFFFF means "nothing here"
 	u16		 version;	// page version the block was decoded at
-	u16		 spare;
+	u16		 codeSlot;	// entry in jitCodeCache holding this block's machine code
+	u32		 codeStamp;	// jitCodeCache[codeSlot].stamp when it was attached
 	JitBlock block;
 };
 
 JitCacheEntry jitCache[JIT_CACHE_BLOCKS];
+
+// ---------------------------------------------------------------------------
+// Compiled-code cache
+//
+// Decoding a block is cheap (~50 ns); compiling one is three orders of
+// magnitude more expensive.  The decoded-block cache above is small and
+// direct-mapped, and a page invalidation drops every block on that page, so the
+// same guest code is re-decoded over and over - 1.3 million times for 1200
+// frames of Super Mario Advance.  Compiling on every one of those made the
+// recompiler 12x slower than the interpreter.
+//
+// So machine code lives in its own cache, keyed by address *and by the contents
+// of the decoded block*: a re-decode that produces the same instructions reuses
+// the code that is already there, and only a genuinely different instruction
+// stream pays for a compilation.  Entries are owned here, never by the block
+// cache; a block entry only remembers (slot, stamp) and checks the stamp before
+// using the code, which stays valid as long as that slot has not been reused.
+// ---------------------------------------------------------------------------
+
+#define JIT_CODE_ENTRIES 16384
+
+struct JitCodeEntry
+{
+	u32			  tag;		// guestPc | thumb; 0xFFFFFFFF means empty
+	u32			  hash;		// of the decoded instructions
+	u32			  stamp;	// unique per insert
+	JitCompiledBlock code;
+};
+
+JitCodeEntry jitCodeCache[JIT_CODE_ENTRIES];
+u32			 jitCodeStamp = 1;
 
 // ---------------------------------------------------------------------------
 // Code pages
@@ -104,15 +141,22 @@ void jitReportStats()
 	// instruction, which is exactly what a HashTrace comparison cannot show.
 	const char *line =
 		"jit: %u blocks decoded, %u runs, %u cache hits, %u page invalidations, "
-		"%llu instructions, %u bad\n";
+		"%llu IR instructions, %u bad, %u native blocks, %u compiles, %u code hits, "
+		"%llu native instructions, %llu ms compiling\n";
 
 	fprintf(stderr, line, jitStats.blocksDecoded, jitStats.blocksRun, jitStats.cacheHits,
-			jitStats.pageInvalidations, (unsigned long long)jitStats.insns, jitStats.badInsns);
+			jitStats.pageInvalidations, (unsigned long long)jitStats.insns, jitStats.badInsns,
+			jitStats.nativeBlocks, jitStats.nativeCompiles, jitStats.codeHits,
+			(unsigned long long)jitStats.nativeInsns,
+			(unsigned long long)(jitStats.compileTicks / 3000000));
 
 	if (FILE *log = fopen("jit.log", "w"))
 	{
 		fprintf(log, line, jitStats.blocksDecoded, jitStats.blocksRun, jitStats.cacheHits,
-				jitStats.pageInvalidations, (unsigned long long)jitStats.insns, jitStats.badInsns);
+				jitStats.pageInvalidations, (unsigned long long)jitStats.insns,
+				jitStats.badInsns, jitStats.nativeBlocks, jitStats.nativeCompiles,
+				jitStats.codeHits, (unsigned long long)jitStats.nativeInsns,
+				(unsigned long long)(jitStats.compileTicks / 3000000));
 		fclose(log);
 	}
 }
@@ -142,40 +186,287 @@ JitSource sourceFor(u32 pc)
 	return src;
 }
 
-JitBlock *getBlock(u32 pc, bool thumb)
+inline u32 codeIndex(u32 pc)
 {
+	// A different mix from cacheIndex() on purpose: the two tables should not
+	// collide in lockstep.
+	return ((pc * 2654435761u) >> 12) & (JIT_CODE_ENTRIES - 1);
+}
+
+// Hash of the decoded instructions.  Field by field rather than over the raw
+// bytes: JitInsn has one padding byte that the decoders do not initialise, and
+// an unstable hash would make every re-decode look like a new block.
+u32 hashBlock(const JitBlock *b)
+{
+	u32 h = 2166136261u;
+	h = (h ^ (u32)b->count) * 16777619u;
+	h = (h ^ (u32)b->thumb) * 16777619u;
+	for (u16 i = 0; i < b->count; i++)
+	{
+		const JitInsn &in = b->insn[i];
+		h = (h ^ in.imm) * 16777619u;
+		h = (h ^ (u32)in.flags) * 16777619u;
+		h = (h ^ in.op) * 16777619u;
+		h = (h ^ in.sub) * 16777619u;
+		h = (h ^ in.cond) * 16777619u;
+		h = (h ^ ((u32)in.d | ((u32)in.n << 8) | ((u32)in.m << 16) | ((u32)in.shift << 24))) *
+			16777619u;
+		h = (h ^ ((u32)in.flagMask | ((u32)in.fetchCycles << 8))) * 16777619u;
+	}
+	return h;
+}
+
+// Machine code for `block`, reusing what the code cache already holds for the
+// same address and the same instructions.  Returns NULL when the backend
+// refuses the block, and also while the block is still cold.
+//
+// Compiling costs ~10 us; running the same six instructions through the IR
+// interpreter costs ~100 ns.  Half the blocks in a game are entered a handful
+// of times and never again, so compiling on first sight is a 100x loss on them
+// - hence the second-hit threshold below.
+#define JIT_COMPILE_AFTER 2
+
+struct JitHotEntry
+{
+	u32 tag;
+	u32 hash;
+	u8	count;
+	u8	pad[3];
+};
+
+JitHotEntry jitHot[512];
+
+const JitCompiledBlock *nativeFor(const JitBlock *block, u32 tag, u16 *slotOut, u32 *stampOut)
+{
+	const u32	   hash	 = hashBlock(block);
+	JitCodeEntry *ce	 = &jitCodeCache[codeIndex(block->guestPc)];
+
+	if (ce->tag == tag && ce->hash == hash && ce->stamp != 0 && ce->code.fn)
+	{
+		jitStats.codeHits++;
+		*slotOut  = (u16)(ce - jitCodeCache);
+		*stampOut = ce->stamp;
+		return &ce->code;
+	}
+
+	// Cold?  Let the IR interpreter have it until it has been seen often
+	// enough to pay for a compilation.
+	{
+		JitHotEntry *hot = &jitHot[codeIndex(block->guestPc) & 511];
+		if (hot->tag != tag || hot->hash != hash)
+		{
+			hot->tag  = tag;
+			hot->hash = hash;
+			hot->count = 1;
+		}
+		else if (hot->count < 255)
+			hot->count++;
+
+		if (hot->count < JIT_COMPILE_AFTER)
+		{
+			*slotOut  = 0;
+			*stampOut = 0;
+			return NULL;
+		}
+	}
+
+	jitReleaseBlock(&ce->code);
+	ce->tag	  = 0xFFFFFFFFu;
+	ce->stamp = 0;
+
+	if (!jitCompileBlock(block, &ce->code))
+	{
+		*slotOut  = 0;
+		*stampOut = 0;
+		return NULL;
+	}
+
+	ce->tag	  = tag;
+	ce->hash  = hash;
+	ce->stamp = jitCodeStamp++;
+	jitStats.nativeBlocks++;
+	jitStats.nativeCompiles++;
+
+	*slotOut  = (u16)(ce - jitCodeCache);
+	*stampOut = ce->stamp;
+	return &ce->code;
+}
+
+JitCacheEntry *getEntry(u32 pc, bool thumb, const JitCompiledBlock **codeOut)
+{
+	*codeOut		  = NULL;
 	const u32 tag	  = (pc & 0xFFFFFFFEu) | (thumb ? 1u : 0u);
 	JitCacheEntry *e  = &jitCache[cacheIndex(pc)];
 	const int	  page = pageIndex(pc);
 	const u16	  ver  = (page >= 0) ? jitPageVersion[page] : 0;
 
-	if (e->tag == tag && e->version == ver)
+	if (!(e->tag == tag && e->version == ver))
 	{
+		const JitSource src = sourceFor(pc);
+		if (!src.base)
+		{
+			e->tag = 0xFFFFFFFFu;
+			e->version = ver;
+			e->codeStamp = 0;
+			return NULL;
+		}
+
+		const bool ok = thumb ? jitDecodeThumb(src, pc, &e->block)
+							  : jitDecodeArm(src, pc, &e->block);
+		if (!ok)
+		{
+			e->tag = 0xFFFFFFFFu;	// do not hand out the previous block either
+			e->version = ver;
+			e->codeStamp = 0;
+			return NULL;
+		}
+
+		e->tag	   = tag;
+		e->version = ver;
+		e->codeSlot = 0;
+		e->codeStamp = 0;
+		if (page >= 0)
+			jitPageHasCode[page] = 1;
+		jitStats.blocksDecoded++;
+	}
+	else
 		jitStats.cacheHits++;
-		return &e->block;
-	}
 
-	const JitSource src = sourceFor(pc);
-	if (!src.base)
-		return NULL;
-
-	const bool ok = thumb ? jitDecodeThumb(src, pc, &e->block)
-						  : jitDecodeArm(src, pc, &e->block);
-	if (!ok)
+#ifdef USE_GBA_CORE_V7
+	// Attach the machine code, compiling it only when this address has not been
+	// compiled with exactly these instructions before.
+	if (e->codeStamp != 0 && jitCodeCache[e->codeSlot].stamp == e->codeStamp &&
+		jitCodeCache[e->codeSlot].code.fn)
 	{
-		e->tag = 0xFFFFFFFFu;	// do not hand out the previous block either
-		return NULL;
+		*codeOut = &jitCodeCache[e->codeSlot].code;
+		return e;
 	}
 
-	e->tag	   = tag;
-	e->version = ver;
-	if (page >= 0)
-		jitPageHasCode[page] = 1;
-	jitStats.blocksDecoded++;
-	return &e->block;
+	if (jitNativeAvailable())
+	{
+		const u64 t0 = __rdtsc();
+		*codeOut	 = nativeFor(&e->block, tag, &e->codeSlot, &e->codeStamp);
+		jitStats.compileTicks += __rdtsc() - t0;
+	}
+#endif
+	return e;
 }
 
 #ifdef USE_GBA_CORE_V7
+
+#ifdef USE_GBA_CORE_V7
+
+// ---------------------------------------------------------------------------
+// Shadow check (VBA_JIT_SHADOW=1)
+//
+// Runs each store-free block twice from the same CPU state - once through the
+// machine code, once through the IR interpreter - and stops at the first block
+// whose result differs.  Blocks that write memory are skipped, because their
+// side effects cannot be undone between the two runs.  This is the tool that
+// caught the two bugs the block-level verifier cannot see: an exit stub that
+// the normal path fell into, and a Thumb PUSH that was applied twice.
+// ---------------------------------------------------------------------------
+
+struct ShadowCpu
+{
+	reg_pair r[45];
+	bool8	 n, c, z, v, armSt, hold;
+	u32		 nextPc;
+	s32		 mode;
+};
+
+int	jitShadowMode	= -1;
+u32 jitShadowBlocks = 0;
+
+bool shadowEnabled()
+{
+	if (jitShadowMode < 0)
+	{
+		const char *s = getenv("VBA_JIT_SHADOW");
+		jitShadowMode = (s && s[0] && s[0] != '0') ? 1 : 0;
+	}
+	return jitShadowMode != 0;
+}
+
+bool blockWritesMemory(const JitBlock *b)
+{
+	for (u16 i = 0; i < b->count; i++)
+	{
+		const u8 op = b->insn[i].op;
+		if (op == JOP_STORE || op == JOP_STM || op == JOP_PUSH || op == JOP_SWP)
+			return true;
+	}
+	return false;
+}
+
+void shadowSave(ShadowCpu *s)
+{
+	memcpy(s->r, reg, sizeof(s->r));
+	s->n	  = N_FLAG;
+	s->c	  = C_FLAG;
+	s->z	  = Z_FLAG;
+	s->v	  = V_FLAG;
+	s->armSt  = armState;
+	s->hold	  = holdState;
+	s->nextPc = armNextPC;
+	s->mode	  = armMode;
+}
+
+void shadowLoad(const ShadowCpu *s)
+{
+	memcpy(reg, s->r, sizeof(s->r));
+	N_FLAG	  = s->n;
+	C_FLAG	  = s->c;
+	Z_FLAG	  = s->z;
+	V_FLAG	  = s->v;
+	armState  = s->armSt;
+	holdState = s->hold;
+	armNextPC = s->nextPc;
+	armMode	  = s->mode;
+}
+
+// Returns a description of the first difference, or NULL.
+const char *shadowCompare(const ShadowCpu *a, const ShadowCpu *b, int ta, int tb)
+{
+	for (int i = 0; i < 18; i++)
+		if (a->r[i].I != b->r[i].I)
+			return "reg";
+	if (a->n != b->n) return "N";
+	if (a->c != b->c) return "C";
+	if (a->z != b->z) return "Z";
+	if (a->v != b->v) return "V";
+	if (a->armSt != b->armSt) return "armState";
+	if (a->nextPc != b->nextPc) return "armNextPC";
+	if (ta != tb) return "cycles";
+	return NULL;
+}
+
+void shadowReport(const JitBlock *b, const JitCompiledBlock *code, const ShadowCpu *want,
+				  const ShadowCpu *got, int wantTicks, int gotTicks, const char *what)
+{
+	FILE *f = fopen("jit-shadow.txt", "w");
+	if (!f)
+		return;
+
+	char dump[4096];
+	dump[0] = 0;
+	jitDumpBlock(b, dump, (int)sizeof(dump) - 1);
+
+	fprintf(f, "shadow mismatch at block %08X (%s, native covers %u of %u): %s\n%s\n",
+			b->guestPc, b->thumb ? "thumb" : "arm", code ? code->insnCount : 0, b->count,
+			what, dump);
+	fprintf(f, "  cycles native=%d ir=%d\n", gotTicks, wantTicks);
+	for (int i = 0; i < 18; i++)
+		if (want->r[i].I != got->r[i].I)
+			fprintf(f, "  r%-2d ir=%08X native=%08X\n", i, want->r[i].I, got->r[i].I);
+	fprintf(f, "  flags ir N%d C%d Z%d V%d  native N%d C%d Z%d V%d\n",
+			want->n, want->c, want->z, want->v, got->n, got->c, got->z, got->v);
+	fprintf(f, "  armNextPC ir=%08X native=%08X  armState ir=%d native=%d\n",
+			want->nextPc, got->nextPc, want->armSt, got->armSt);
+	fclose(f);
+}
+
+#endif // USE_GBA_CORE_V7
 
 // One basic block, instruction by instruction, exactly as one turn of CPULoop's
 // inline interpreter would run them.
@@ -190,15 +481,99 @@ JitBlock *getBlock(u32 pc, bool thumb)
 // instruction with its own clockTicks in place.  That is what keeps
 // CPUCheckDMA() and CPU_BREAK_LOOP_2() - the only two readers of the
 // interpreter's locals - seeing the values they expect.
-int runBlock(const JitBlock *b, s32 limit, bool *needInterp)
+int runBlock(const JitCompiledBlock *code, const JitBlock *b, s32 limit, bool *needInterp)
 {
 	*needInterp = false;
 
 	const bool thumb = b->thumb != 0;
 	u32		   pc	 = b->guestPc;
 	s32		   total = 0;
+	u16		   start = 0;
 
-	for (u16 i = 0; i < b->count; i++)
+	// Machine code first, for as many instructions as the backend accepted.
+	if (code && code->fn)
+	{
+#ifdef USE_GBA_CORE_V7
+		if (shadowEnabled() && code->insnCount == b->count && !blockWritesMemory(b))
+		{
+			ShadowCpu before, nativeSt, irSt;
+
+			shadowSave(&before);
+			{
+				JitExecResult r1;
+				r1.nextPc = b->guestPc;
+				r1.status = 0;
+				const int nativeTicks = code->fn(limit, &r1);
+				armNextPC			  = r1.nextPc;
+				reg[15].I			  = r1.nextPc + (armState ? 4u : 2u);
+				shadowSave(&nativeSt);
+
+				shadowLoad(&before);
+				bool	  irNeed = false;
+				const int irTicks = runBlock(NULL, b, limit, &irNeed);
+				shadowSave(&irSt);
+
+				if (const char *what = shadowCompare(&irSt, &nativeSt, irTicks, nativeTicks))
+				{
+					shadowReport(b, code, &irSt, &nativeSt, irTicks, nativeTicks, what);
+					jitShadowMode = 0;	// one report is enough
+				}
+				jitShadowBlocks++;
+
+				// Continue from the IR result so a mismatch cannot derail the
+				// rest of the run.
+				shadowLoad(&irSt);
+				*needInterp = irNeed;
+				jitStats.nativeInsns += code->insnCount;
+				return irTicks;
+			}
+		}
+#endif
+
+		JitExecResult r;
+		r.nextPc = b->guestPc;
+		r.status = 0;
+
+		total = code->fn(limit, &r);
+
+		if (r.status & JITX_NEED_INTERP)
+		{
+			// The block stopped *in front of* nextPc (an IO store the
+			// interpreter has to run, because CPUCheckDMA() rewrites CPULoop's
+			// own event counter).  Leave the state the way the IR path's
+			// break-before-the-instruction does.
+			*needInterp = true;
+			if (!(r.status & JITX_KEEP_PC))
+			{
+				armNextPC = r.nextPc;
+				reg[15].I = r.nextPc + (armState ? 4u : 2u);
+			}
+			jitStats.nativeInsns += code->insnCount;
+			return total;
+		}
+
+		if (r.status & JITX_BUDGET)
+		{
+			armNextPC = r.nextPc;
+			reg[15].I = r.nextPc + (armState ? 4u : 2u);
+			jitStats.nativeInsns += code->insnCount;
+			return total;
+		}
+
+		// JITX_DONE: the compiled prefix ran to its end.
+		pc	  = r.nextPc;
+		start = code->insnCount;
+		jitStats.nativeInsns += start;
+
+		if (start >= b->count)
+		{
+			armNextPC = pc;
+			reg[15].I = pc + (armState ? 4u : 2u);
+			return total;
+		}
+	}
+
+	for (u16 i = start; i < b->count; i++)
 	{
 #if JIT_PC_TRACE
 		jitTracePc(pc);
@@ -291,10 +666,12 @@ int interpStretch()
 
 // One basic block, instruction by instruction, with the same accounting as one
 // turn of armExecute()/thumbExecute().
-int runBlock(const JitBlock *b, s32 limit, bool *needInterp)
+int runBlock(const JitCompiledBlock *code, const JitBlock *b, s32 limit, bool *needInterp)
 {
 	const bool thumb = b->thumb != 0;
 	u32		   pc	 = b->guestPc;
+
+	(void)code;		// no machine-code backend for V8 yet
 
 	if (needInterp)
 		*needInterp = false;
@@ -453,7 +830,20 @@ void jitSetEnabled(bool on)
 void jitResetCache()
 {
 	for (int i = 0; i < JIT_CACHE_BLOCKS; i++)
-		jitCache[i].tag = 0xFFFFFFFFu;
+	{
+		jitCache[i].tag		  = 0xFFFFFFFFu;
+		jitCache[i].codeStamp = 0;
+	}
+
+	// Every compiled block belongs to the instruction stream that is being
+	// thrown away (a reset or a state load changes memory contents).
+	for (int i = 0; i < JIT_CODE_ENTRIES; i++)
+	{
+		jitReleaseBlock(&jitCodeCache[i].code);
+		jitCodeCache[i].tag	  = 0xFFFFFFFFu;
+		jitCodeCache[i].hash  = 0;
+		jitCodeCache[i].stamp = 0;
+	}
 
 	// The version counters are deliberately *not* reset: they only ever have
 	// to differ from the version a cached block recorded, and every tag is
@@ -500,6 +890,9 @@ void jitTracePc(u32 pc)
 		// Opened on first use so the interpreter path traces too, not just
 		// -jit runs.
 		const char *path = getenv("VBA_JIT_PCTRACE");
+		const char *skip = getenv("VBA_JIT_PCTRACE_SKIP");
+		if (skip && skip[0])
+			jitPcTraceSkip = (u32)strtoul(skip, NULL, 10);
 		if (path && path[0])
 			jitPcTrace = fopen(path, "wb");
 		if (!jitPcTrace)
@@ -510,6 +903,11 @@ void jitTracePc(u32 pc)
 	}
 	if (!jitPcTrace || !jitPcTraceLeft)
 		return;
+	if (jitPcTraceSkip)
+	{
+		--jitPcTraceSkip;
+		return;
+	}
 	--jitPcTraceLeft;
 	fwrite(&pc, sizeof(pc), 1, jitPcTrace);
 	{
@@ -534,7 +932,20 @@ void jitTracePc(u32 pc)
 int jitRunBlockForTest(const JitBlock *block, bool *needInterp)
 {
 	bool dummy = false;
-	return runBlock(block, 0x7FFFFFF, needInterp ? needInterp : &dummy);
+
+#ifdef USE_GBA_CORE_V7
+	// The verifier has to exercise the machine code, not just the IR
+	// interpreter, so the block is compiled here for real.  The previous
+	// scratch block is released first; the code is only ever entered from this
+	// function, so nothing else can be pointing at it.
+	static JitCompiledBlock scratch;
+	(void)jitCompileBlock(block, &scratch);
+	const int ticks = runBlock(&scratch, block, 0x7FFFFFF, needInterp ? needInterp : &dummy);
+	jitReleaseBlock(&scratch);
+	return ticks;
+#else
+	return runBlock(NULL, block, 0x7FFFFFF, needInterp ? needInterp : &dummy);
+#endif
 }
 
 int jitExecute()
@@ -557,16 +968,17 @@ int jitExecute()
 	if (reg[15].I != armNextPC + (armState ? 4u : 2u))
 		return -1;
 
-	s32	 budget = *extCpuNextEvent;
+	s32 budget = *extCpuNextEvent;
 	s32	 total	= 0;
 	bool any	= false;
 
 	for (;;)
 	{
 		const bool thumb = (armState == false);
-		JitBlock *b		 = getBlock(armNextPC, thumb);
+		const JitCompiledBlock *native = NULL;
+		JitCacheEntry *e = getEntry(armNextPC, thumb, &native);
 
-		if (!b)
+		if (!e)
 		{
 			// The block could not be decoded (BKPT, "^" transfers, an MSR that
 			// writes CPSR).  Let the inline interpreter run this stretch; it
@@ -579,7 +991,7 @@ int jitExecute()
 		jitStats.blocksRun++;
 
 		bool needInterp = false;
-		total += runBlock(b, budget - total, &needInterp);
+		total += runBlock(native, &e->block, budget - total, &needInterp);
 		any = true;
 
 		if (needInterp)
@@ -609,9 +1021,10 @@ int jitExecute()
 	for (;;)
 	{
 		const bool thumb = (armState == false);
-		JitBlock *b		 = getBlock(armNextPC, thumb);
+		const JitCompiledBlock *native = NULL;
+		JitCacheEntry *e = getEntry(armNextPC, thumb, &native);
 
-		if (!b)
+		if (!e)
 		{
 			// The block could not be decoded (BKPT and a few encodings the
 			// decoder refuses on purpose).  Let the interpreter run this
@@ -621,7 +1034,7 @@ int jitExecute()
 		}
 
 		jitStats.blocksRun++;
-		runBlock(b, 0, NULL);
+		runBlock(native, &e->block, 0, NULL);
 
 		// runBlock() bailed out on the detour described above.
 		if (jitDetour > 0)

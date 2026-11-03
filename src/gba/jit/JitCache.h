@@ -59,11 +59,16 @@ extern bool jitEnabled;
 struct JitStats
 {
 	u32 blocksDecoded;		// cache misses that produced a block
-	u32 blocksRun;			// block entries that reached the IR interpreter
+	u32 blocksRun;			// block entries that reached the runner
 	u32 cacheHits;			// entries served from the cache
 	u32 pageInvalidations;	// 1 KB pages bumped because code was written
 	u32 badInsns;			// jitInterpInsn() returned <= 0 (must stay 0)
-	u64 insns;				// guest instructions retired through blocks
+	u64 insns;				// guest instructions retired through the IR interpreter
+	u32 nativeBlocks;		// blocks that got machine code (V7 x64 only)
+	u64 nativeInsns;		// guest instructions the machine code covered
+	u32 nativeCompiles;		// asmjit compilations (the expensive part)
+	u32 codeHits;			// re-decodes that reused an existing compilation
+	u64 compileTicks;		// rdtsc ticks spent inside jitCompileBlock
 };
 
 // True on every platform and for both cores.  Win32 (x86) still has no
@@ -115,5 +120,6 @@ void jitGetStats(JitStats *out);
 // two files shows the first instruction where the two paths diverge.  Costs one
 // predictable branch per instruction when no trace is open.
 void jitTracePc(u32 pc);
+
 
 #endif // VBA_JIT_CACHE_H

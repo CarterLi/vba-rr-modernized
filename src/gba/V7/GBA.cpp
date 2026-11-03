@@ -3832,6 +3832,7 @@ void CPULoop(int _ticks)
 			else if (armState)
 			{
 				jitForceInterp = false;
+				jitTracePc(armNextPC);
 
 				// The instruction word is only needed to feed the hook; reading
 				// it costs a memory-map lookup per instruction even when no
@@ -3845,6 +3846,7 @@ void CPULoop(int _ticks)
 			else
 			{
 				jitForceInterp = false;
+				jitTracePc(armNextPC);
 
 				if (UNLIKELY(luaMemHookActive[LUAMEMHOOK_EXEC]))
 				{

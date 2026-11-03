@@ -2154,3 +2154,126 @@ VBA_VS_Latest_V82XR.exe -rom aos.gba -play aos.vbm 1 -jit   -hashtrace D://jit.c
 `jitInterpInsn()` 进函数时先把 `armNextPC` 设成 `pc+4`/`pc+2`、`reg[15]` 设成 `pc+8`/`pc+4`，
 再照抄 `armExecute()` / `thumbExecute()` 那三行 prefetch 记账，最后才分派。两个循环的掩码
 不一样（ARM `0xFFFFFE00`、Thumb `0xFFFFFF00`），别合并。
+
+#### 3.2.1.17 V7 的 x64 native 后端（2026-11-04 落地）
+
+**结论**：V7 的机器码后端已经在跑，逐帧等价（三个 ROM 各 1200 帧哈希逐字节相同），
+**性能与内联解释器基本持平**（0.97–1.01x）。也就是说这一轮买到的是"能生成正确的
+x64 代码 + 一套能抓 bug 的验证手段"，不是"变快"；真正的加速要等寄存器分配。
+
+文件与依赖：
+
+| 文件 | 作用 |
+|---|---|
+| `third_party/asmjit/` | 编辑器库（Zlib），`f566238` 快照，见该目录 README |
+| `src/gba/jit/JitEmit.h` | 后端接口：`jitCompileBlock()` / `jitReleaseBlock()` / `jitNativeAvailable()`，以及退出协议 |
+| `src/gba/jit/JitEmit.cpp` | 唯一的实现：`JitBlock` 的一段前缀 → 一个原生函数 |
+| `src/gba/jit/JitCache.cpp` | 块缓存 + **编译结果缓存** + 热度阈值 + 影子对比 |
+| `documentation/jit-emit-sample.c` | 教学用样本：把 `0x080B66E2` 那个块（5 条 Thumb → 597 字节机器码）逐行翻译成 C，附真实字节，`cl` 直接编译运行 |
+
+想直观看看生成代码长什么样，读 `documentation/jit-emit-sample.c`：里面嵌了
+`VBA_JIT_ASM` 抓下来的 597 字节真机器码、按功能切开的字节账，以及一份"一行 C
+对应一条 x64"的等价实现（和手写版本对比，跑出来状态和周期数必须一致）。
+在那个样本里能直接看出两件事：一条 `adds r0, r7, #0` 要 102 字节，其中 63 字节
+在算 N/Z/C/V 四个标志；块尾若以分支结束，还会多出 20 字节走不到的出口。
+
+asmjit 需要 **C++20**（`std::endian`），所以它在 vcxproj 里是**按文件**加
+`stdcpp20` + `ASMJIT_STATIC` + `..\third_party\asmjit` 的，工程其余部分仍是 C++17；
+只有 x64 配置编它（`Condition="'$(Platform)'=='x64'"`），Win32/ARM64 走
+`JitEmit.cpp` 的空实现。
+
+**ABI**（`JitEmit.h`）：
+
+```c
+int fn(s32 budget, JitExecResult *out);      // 返回本次执行的周期数
+// out->nextPc + out->status ∈ { NEED_INTERP, KEEP_PC, BUDGET, DONE }
+```
+
+生成代码的寄存器分配：`rbx = &reg[0]`（所有模拟器全局量都是 `[rbx + disp32]`，
+disp32 在编译期由真实链接地址算出来；`checkedDisplacements()` 开机检查一次全部在 ±2 GB 内）、
+`r12d` 周期累计、`r13d` 预算、`r14` 结果指针、`rdi/rsi` 访存地址与回写值、其余 rax/rcx/rdx/r8-r11 为临时。
+
+**逐指令要花的钱**（和解释器一一对应，不能省）：`reg[15] = pc+4/8` 的存储（内存 helper
+读它做 open bus）、条件码判断、本体、周期查表、`cmp/jl` 预算检查。预算检查**每条指令一次**，
+和 3.3 的红线一致。
+
+**拒绝编译的情形**（`nativeSupported()`，前缀在它前面截断，剩下的交给 IR 解释器）：
+`d==15 && S` 的 ALU、写 PC 的 MUL（`RdHi`/`RdLo` 任一是 15）、写 PC 的 SWP、
+`ldrb/ldrh/ldrsb/ldrsh pc` 与非前索引的 `ldr pc`、**基址是 r15 且回写的 load/store**、
+基址 r15 且回写的 LDM/STM、写 CPSR 的 MSR、SWI/UNDEF。这些就是 3.2.1.14 第 4/5 条那类
+"写 PC 但不是跳转"的绕一条，块表达不了。
+
+**编译结果缓存（这一轮的性能关键）**：解码一个块 ~50 ns，编译一个块 ~10 µs（200 倍）。
+块缓存是 1024 项直接映射且页失效会整页丢弃，`aos` 1200 帧就有 37 万次解码——每次都编译
+就是 60 s 起步（实测 3000 帧 60–124 s，用户看到的就是"25 帧"）。现在分三层：
+
+1. `jitCache[4096]`：解码块缓存（放大到 4096，纯解码成本可忽略）；
+2. `jitCodeCache[16384]`：**机器码缓存，键 = 地址 + 解码指令的哈希**。重新解码出同样的
+   指令就复用已有机器码，页失效/缓存碰撞都不再触发编译（`hashBlock()` 按字段算，不能用
+   裸 `memcmp`——`JitInsn` 有一个未初始化的 padding 字节）；
+3. `jitHot[512]`：**首次命中不编译**（`JIT_COMPILE_AFTER = 2`）。一次都不重复执行的块
+   走 IR 解释器（~100 ns），比给它编译（10 µs）便宜 100 倍。
+
+效果：`mario` 600 帧的编译次数 95 822 → 15 955，编译总耗时 0.76 s → 0.19 s。
+
+**这一轮抓到的三个真 bug**（都是块级差分/端到端哈希看不见的）：
+
+1. **条件码整段漏了**。`emitOne()` 只给分支发了条件判断，ALU/访存全部无条件执行。
+   单条差分测试抓不到（它测的是 IR 解释器），块级差分抓得到——修好后 `mario` 的
+   块级差分从 9 处降到 0。
+2. **`NEED_INTERP` 桩会被顺序执行穿透**。桩原本紧跟在 `checkBudget()` 后面内联发出，
+   于是每条 IO store 都是"原生跑完 → 落到桩上 → 报 NEED_INTERP → 解释器再跑一遍"，
+   栈指针被减两次（`push {r7,lr}` 的 sp 差 8），AoS 直接白屏。现在桩统一发在
+   `emitEpilogue()` 之后，只能跳进来。
+3. **`bx r15`（Thumb→ARM 惯用法）没设 `reg[15]`**。`compile()` 原来对 `JOP_BX` 跳过
+   `setPc()`，于是 `bx r15` 用的是上一条指令留下的 `reg[15]`，跳回原处死循环——
+   表现就是**玩家输完名字后永久黑屏、全是 lag 帧、音频还在响**。`bx r15`/`bx pc` 读的是
+   `pc+4`，必须先把 `reg[15]` 写对。
+
+**影子对比（`VBA_JIT_SHADOW=1`，`jit-shadow.txt`）**：每个块先跑机器码、再恢复现场用
+IR 解释器跑一遍，逐字段比对 `reg[0..17]`、四个标志、`armNextPC`、`armState`、周期。
+只对"整块都被编译且不写内存"的块生效（写内存的块无法回滚）。上面第 3 个 bug 就是它定位的：
+`shadow mismatch at block 080E032C (thumb): r15 ir=080E0334 native=080E0330`。
+`VBA_JIT_OPS=<mask>` 可以按 `JitOp` 位掩码关掉某一类指令的编译，用来二分。
+
+**验证矩阵（2026-11-04，本机）**：
+
+| 项 | 结果 |
+|---|---|
+| `-jitverify 20000` × mario/sonic/aos | 单条 pass 与块级 pass 全部 0 差异 |
+| `-hashtrace` × 三 ROM × 1200 帧 | 逐帧哈希完全一致 |
+| `VBA_JIT_SHADOW=1` × 三 ROM | 无 mismatch |
+| 性能（1200 帧，`-synchronize 0`，取最快） | mario 0.97x / sonic 1.01x / aos 1.00x |
+
+**为什么只有持平**：整帧时间主要是软件渲染 + 合成 + 声音 + GDI 提交，CPU 只占一小段
+（3.0 节），把 CPU 加快 1.2 倍在整帧上只剩几个百分点；而 JIT 这边每条指令还要付
+"内存里的寄存器 + 内存里的标志位 + 每条指令的预算检查 + 访存走 helper 调用"。
+下一步的加速点按收益排序：
+
+1. **guest 寄存器进宿主寄存器**（块内缓存 r0-r14，块尾回写），标志位打包进一个字节/寄存器；
+2. **RAM/ROM 快路径内联**（`0x02/0x03` 直接 `[base + (addr & mask)]`，只在 `luaMemHookActive`
+   或 IO/BIOS 区域时才调 helper）；
+3. 把 `setPc()` 只在"真的读 PC 或要调 helper"的指令前发出（现在每条都发）。
+**纯 CPU 场景实测（2026-11-04，`-frameskip 9` + `soundOff=1` + `-synchronize 0`）**：
+
+| ROM | 解释器 | JIT | 比 |
+|---|---|---|---|
+| mario | 2.00 s | 2.24 s | 0.89x |
+| sonic | 1.69 s | 1.70 s | 0.99x |
+| aos | 1.64 s | 1.72 s | 0.95x |
+
+把画面和声音都抽掉以后 JIT **还是略慢**，所以这不是"被渲染稀释了"，而是生成的代码本身
+和 `arm-new.h` 的内联 handler 打平。原因可以算出来：块平均只有 ~5 条指令
+（`blocksRun / 帧 ≈ 15 400`，`指令 / 帧 ≈ 75 000`），而每次进出块要付
+7 个 push + 7 个 pop + `movabs &reg[0]` + 预算/结果指针的装载 ≈ 20 条宿主指令，
+加上 `jitExecute` 里 `getEntry()` 的 10 来条——**平均每条 guest 指令要摊 6 条左右的开销**，
+和指令本体的 15 条是一个量级。这也解释了为什么"把预算桩挪到函数末尾"和"不必读 PC 时
+不写 `reg[15]`"这两项优化测不出差别（它们只减少了 1–2 条/指令）。
+
+下一步按收益排序（都还没做）：
+
+1. **块链接（block chaining）**：块出口若目标块已编译就直接 `jmp` 到它的入口（入口在
+   prologue 之后），把每块的 20 条进出开销摊到整条执行链上。逐指令的预算检查已经在了，
+   链接不会改变 IRQ 落点，所以是安全的。这是目前最大的一块。
+2. **寄存器分配**：r0–r14 进宿主寄存器、标志位打包，块尾回写。改造面大但收益确定。
+3. **RAM/ROM 快路径内联**：`0x02/0x03` 直接寻址，只在 `luaMemHookActive`、IO、BIOS 时调 helper。
