@@ -39,7 +39,7 @@ LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
 // resources and may be missing strings, controls or whole dialogs.  An
 // unchanged vba.rc keeps the value, so the version changes only when the
 // English resources do.
-#define VBA_L10N_VERSION "29ab7ac1820aa12408264c43e6d67b3a4882f8d783ba0f5ffcf0f135436472dd"
+#define VBA_L10N_VERSION "2836d851cfa2dbcdc53dd8dc80a5c6932d8050edf0cf88d7a3c1d8935e8363ae"
 
 // The About box shows the application icon; its dialog template lives here,
 // so the icon has to be here too or the control comes up empty.
@@ -1537,6 +1537,7 @@ BEGIN
                 MENUITEM "跳过 &7 帧",                     ID_OPTIONS_VIDEO_FRAMESKIP_7
                 MENUITEM "跳过 &8 帧",                     ID_OPTIONS_VIDEO_FRAMESKIP_8
                 MENUITEM "跳过 &9 帧（每 10 帧丢 9 帧）", ID_OPTIONS_VIDEO_FRAMESKIP_9
+                MENUITEM "跳过全部帧（不渲染画面）", ID_OPTIONS_VIDEO_FRAMESKIP_UNLIMITED
             END
             MENUITEM SEPARATOR
             MENUITEM "加速模式(&T)",                 ID_OPTIONS_EMULATOR_SPEEDUPTOGGLE
@@ -1846,6 +1847,7 @@ BEGIN
             MENUITEM "使用旧版帧时序(&O)",       ID_EMULATOR_USE_OLD_FRAME_TIMING
             MENUITEM "    使用 v20 &GB 帧兼容处理", ID_EMULATION_V20_GB_FRAME_HACK
             MENUITEM "使用 &GB 空输入兼容处理",   ID_EMULATOR_USE_GB_INPUT_HACK
+            MENUITEM "CPU 重编译器(&R) (JIT)",       ID_OPTIONS_EMULATOR_JIT
             MENUITEM SEPARATOR
             MENUITEM "使用 BIOS 文件(&U)",              ID_OPTIONS_EMULATOR_USEBIOSFILE
             MENUITEM "跳过 B&IOS 开机画面",            ID_OPTIONS_EMULATOR_SKIPBIOS

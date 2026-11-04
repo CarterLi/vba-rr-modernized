@@ -2129,6 +2129,7 @@ BEGIN
                 MENUITEM "Skip &7",                     ID_OPTIONS_VIDEO_FRAMESKIP_7
                 MENUITEM "Skip &8",                     ID_OPTIONS_VIDEO_FRAMESKIP_8
                 MENUITEM "Skip &9 (Skip 9 Out Of Every 10 Frames)", ID_OPTIONS_VIDEO_FRAMESKIP_9
+                MENUITEM "Skip &All Frames (Render Nothing)", ID_OPTIONS_VIDEO_FRAMESKIP_UNLIMITED
             END
             MENUITEM SEPARATOR
             MENUITEM "&Turbo Mode",                 ID_OPTIONS_EMULATOR_SPEEDUPTOGGLE

@@ -434,6 +434,7 @@ BOOL MainWnd::OnOptionsFrameskip(UINT nID)
 	case ID_OPTIONS_VIDEO_FRAMESKIP_7:
 	case ID_OPTIONS_VIDEO_FRAMESKIP_8:
 	case ID_OPTIONS_VIDEO_FRAMESKIP_9:
+	case ID_OPTIONS_VIDEO_FRAMESKIP_UNLIMITED:
 		if (systemCartridgeType == IMAGE_GBA)
 		{
 			frameSkip = nID - ID_OPTIONS_VIDEO_FRAMESKIP_0;
@@ -498,6 +499,12 @@ void MainWnd::OnUpdateOptionsVideoFrameskip8(CCmdUI*pCmdUI)
 void MainWnd::OnUpdateOptionsVideoFrameskip9(CCmdUI*pCmdUI)
 {
 	setRadioCheck(pCmdUI, systemCartridgeType == IMAGE_GBA ? frameSkip == 9 : gbFrameSkip == 9);
+}
+
+void MainWnd::OnUpdateOptionsVideoFrameskipUnlimited(CCmdUI*pCmdUI)
+{
+	setRadioCheck(pCmdUI, systemCartridgeType == IMAGE_GBA ? frameSkip == FRAMESKIP_UNLIMITED
+														  : gbFrameSkip == FRAMESKIP_UNLIMITED);
 }
 
 void MainWnd::OnOptionsVideoVsync()

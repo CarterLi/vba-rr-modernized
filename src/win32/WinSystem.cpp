@@ -966,7 +966,15 @@ int systemFramesToSkip()
 	}
 	else
 	{
-		if (fastForward)
+		if (framesToSkip >= FRAMESKIP_UNLIMITED)
+		{
+			// "Skip All Frames": never reach frameSkipCount, so no frame is
+			// ever drawn.  Not scaled by the throttle and not capped by it -
+			// this is the setting that makes a benchmark measure the CPU core
+			// alone.  The screen capture path still forces a frame above.
+			framesToSkip = 0x7FFFFFFF;
+		}
+		else if (fastForward)
 			framesToSkip = 9;  // try 6 FPS during speedup
 		else if (throttle != 100)
 			framesToSkip = (framesToSkip * throttle) / 100;

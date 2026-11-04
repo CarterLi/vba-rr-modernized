@@ -1216,6 +1216,11 @@
 #define ID_OPTIONS_VIDEO_FRAMESKIP_7    40357
 #define ID_OPTIONS_VIDEO_FRAMESKIP_8    40358
 #define ID_OPTIONS_VIDEO_FRAMESKIP_9    40359
+// Not a frame count: frameSkip stores FRAMESKIP_UNLIMITED here, and
+// systemFramesToSkip() then renders no frame at all.  It sits right after
+// Skip 9 so the menu handler's "id - first id" arithmetic still gives the
+// value to store.
+#define ID_OPTIONS_VIDEO_FRAMESKIP_UNLIMITED 40360
 #define ID_OPTIONS_FRAMESKIP_THROTTLE_INCREASE 40364
 #define ID_OPTIONS_FRAMESKIP_THROTTLE_DECREASE 40365
 #define ID_OPTIONS_JOYPAD_AUTOFIRE_A    40366

@@ -113,6 +113,7 @@ Skip &6	跳过 &6 帧
 Skip &7	跳过 &7 帧
 Skip &8	跳过 &8 帧
 Skip &9 (Skip 9 Out Of Every 10 Frames)	跳过 &9 帧（每 10 帧丢 9 帧）
+Skip &All Frames (Render Nothing)	跳过全部帧（不渲染画面）
 &Turbo Mode	加速模式(&T)
 S&ynchronize Emulation Speed	同步模拟速度(&Y)
     Accurate Sound &Pitch	    精确声音音调(&P)
@@ -269,6 +270,7 @@ GBA &Lag Reduction	GBA 延迟降低(&L)
 Use &Old Frame Timing	使用旧版帧时序(&O)
     Use v20 &GB Frame Kludge	    使用 v20 &GB 帧兼容处理
 Use &GB Null Input Kludge	使用 &GB 空输入兼容处理
+CPU &Recompiler (JIT)	CPU 重编译器(&R) (JIT)
 &Use BIOS File	使用 BIOS 文件(&U)
 Skip BIOS &Intro	跳过 B&IOS 开机画面
 Select &BIOS File...	选择 &BIOS 文件...

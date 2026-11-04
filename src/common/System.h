@@ -103,6 +103,11 @@ extern int  systemVerbose;
 extern int  systemFrameSkip;
 extern int  systemSaveUpdateCounter;
 
+// systemFrameSkip values 0..9 are frame counts.  10 is not a count: it means
+// "render nothing at all", which systemFramesToSkip() turns into an unlimited
+// skip.  It is the menu id offset for Skip All Frames, so keep the two in step.
+#define FRAMESKIP_UNLIMITED 10
+
 // constances
 #define SYSTEM_SAVE_UPDATED 30
 #define SYSTEM_SAVE_NOT_UPDATED 0

@@ -817,8 +817,8 @@ BOOL VBA::InitInstance()
 					frameSkip = _ttoi(argv[++i]);
 					if (frameSkip < 0)
 						frameSkip = 0;
-					if (frameSkip > 9)
-						frameSkip = 9;
+					if (frameSkip > FRAMESKIP_UNLIMITED)
+						frameSkip = FRAMESKIP_UNLIMITED;
 					gbFrameSkip = frameSkip;
 				}
 				else if (_tcsicmp(argv[i], _T("-throttle")) == 0)
@@ -967,7 +967,7 @@ invalidArgument:
 					            L"-play filename val \t\t plays the given VBM movie (val: 1 = read-only, 0 = editable)\n"
 					            L"-outputWAV filename \t outputs WAV audio to the given file\n"
 					            L"-outputAVI \t\t outputs an AVI (you are prompted for location and codec)\n"
-					            L"-frameskip val \t\t sets the frameskip amount to the given value\n"
+					            L"-frameskip val \t\t sets the frameskip amount to the given value (10 = draw nothing)\n"
 					            L"-synchronize val \t\t limits running speed to sound playing speed, (0 = off, 1 = on)\n"
 					            L"-throttle val \t\t sets the throttle speed to the given percentage\n"
 					            L"-hideborder val \t\t hides SGB border, if any (0 = show, 1 = hide)\n"
@@ -2650,10 +2650,10 @@ void VBA::loadSettings()
 
 	// frame skipping
 	frameSkip = regQueryDwordValue(_T("frameSkip"), /*2*/ 0);
-	if (frameSkip < 0 || frameSkip > 9)
+	if (frameSkip < 0 || frameSkip > FRAMESKIP_UNLIMITED)
 		frameSkip = 1;
 	gbFrameSkip = regQueryDwordValue(_T("gbFrameSkip"), 0);
-	if (gbFrameSkip < 0 || gbFrameSkip > 9)
+	if (gbFrameSkip < 0 || gbFrameSkip > FRAMESKIP_UNLIMITED)
 		gbFrameSkip = 0;
 ///  autoFrameSkip = regQueryDwordValue("autoFrameSkip", FALSE) ? TRUE : FALSE;
 

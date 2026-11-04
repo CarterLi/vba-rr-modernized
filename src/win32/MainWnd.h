@@ -278,6 +278,7 @@ protected:
 	afx_msg void OnUpdateOptionsVideoFrameskip7(CCmdUI*pCmdUI);
 	afx_msg void OnUpdateOptionsVideoFrameskip8(CCmdUI*pCmdUI);
 	afx_msg void OnUpdateOptionsVideoFrameskip9(CCmdUI*pCmdUI);
+	afx_msg void OnUpdateOptionsVideoFrameskipUnlimited(CCmdUI*pCmdUI);
 	afx_msg void OnOptionsVideoVsync();
 	afx_msg void OnUpdateOptionsVideoVsync(CCmdUI*pCmdUI);
 	afx_msg void OnUpdateOptionsVideoX1(CCmdUI*pCmdUI);
