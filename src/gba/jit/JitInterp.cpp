@@ -1418,8 +1418,8 @@ static int doAlu(const JitInsn *in, bool thumb, u32 pc, u32 *nextPc)
 				const int seq = codeTicksAccessSeq16(armNextPC);
 				return 3 + seq + seq + codeTicksAccess16(armNextPC);
 			}
-			return 3 + (isRegShift(in->shift) ? 1 : 0) + codeTicksAccess32(armNextPC) +
-				   codeTicksAccessSeq32(armNextPC) + codeTicksAccessSeq32(armNextPC);
+			return 3 + (isRegShift(in->shift) ? 1 : 0) +
+				   codeTicksBranch32NonSeqFirst(armNextPC);
 		}
 
 		reg[15].I &= 0xFFFFFFFC;
@@ -1427,8 +1427,8 @@ static int doAlu(const JitInsn *in, bool thumb, u32 pc, u32 *nextPc)
 		reg[15].I += 4;
 		ARM_PREFETCH;
 		*nextPc = armNextPC;
-		return 3 + (isRegShift(in->shift) ? 1 : 0) + codeTicksAccess32(armNextPC) +
-			   codeTicksAccessSeq32(armNextPC) + codeTicksAccessSeq32(armNextPC);
+		return 3 + (isRegShift(in->shift) ? 1 : 0) +
+			   codeTicksBranch32NonSeqFirst(armNextPC);
 	}
 
 	*nextPc = pc + (thumb ? 2 : 4);
@@ -1563,7 +1563,10 @@ static int doLoadStore(const JitInsn *in, bool thumb, u32 pc, u32 *nextPc)
 			reg[in->n].I = wbValue;
 
 		*nextPc = pc + (thumb ? 2 : 4);
-		return 2 + (wide ? dataTicksAccess32(address) : dataTicksAccess16(address)) +
+		// Data access first, then the fetch: both helpers move
+		// busPrefetchCount, so the order decides the total (see GBACpu.h).
+		const int dticks = wide ? dataTicksAccess32(address) : dataTicksAccess16(address);
+		return 2 + dticks +
 			   (thumb ? codeTicksAccess16(armNextPC) : codeTicksAccess32(armNextPC));
 	}
 
@@ -1607,13 +1610,14 @@ static int doLoadStore(const JitInsn *in, bool thumb, u32 pc, u32 *nextPc)
 		// The prefetch penalty is charged before the data access, and both move
 		// busPrefetchCount, so the order here is not cosmetic.
 		int ticks = 2 + dataTicksAccessSeq32(address) + dataTicksAccessSeq32(address);
-		ticks += 3 + (wide ? dataTicksAccess32(address) : dataTicksAccess16(address)) +
-				 codeTicksAccess32(armNextPC);
+		const int dticks = wide ? dataTicksAccess32(address) : dataTicksAccess16(address);
+		ticks += 3 + dticks + codeTicksAccess32(armNextPC);
 		return ticks;
 	}
 
 	*nextPc = pc + (thumb ? 2 : 4);
-	return 3 + (wide ? dataTicksAccess32(address) : dataTicksAccess16(address)) +
+	const int dticks = wide ? dataTicksAccess32(address) : dataTicksAccess16(address);
+	return 3 + dticks +
 		   (thumb ? codeTicksAccess16(armNextPC) : codeTicksAccess32(armNextPC));
 }
 
@@ -1815,8 +1819,8 @@ static int doSwp(const JitInsn *in, u32 pc, u32 *nextPc)
 	reg[in->d].I = temp;
 
 	*nextPc = pc + 4;
-	return 4 + dataTicksAccess32(address) + dataTicksAccess32(address) +
-		   codeTicksAccess32(armNextPC);
+	const int dticks = 4 + dataTicksAccess32(address) + dataTicksAccess32(address);
+	return dticks + codeTicksAccess32(armNextPC);
 }
 
 static int doBranch(const JitInsn *in, bool thumb, u32 pc, u32 *nextPc)
@@ -1832,8 +1836,12 @@ static int doBranch(const JitInsn *in, bool thumb, u32 pc, u32 *nextPc)
 			reg[14].I  = (pc + 2) | 1;
 			THUMB_PREFETCH;
 			*nextPc = armNextPC;
-			const int ticks = 3 + codeTicksAccessSeq16(armNextPC) + codeTicksAccess16(armNextPC) +
-							  codeTicksAccessSeq16(armNextPC);
+			// Sequential - non-sequential - sequential, the order the
+			// interpreter's thumbF8 uses (see GBACpu.h).
+			const int blSeq1 = codeTicksAccessSeq16(armNextPC);
+			const int blNseq = codeTicksAccess16(armNextPC);
+			const int blSeq2 = codeTicksAccessSeq16(armNextPC);
+			const int ticks  = 3 + blSeq1 + blNseq + blSeq2;
 			busPrefetchCount = 0;
 			return ticks;
 		}
@@ -1843,8 +1851,7 @@ static int doBranch(const JitInsn *in, bool thumb, u32 pc, u32 *nextPc)
 		reg[15].I += 2;
 		THUMB_PREFETCH;
 		*nextPc = armNextPC;
-		const int ticks = 3 + codeTicksAccessSeq16(armNextPC) + codeTicksAccessSeq16(armNextPC) +
-						  codeTicksAccess16(armNextPC);
+		const int ticks = 3 + codeTicksBranch16(armNextPC);
 		busPrefetchCount = 0;
 		return ticks;
 	}
@@ -1859,7 +1866,9 @@ static int doBranch(const JitInsn *in, bool thumb, u32 pc, u32 *nextPc)
 	*nextPc = armNextPC;
 
 	int ticks = 1 + codeTicksAccessSeq32(armNextPC);
-	ticks += 2 + codeTicksAccess32(armNextPC) + codeTicksAccessSeq32(armNextPC);
+	const int bNseq = codeTicksAccess32(armNextPC);
+	const int bSeq  = codeTicksAccessSeq32(armNextPC);
+	ticks += 2 + bNseq + bSeq;
 	busPrefetchCount = 0;
 	return ticks;
 }
@@ -1877,8 +1886,7 @@ static int doBx(const JitInsn *in, u32 pc, u32 *nextPc)
 		reg[15].I += 4;
 		ARM_PREFETCH;
 		*nextPc = armNextPC;
-		return 3 + codeTicksAccessSeq32(armNextPC) +
-			   codeTicksAccessSeq32(armNextPC) + codeTicksAccess32(armNextPC);
+		return 3 + codeTicksBranch32(armNextPC);
 	}
 
 	reg[15].I = target & 0xFFFFFFFE;
@@ -1886,8 +1894,7 @@ static int doBx(const JitInsn *in, u32 pc, u32 *nextPc)
 	reg[15].I += 2;
 	THUMB_PREFETCH;
 	*nextPc = armNextPC;
-	return 3 + codeTicksAccessSeq16(armNextPC) +
-		   codeTicksAccessSeq16(armNextPC) + codeTicksAccess16(armNextPC);
+	return 3 + codeTicksBranch16(armNextPC);
 }
 
 static int doMrs(const JitInsn *in, u32 pc, u32 *nextPc)
@@ -1972,13 +1979,15 @@ static int doSwi(const JitInsn *in, bool thumb, u32 *nextPc)
 	{
 		// thumbDF charges three accesses to address 0 (a quirk, not region 0 of
 		// the instruction) before entering the exception.
-		ticks = codeTicksAccessSeq16(0) + codeTicksAccessSeq16(0) + codeTicksAccess16(0) + 3;
+		ticks = 3 + codeTicksBranch16(0);
 		busPrefetchCount = 0;
 	}
 	else
 	{
 		ticks  = codeTicksAccessSeq32(armNextPC) + 1;
-		ticks += 2 + codeTicksAccess32(armNextPC) + codeTicksAccessSeq32(armNextPC);
+		const int swiNseq = codeTicksAccess32(armNextPC);
+		const int swiSeq  = codeTicksAccessSeq32(armNextPC);
+		ticks += 2 + swiNseq + swiSeq;
 		busPrefetchCount = 0;
 	}
 

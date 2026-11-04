@@ -23,6 +23,17 @@
 
 static int clockTicks;
 
+// Per-instruction trace, off unless VBA_PC_TRACE_HOOK is set to 1 (see
+// common/HashTrace.h).  It costs a call plus six loads per instruction, so it
+// must not be left on: this loop is the whole emulator's hot path.
+#ifndef VBA_PC_TRACE_HOOK
+ #define VBA_PC_TRACE_HOOK 0
+#endif
+#if VBA_PC_TRACE_HOOK
+extern void pcTraceRecord(unsigned int pc, int ticks, unsigned int prefetchCount,
+                          unsigned int totalTicks, int nextEvent, int prefetch);
+#endif
+
 static INSN_REGPARM void armUnknownInsn(u32 opcode)
 {
 #ifdef GBA_LOGGING
@@ -536,9 +547,7 @@ static void count(u32 opcode, int cond_res)
 			THUMB_PREFETCH;                                     \
 		}                                                       \
 		clockTicks = 3 + ISREGSHIFT                             \
-		             + codeTicksAccess32(armNextPC)           \
-		             + codeTicksAccessSeq32(armNextPC)        \
-		             + codeTicksAccessSeq32(armNextPC);       \
+		             + codeTicksBranch32NonSeqFirst(armNextPC); \
 	}
 
 #define MODECHANGE_NO  /*nothing*/
@@ -908,9 +917,7 @@ static INSN_REGPARM void arm121(u32 opcode)
 			armNextPC  = reg[15].I;
 			reg[15].I += 4;
 			ARM_PREFETCH;
-			clockTicks = 3 + codeTicksAccessSeq32(armNextPC)
-			             + codeTicksAccessSeq32(armNextPC)
-			             + codeTicksAccess32(armNextPC);
+			clockTicks = 3 + codeTicksBranch32(armNextPC);
 		}
 		else
 		{
@@ -918,9 +925,7 @@ static INSN_REGPARM void arm121(u32 opcode)
 			armNextPC  = reg[15].I;
 			reg[15].I += 2;
 			THUMB_PREFETCH;
-			clockTicks = 3 + codeTicksAccessSeq16(armNextPC)
-			             + codeTicksAccessSeq16(armNextPC)
-			             + codeTicksAccess16(armNextPC);
+			clockTicks = 3 + codeTicksBranch16(armNextPC);
 		}
 	}
 	else
@@ -991,8 +996,7 @@ static INSN_REGPARM void arm121(u32 opcode)
     WRITEBACK1;                                         \
     STORE_DATA;                                         \
     WRITEBACK2;                                         \
-    clockTicks = 2 + dataTicksAccess ## SIZE(address)     \
-                 + codeTicksAccess32(armNextPC);
+    clockTicks = 2 + data ## SIZE ## ThenCode32(address, armNextPC);
 #define LDR(CALC_OFFSET, CALC_ADDRESS, LOAD_DATA, WRITEBACK, SIZE) \
     LDRSTR_INIT(CALC_OFFSET, CALC_ADDRESS);             \
     LOAD_DATA;                                          \
@@ -1009,8 +1013,7 @@ static INSN_REGPARM void arm121(u32 opcode)
 		clockTicks += 2 + dataTicksAccessSeq32(address) \
 		              + dataTicksAccessSeq32(address); \
 	}                                                   \
-    clockTicks += 3 + dataTicksAccess ## SIZE(address)    \
-                  + codeTicksAccess32(armNextPC);
+    clockTicks += 3 + data ## SIZE ## ThenCode32(address, armNextPC);
 #define STR_POSTDEC(CALC_OFFSET, STORE_DATA, SIZE) \
     STR(CALC_OFFSET, ADDRESS_POST, STORE_DATA, WRITEBACK_NONE, WRITEBACK_POSTDEC, SIZE)
 #define STR_POSTINC(CALC_OFFSET, STORE_DATA, SIZE) \
@@ -2044,8 +2047,10 @@ static INSN_REGPARM void armA00(u32 opcode)
 	reg[15].I += 4;
 	ARM_PREFETCH;
 	clockTicks	= codeTicksAccessSeq32(armNextPC) + 1;
-	clockTicks += 2 + codeTicksAccess32(armNextPC)
-	              + codeTicksAccessSeq32(armNextPC);
+	// Sequential - non-sequential - sequential, in that order (see GBACpu.h).
+	int bNseq = codeTicksAccess32(armNextPC);
+	int bSeq  = codeTicksAccessSeq32(armNextPC);
+	clockTicks += 2 + bNseq + bSeq;
 	busPrefetchCount = 0;
 }
 
@@ -2061,8 +2066,10 @@ static INSN_REGPARM void armB00(u32 opcode)
 	reg[15].I += 4;
 	ARM_PREFETCH;
 	clockTicks	= codeTicksAccessSeq32(armNextPC) + 1;
-	clockTicks += 2 + codeTicksAccess32(armNextPC)
-	              + codeTicksAccessSeq32(armNextPC);
+	// Sequential - non-sequential - sequential, in that order (see GBACpu.h).
+	int bNseq = codeTicksAccess32(armNextPC);
+	int bSeq  = codeTicksAccessSeq32(armNextPC);
+	clockTicks += 2 + bNseq + bSeq;
 	busPrefetchCount = 0;
 }
 
@@ -2079,8 +2086,10 @@ static INSN_REGPARM void armE01(u32 opcode)
 static INSN_REGPARM void armF00(u32 opcode)
 {
 	clockTicks	= codeTicksAccessSeq32(armNextPC) + 1;
-	clockTicks += 2 + codeTicksAccess32(armNextPC)
-	              + codeTicksAccessSeq32(armNextPC);
+	// Sequential - non-sequential - sequential, in that order (see GBACpu.h).
+	int bNseq = codeTicksAccess32(armNextPC);
+	int bSeq  = codeTicksAccessSeq32(armNextPC);
+	clockTicks += 2 + bNseq + bSeq;
 	busPrefetchCount = 0;
 	CPUSoftwareInterrupt(opcode & 0x00FFFFFF);
 }
@@ -2433,6 +2442,10 @@ int armExecute()
 		if (clockTicks == 0)
 			clockTicks = 1 + codeTicksAccessSeq32(oldArmNextPC);
 		cpuTotalTicks += clockTicks;
+#if VBA_PC_TRACE_HOOK
+		pcTraceRecord(oldArmNextPC, clockTicks, (unsigned int)busPrefetchCount,
+		              (unsigned int)cpuTotalTicks, cpuNextEvent, (int)busPrefetch);
+#endif
 	}
 	while (cpuTotalTicks < cpuNextEvent && armState && !holdState && !SWITicks);
 

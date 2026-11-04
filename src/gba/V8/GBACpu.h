@@ -266,4 +266,97 @@ inline int codeTicksAccessSeq32(u32 address) // ARM SEQ
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Fetch-pipeline refill cost after the PC is written.
+//
+// Every helper above is impure: it consumes busPrefetchCount.  Writing a sum
+// such as
+//
+//     clockTicks = codeTicksAccessSeq16(pc) + codeTicksAccessSeq16(pc)
+//                  + codeTicksAccess16(pc) + 3;
+//
+// therefore leaves the order of those side effects unspecified.  MSVC really
+// does choose differently: at /Od it evaluates left to right (the two
+// sequential fetches see the pending prefetch cycles first, the non-sequential
+// fetch then pays full waitstates), while /O2 + /GL evaluates the
+// non-sequential fetch first.  For a taken branch that is 6 cycles against 5 -
+// one cycle, but there are ~350 taken branches per frame in a tight loop, so
+// the CPU budget lands on a different instruction, and after a few thousand
+// frames the Debug and Release builds are running different games.
+//
+// These wrappers perform the calls as separate statements in the order the
+// original expressions were written, which is the order /Od uses and therefore
+// the order every existing build/movie was made with.  Only the sequencing is
+// pinned; the arithmetic is unchanged.
+// ---------------------------------------------------------------------------
+inline int codeTicksBranch16(u32 address) // 2 sequential + 1 non-sequential
+{
+	int seq1 = codeTicksAccessSeq16(address);
+	int seq2 = codeTicksAccessSeq16(address);
+	return seq1 + seq2 + codeTicksAccess16(address);
+}
+
+inline int codeTicksBranch32(u32 address)
+{
+	int seq1 = codeTicksAccessSeq32(address);
+	int seq2 = codeTicksAccessSeq32(address);
+	return seq1 + seq2 + codeTicksAccess32(address);
+}
+
+// Same intent, but written as "one sequential access counted twice", which is
+// what the high-register MOV/ADD-to-PC handlers have always done.  One call, not
+// two: the prefetch counter must only be consumed once.
+inline int codeTicksBranchSeq2x16(u32 address)
+{
+	int seq = codeTicksAccessSeq16(address) * 2;
+	return seq + codeTicksAccess16(address);
+}
+
+// Non-sequential first, then the two sequential refills - the order the ARM
+// ALU-to-PC handlers were written in.
+inline int codeTicksBranch32NonSeqFirst(u32 address)
+{
+	int nseq = codeTicksAccess32(address);
+	int seq1 = codeTicksAccessSeq32(address);
+	int seq2 = codeTicksAccessSeq32(address);
+	return nseq + seq1 + seq2;
+}
+
+inline int codeTicksBranch16NonSeqFirst(u32 address)
+{
+	int nseq = codeTicksAccess16(address);
+	int seq1 = codeTicksAccessSeq16(address);
+	int seq2 = codeTicksAccessSeq16(address);
+	return nseq + seq1 + seq2;
+}
+
+// Data access followed by the instruction fetch that comes after it.  Same
+// reason as above: both helpers touch busPrefetchCount, so the order of the two
+// calls decides how many cycles the fetch is charged.  The expressions were
+// written data-first, so these keep that order.  The trailing constant the
+// callers add is left outside.
+inline int data16ThenCode16(u32 dataAddress, u32 codeAddress)
+{
+	int data = dataTicksAccess16(dataAddress);
+	return data + codeTicksAccess16(codeAddress);
+}
+
+inline int data32ThenCode16(u32 dataAddress, u32 codeAddress)
+{
+	int data = dataTicksAccess32(dataAddress);
+	return data + codeTicksAccess16(codeAddress);
+}
+
+inline int data16ThenCode32(u32 dataAddress, u32 codeAddress)
+{
+	int data = dataTicksAccess16(dataAddress);
+	return data + codeTicksAccess32(codeAddress);
+}
+
+inline int data32ThenCode32(u32 dataAddress, u32 codeAddress)
+{
+	int data = dataTicksAccess32(dataAddress);
+	return data + codeTicksAccess32(codeAddress);
+}
+
 #endif // VBA_GBACPU_H
