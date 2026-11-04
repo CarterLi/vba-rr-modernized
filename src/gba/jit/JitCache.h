@@ -68,6 +68,7 @@ struct JitStats
 	u64 nativeInsns;		// guest instructions the machine code covered
 	u32 nativeCompiles;		// asmjit compilations (the expensive part)
 	u32 codeHits;			// re-decodes that reused an existing compilation
+	u32 chainLinks;			// exits patched to jump straight to a successor
 	u64 compileTicks;		// rdtsc ticks spent inside jitCompileBlock
 };
 

@@ -256,22 +256,30 @@ struct Carry
 class BlockEmitter
 {
 public:
-	BlockEmitter(x86::Assembler *assembler, const JitBlock *block)
-		: a(assembler), b(block), thumb(block->thumb != 0), pc(0), usesMem(false),
-		  epilogue(), count(0)
+	BlockEmitter(x86::Assembler *assembler, const JitBlock *block, JitCompiledBlock *out)
+		: a(assembler), b(block), outBlock(out), thumb(block->thumb != 0), pc(0),
+		  usesMem(false), epilogue(), count(0), chainEntryOffset(0), nChain(0)
 	{
 	}
 
 	bool compile(u16 *outCount);
 
+	u32	 chainEntryOffsetOf() const { return chainEntryOffset; }
+	int	 chainSlotsUsed() const { return nChain; }
+	bool usesMemoryFrame() const { return usesMem; }
+
 private:
-	x86::Assembler	*a;
-	const JitBlock	*b;
-	bool			 thumb;
-	u32				 pc;		// address of the instruction being emitted
-	bool			 usesMem;	// rdi/rsi have to be preserved
-	Label			 epilogue;
-	u16				 count;		// instructions emitted so far
+	x86::Assembler	 *a;
+	const JitBlock	 *b;
+	JitCompiledBlock *outBlock;	// where the chain slots and the entry live
+	bool			  thumb;
+	u32				  pc;		// address of the instruction being emitted
+	bool			  usesMem;	// rdi/rsi have to be preserved
+	Label			  epilogue;
+	Label			  chainBail;	// budget exhausted at a chained entry
+	u16				  count;	// instructions emitted so far
+	u32				  chainEntryOffset;	// offset of the label after the prologue
+	int				  nChain;	// chain slots handed out so far
 
 	// Pending NEED_INTERP stubs: bound after the epilogue so the fall-through
 	// path can never reach them.  A block has at most JIT_MAX_INSNS of them.
@@ -297,12 +305,16 @@ private:
 	// --- exits -------------------------------------------------------------
 	void emitExitImm(u32 nextPc, u32 status);
 	void emitExitReg(const x86::Gp &nextPc, u32 status);
+	// JITX_DONE exit with a known successor PC: jump straight into an already
+	// linked successor instead of returning through jitExecute().
+	void emitChainExit(u32 nextPc);
 	// The "hand this instruction to the interpreter" exit is only reachable via
 	// a jump from the guard that raises it, so its stub is emitted after the
 	// epilogue instead of inline: the normal path must not fall into it.
 	void queueNeedInterp(const Label &ni, bool used);
 	void emitNeedInterpStubs();
 	void emitBudgetStubs();
+	void emitChainBail();
 
 	// "total >= budget" -> leave the block at nextPc
 	void checkBudget(u32 nextPc);
@@ -325,6 +337,10 @@ private:
 	void writeCarry(const Carry &carry);
 
 	void emitNZ(const x86::Gp &res, u8 mask);
+	// ADD/SUB without a carry-in: the host's SF/ZF/CF/OF *are* the guest's
+	// N/Z/C/V, so four setcc-to-memory replace the 15-instruction xor/shr/
+	// 64-bit-carry chain.  See the note above emitFlagsNative().
+	void emitFlagsNative(bool subtract, u8 mask);
 	void emitFlagsLogical(const x86::Gp &res, const Carry &carry, u8 mask);
 	void emitFlagsAdd(const x86::Gp &lhs, const x86::Gp &rhs, const x86::Gp &res,
 					  bool carryIn, u8 mask);
@@ -550,6 +566,42 @@ void BlockEmitter::emitExitReg(const x86::Gp &nextPc, u32 status)
 	a->jmp(epilogue);
 }
 
+void BlockEmitter::emitChainExit(u32 nextPc)
+{
+	// The unlinked path has to hand nextPc/status back to runBlock(); a linked
+	// successor overwrites both at its own exit, so the stores sit on that side
+	// of the test and cost nothing while the chain holds.
+	if (!outBlock || nChain >= JIT_MAX_CHAIN)
+	{
+		a->mov(x86::ptr(x86::r14, 0, 4), nextPc);
+		a->mov(x86::ptr(x86::r14, 4, 4), JITX_DONE);
+		a->jmp(epilogue);
+		return;
+	}
+
+	JitChainSlot *slot = &outBlock->chain[nChain++];
+	slot->target	= 0;
+	slot->tag		= (nextPc & 0xFFFFFFFEu) | (thumb ? 1u : 0u);
+	slot->linkIndex = 0xFFFF;
+	slot->reserved	= 0;
+
+	Label unlinked = a->new_label();
+
+	// movabs rax, &slot->target; mov rax, [rax].  An absolute address rather
+	// than a RIP-relative one: the code page comes from VirtualAlloc and can be
+	// far away from the static data.
+	a->mov(x86::rax, Imm((int64_t)(uintptr_t)&slot->target));
+	a->mov(x86::rax, x86::ptr(x86::rax));
+	a->test(x86::rax, x86::rax);
+	a->je(unlinked);
+	a->jmp(x86::rax);
+
+	a->bind(unlinked);
+	a->mov(x86::ptr(x86::r14, 0, 4), nextPc);
+	a->mov(x86::ptr(x86::r14, 4, 4), JITX_DONE);
+	a->jmp(epilogue);
+}
+
 void BlockEmitter::queueNeedInterp(const Label &ni, bool used)
 {
 	if (!used)
@@ -580,6 +632,16 @@ void BlockEmitter::checkBudget(u32 nextPc)
 	budgetLabel[budgetCount] = stub;
 	budgetPc[budgetCount]	 = nextPc;
 	budgetCount++;
+}
+
+void BlockEmitter::emitChainBail()
+{
+	// Only reachable from the chain-entry guard (a predecessor jumped here
+	// after already spending the budget).  Stop *before* this block.
+	a->bind(chainBail);
+	a->mov(x86::ptr(x86::r14, 0, 4), b->guestPc);
+	a->mov(x86::ptr(x86::r14, 4, 4), JITX_BUDGET);
+	a->jmp(epilogue);
 }
 
 void BlockEmitter::emitBudgetStubs()
@@ -963,17 +1025,47 @@ void BlockEmitter::emitNZ(const x86::Gp &res, u8 mask)
 {
 	if ((mask & (JITF_N | JITF_Z)) == 0)
 		return;
-	a->test(res, res);		// sets/setz do not disturb the flags
+	// SETcc accepts a byte memory operand, so there is no need to bounce the
+	// value through al.  Two instructions instead of five.
+	a->test(res, res);		// SETcc does not disturb the flags
 	if (mask & JITF_N)
-	{
-		a->sets(x86::al);
-		a->mov(gmem(&N_FLAG, 1), x86::al);
-	}
+		a->sets(gmem(&N_FLAG, 1));
 	if (mask & JITF_Z)
+		a->setz(gmem(&Z_FLAG, 1));
+}
+
+// ADD/SUB (and their compare-only forms) leave exactly the guest flags in the
+// host's flags register:
+//
+//   N = SF   (bit 31 of the result)       Z = ZF   (result == 0)
+//   V = OF   (signed overflow)            C = CF   (ADD) / !CF (SUB, no borrow)
+//
+// The old path recomputed all four from the operands: V needed two xor, an and
+// and a shift, C needed a 64-bit add/sub plus a shift, and every flag then took
+// a register-to-memory move.  setAddFlags()/setSubFlags() in arm-new.h are the
+// same formulas, so SETcc is not an approximation - it is the same answer read
+// out of the hardware that just did the arithmetic.
+//
+// ADC/SBC/RSC are excluded: their result is built from two x86 adds/subs, and
+// the second one's OF/CF are not the flags of the three-operand guest op.  They
+// keep emitFlagsAdd()/emitFlagsSub().  Logical ops are excluded too: their C
+// comes from the shifter, not from the ALU.
+void BlockEmitter::emitFlagsNative(bool subtract, u8 mask)
+{
+	if (mask & JITF_N)
+		a->sets(gmem(&N_FLAG, 1));
+	if (mask & JITF_Z)
+		a->setz(gmem(&Z_FLAG, 1));
+	if (mask & JITF_C)
 	{
-		a->setz(x86::al);
-		a->mov(gmem(&Z_FLAG, 1), x86::al);
+		// x86 CF is the *borrow* after SUB; ARM C is "no borrow".
+		if (subtract)
+			a->setae(gmem(&C_FLAG, 1));
+		else
+			a->setc(gmem(&C_FLAG, 1));
 	}
+	if (mask & JITF_V)
+		a->seto(gmem(&V_FLAG, 1));
 }
 
 void BlockEmitter::emitFlagsLogical(const x86::Gp &res, const Carry &carry, u8 mask)
@@ -1158,7 +1250,14 @@ void BlockEmitter::emitAlu(const JitInsn &in)
 	const bool isSub = (in.sub == ALU_SUB || in.sub == ALU_RSB || in.sub == ALU_SBC ||
 						in.sub == ALU_RSC || in.sub == ALU_CMP);
 
-	if (isAdd)
+	if ((isAdd && !carryIn) || (isSub && !borrowIn))
+	{
+		// The arithmetic above left the guest flags in the host flags register.
+		// Nothing between here and the switch touched them (a MOV does not), so
+		// read them out before addFetch()/checkBudget() clobber them.
+		emitFlagsNative(isSub, mask);
+	}
+	else if (isAdd)
 		emitFlagsAdd(x86::r9d, x86::r10d, x86::r8d, carryIn, mask);
 	else if (isSub)
 	{
@@ -1403,30 +1502,147 @@ void BlockEmitter::emitLoadStore(const JitInsn &in)
 		return;
 	}
 
-	// Load.
-	a->mov(x86::ecx, x86::edi);
-	if (in.sub == MEM_BYTE)
+	// Load.  A read from EWRAM/IWRAM is a plain indexed load out of
+	// memoryMap[]; the helper's switch and Lua-hook test are dead weight there.
+	// The region guard cannot use JIT_CODE_WRITE's (addr & 0x0E000000) test:
+	// that would also accept the 0x12xxxxxx/0x13xxxxxx mirrors, which the
+	// helper sends to `unreadable` (open bus).  So the region byte itself is
+	// checked: 2..3 and 5..7 always, 8..12 for word/byte reads.  ROM halfword
+	// reads keep the helper because of the RTC at 0x080000C4/C6/C8; IO,
+	// EEPROM/SRAM and unreadable addresses keep it too, so the 0x08020000 patch
+	// and the open-bus value are untouched.
+	//
+	// Word reads use `addr & mask & ~3`, halfword reads `addr & mask & ~1` and
+	// byte reads `addr & mask`, exactly what the *Wrapped() helpers do.  Both
+	// word and halfword reads rotate the result when the address is not aligned
+	// (word by (addr & 3) * 8, halfword by 8), so each fast path has to
+	// reproduce that; see the two `ror`s below.
 	{
-		callHelper(a, (const void *)&CPUReadByte);
-		if (in.flags & JF_SIGNED)
-			a->movsx(x86::eax, x86::al);
-		else
-			a->movzx(x86::eax, x86::al);
-	}
-	else if (in.sub == MEM_HALF)
-	{
-		if (in.flags & JF_SIGNED)
+		const bool fast = (in.sub == MEM_BYTE) || (in.sub == MEM_HALF) ||
+						  (in.sub == MEM_WORD && !(in.flags & JF_QUICK));
+		Label slow = a->new_label();
+		Label done = a->new_label();
+
+		if (fast)
 		{
-			callHelper(a, (const void *)&CPUReadHalfWordSigned);
+			Label fastRegion = a->new_label();
+			// The full region byte matters: CPUReadMemoryWrapped() switches on
+			// address >> 24, so 0x12xxxxxx / 0x13xxxxxx are *unreadable*
+			// mirrors (open bus), not EWRAM/IWRAM.  JIT_CODE_WRITE's looser
+			// (addr & 0x0E000000) test is fine for writes but wrong here.
+			//
+			// 2/3 (EWRAM/IWRAM), 5..7 (palette/VRAM/OAM) and, for word and byte
+			// reads, 8..12 (the five ROM mirrors) are plain indexed loads in the
+			// helper.  Everything else keeps it: BIOS and open bus (0), IO (4,
+			// reads have side effects), EEPROM (13) and SRAM/Flash (14).  The
+			// 0x08020000 hack is an instruction-fetch redirect, not a data-read
+			// patch, so ROM is safe here.
+			//
+			// Halfword ROM reads are the exception: CPUReadHalfWordWrapped()
+			// sends 0x080000C4/C6/C8 to rtcRead(), and rtcEnabled lives in
+			// RTC.cpp as a file-static the JIT cannot see.  Let the helper keep
+			// those three addresses instead of duplicating the check.
+			//
+			// Keeping the region in r8 also produces the memoryMap index for
+			// free: region * sizeof(MemoryMap), and sizeof(MemoryMap) is 16.
+			a->mov(x86::r8d, x86::edi);
+			a->shr(x86::r8d, 24);
+			a->cmp(x86::r8d, 2);
+			a->jb(slow);
+			a->cmp(x86::r8d, 3);
+			a->jbe(fastRegion);
+			a->cmp(x86::r8d, 5);
+			a->jb(slow);
+			a->cmp(x86::r8d, 7);
+			a->jbe(fastRegion);
+			if (in.sub == MEM_HALF)
+				a->jmp(slow);
+			else
+			{
+				a->cmp(x86::r8d, 8);
+				a->jb(slow);
+				a->cmp(x86::r8d, 12);
+				a->ja(slow);
+			}
+			a->bind(fastRegion);
+			a->shl(x86::r8, 4);
+
+			a->mov(x86::rax, x86::ptr(x86::rbx, x86::r8, 0,
+									  dispOf(&memoryMap[0].address), 8));
+			a->mov(x86::r9d, x86::ptr(x86::rbx, x86::r8, 0,
+									  dispOf(&memoryMap[0].mask), 4));
+			a->and_(x86::r9d, x86::edi);
+			if (in.sub == MEM_WORD)
+				a->and_(x86::r9d, ~3u);
+			else if (in.sub == MEM_HALF)
+				a->and_(x86::r9d, ~1u);
+			if (in.sub == MEM_WORD)
+			{
+				a->mov(x86::eax, x86::ptr(x86::rax, x86::r9, 0, 0, 4));
+				// CPUReadMemoryWrapped() ends with _rotr(value, (address&3)*8).
+				// Unaligned word loads are rare but the verifier seeds them, and
+				// a movie that hits one must see the rotated value.  Branch it
+				// out so the aligned case does not pay for the shift.
+				a->test(x86::edi, 3);
+				a->jz(done);
+				a->mov(x86::ecx, x86::edi);
+				a->and_(x86::ecx, 3);
+				a->shl(x86::ecx, 3);
+				a->ror(x86::eax, x86::cl);
+			}
+			else if (in.sub == MEM_HALF)
+			{
+				a->movzx(x86::eax, x86::ptr(x86::rax, x86::r9, 0, 0, 2));
+				// CPUReadHalfWordWrapped() ends with
+				//   value = (value >> 8) | (value << 24);   // address & 1
+				// On a zero-extended halfword that is exactly `ror eax, 8`: the
+				// low byte lands in bits 24-31, not in bits 8-15.  (A plain
+				// `ror ax, 8` would be a byte swap and is wrong here.)
+				// CPUReadHalfWordSignedWrapped() then keeps only (s8) of the
+				// result, i.e. the *high* byte sign-extended, so the signed form
+				// shifts that byte down and extends it.  The movsx after `done`
+				// is a no-op once either of these has run.
+				a->test(x86::edi, 1);
+				a->jz(done);
+				if (in.flags & JF_SIGNED)
+				{
+					a->shr(x86::eax, 8);
+					a->movsx(x86::eax, x86::al);
+				}
+				else
+					a->ror(x86::eax, 8);
+			}
+			else
+				a->movzx(x86::eax, x86::ptr(x86::rax, x86::r9, 0, 0, 1));
+			a->jmp(done);
+		}
+
+		a->bind(slow);
+		a->mov(x86::ecx, x86::edi);		// first argument of the slow helper
+		if (in.sub == MEM_BYTE)
+			callHelper(a, (const void *)&CPUReadByte);
+		else if (in.sub == MEM_HALF)
+		{
+			if (in.flags & JF_SIGNED)
+				callHelper(a, (const void *)&CPUReadHalfWordSigned);
+			else
+				callHelper(a, (const void *)&CPUReadHalfWord);
+		}
+		else
+			callHelper(a, (const void *)((in.flags & JF_QUICK) ? &jitReadQuick
+															  : &CPUReadMemory));
+		a->bind(done);
+
+		if (in.sub == MEM_BYTE)
+		{
+			if (in.flags & JF_SIGNED)
+				a->movsx(x86::eax, x86::al);
+			else
+				a->movzx(x86::eax, x86::al);
+		}
+		else if (in.sub == MEM_HALF && (in.flags & JF_SIGNED))
 			a->movsx(x86::eax, x86::ax);
-		}
-		else
-		{
-			callHelper(a, (const void *)&CPUReadHalfWord);
-		}
 	}
-	else
-		callHelper(a, (const void *)((in.flags & JF_QUICK) ? &jitReadQuick : &CPUReadMemory));
 
 	a->mov(gr(in.d), x86::eax);
 	if (in.d != in.n && wb)
@@ -1790,11 +2006,11 @@ void BlockEmitter::emitBranch(const JitInsn &in)
 			addFetch(in.fetchCycles);
 		else
 			addConst(3);
-		emitExitImm(pc + 4u + in.imm, JITX_DONE);
+		emitChainExit(pc + 4u + in.imm);
 
 		a->bind(skip);
 		addFetch(in.fetchCycles);
-		emitExitImm(pc + 2, JITX_DONE);
+		emitChainExit(pc + 2);
 		return;
 	}
 
@@ -1807,11 +2023,11 @@ void BlockEmitter::emitBranch(const JitInsn &in)
 
 	addFetch(in.fetchCycles);
 	addConst(3);
-	emitExitImm(pc + 8u + in.imm, JITX_DONE);
+	emitChainExit(pc + 8u + in.imm);
 
 	a->bind(skip);
 	addFetch(in.fetchCycles);
-	emitExitImm(pc + 4, JITX_DONE);
+	emitChainExit(pc + 4);
 }
 
 void BlockEmitter::emitBx(const JitInsn &in)
@@ -1974,15 +2190,25 @@ bool BlockEmitter::compile(u16 *outCount)
 	if (n == 0)
 		return false;
 
-		count	   = 0;
+	count		= 0;
 	epilogue	= a->new_label();
+	chainBail	= a->new_label();
 	needCount	= 0;
 	budgetCount = 0;
+	nChain		= 0;
 
 	// holdState cannot change inside a compiled block - every path that sets it
 	// (a HALTCNT/STOP write) is an IO store, and those go back to the
 	// interpreter - so runBlock()'s per-instruction test is invariant here.
 	emitPrologue();
+	// A linked predecessor jumps here: rbx/r12/r13/r14 and the stack frame are
+	// already set up by the block that started the chain.  A branch-only block
+	// emits no per-instruction budget check of its own, so the guard lives at
+	// the chain entry - without it a two-block jump loop could spin forever
+	// inside generated code.
+	chainEntryOffset = (u32)a->offset();
+	a->cmp(x86::r12d, x86::r13d);
+	a->jge(chainBail);
 
 	for (count = 0; count < n; count++)
 	{
@@ -2000,11 +2226,12 @@ bool BlockEmitter::compile(u16 *outCount)
 
 	// Falling out of the last compiled instruction means the prefix ended
 	// before the block did: hand the rest to the IR interpreter.
-	emitExitImm(b->guestPc + (u32)n * (u32)step(), JITX_DONE);
+	emitChainExit(b->guestPc + (u32)n * (u32)step());
 
 	emitEpilogue();
 	emitNeedInterpStubs();
 	emitBudgetStubs();
+	emitChainBail();
 	*outCount = n;
 	return true;
 }
@@ -2071,7 +2298,8 @@ bool checkedDisplacements()
 						 &armNextPC, &armMode,			&holdState,
 						 &memoryWait[0], &memoryWait32[0], &memoryWaitSeq[0],
 						 &memoryWaitSeq32[0], &memoryWaitFetch[0],
-						 &memoryWaitFetch32[0], &gJitShiftCarry};
+						 &memoryWaitFetch32[0], &gJitShiftCarry,
+						 &memoryMap[0].address, &memoryMap[0].mask};
 
 	const intptr_t base = (intptr_t)&reg[0];
 	for (size_t i = 0; i < sizeof(all) / sizeof(all[0]); i++)
@@ -2096,9 +2324,20 @@ bool jitCompileBlock(const JitBlock *block, JitCompiledBlock *out)
 	if (!block || !out || block->count == 0 || !jitNativeAvailable())
 		return false;
 
-	out->fn		   = nullptr;
-	out->insnCount = 0;
-	out->reserved  = 0;
+	out->fn			= nullptr;
+	out->chainEntry = nullptr;
+	out->insnCount	= 0;
+	out->chainCount = 0;
+	out->selfSlot	= 0xFFFF;
+	out->frameKind	= 0;
+	out->reserved2	= 0;
+	for (int i = 0; i < JIT_MAX_CHAIN; i++)
+	{
+		out->chain[i].target   = 0;
+		out->chain[i].tag	   = 0;
+		out->chain[i].linkIndex = 0xFFFF;
+		out->chain[i].reserved = 0;
+	}
 
 	JitRuntime *rt = jitRuntime();
 
@@ -2111,7 +2350,7 @@ bool jitCompileBlock(const JitBlock *block, JitCompiledBlock *out)
 
 	x86::Assembler assembler(&code);
 
-	BlockEmitter emitter(&assembler, block);
+	BlockEmitter emitter(&assembler, block, out);
 	u16			 insns = 0;
 	if (!emitter.compile(&insns) || insns == 0)
 		return false;
@@ -2122,8 +2361,11 @@ bool jitCompileBlock(const JitBlock *block, JitCompiledBlock *out)
 	if (rt->add(&fn, &code) != Error::kOk || !fn)
 		return false;
 
-	out->fn		   = fn;
-	out->insnCount = insns;
+	out->fn			 = fn;
+	out->insnCount	 = insns;
+	out->chainEntry	 = (u8 *)fn + emitter.chainEntryOffsetOf();
+	out->chainCount	 = (u16)emitter.chainSlotsUsed();
+	out->frameKind	 = emitter.usesMemoryFrame() ? 1 : 0;
 	return true;
 }
 
@@ -2133,7 +2375,11 @@ void jitReleaseBlock(JitCompiledBlock *block)
 		return;
 	jitRuntime()->release(block->fn);
 	block->fn		   = nullptr;
+	block->chainEntry = nullptr;
 	block->insnCount = 0;
+	block->chainCount = 0;
+	for (int i = 0; i < JIT_MAX_CHAIN; i++)
+		block->chain[i].target = 0;
 }
 
 #else // !VBA_JIT_X64 || !USE_GBA_CORE_V7

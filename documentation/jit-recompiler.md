@@ -1491,7 +1491,7 @@ GBA 上代码可以住在 ROM（只读）、BIOS（只读）、EWRAM、IWRAM。�
 | 特性 | 实际行为（`JitCache.cpp`） |
 |---|---|
 | Lua EXEC 钩子 | `luaMemHookActive[LUAMEMHOOK_EXEC]` 非 0 ⇒ `jitExecute()` **每次调用都退回解释器**（钩子可以在运行中装/卸，不能按块缓存这个判断） |
-| Lua READ/WRITE 钩子 | 不受影响：块内访存走的是 `CPUReadMemory` / `CPUWriteMemory` 包装，钩子照常触发 |
+| Lua READ/WRITE 钩子 | 只要装上（含 `_SUB` 变体），`jitActive()` 就返回 false，整个 JIT 退回内联解释器：生成代码里的 EWRAM/IWRAM 读快路径绕过了 `CPURead*` 包装层，无法保证钩子看到每一次访问（见 3.2.1.18） |
 | 调试器 / 断点 | `systemDebug != 0` ⇒ 退回解释器 |
 | 金手指 | `mastercode` 非 0 时，块内**每条指令前**都比一次 `mastercode == pc`，命中就调 `CPUMasterCodeCheck()`（与解释器循环同一位置）；`mastercode` 变化不需要清缓存，因为判断是逐条的 |
 | 存档 | JIT 状态不入存档；读档成功后 `jitResetCache()` |
@@ -2277,3 +2277,229 @@ IR 解释器跑一遍，逐字段比对 `reg[0..17]`、四个标志、`armNextPC
    链接不会改变 IRQ 落点，所以是安全的。这是目前最大的一块。
 2. **寄存器分配**：r0–r14 进宿主寄存器、标志位打包，块尾回写。改造面大但收益确定。
 3. **RAM/ROM 快路径内联**：`0x02/0x03` 直接寻址，只在 `luaMemHookActive`、IO、BIOS 时调 helper。
+
+#### 3.2.1.18 第一轮生成代码优化（2026-11-04 下午）
+
+上一节末尾列了三件"还没做"的事，这一轮都做了，但**顺序按实测改了**。先用一个独立
+的 C 探针（`~/.workbuddy/scratch/cbackend-probe.c`，交给 MSVC /O2 编译后看反汇编）
+量了"把 guest 寄存器/标志放进宿主寄存器"到底值多少：
+
+| 版本 | 宿主指令 | 字节 | 净耗时 / 5 条 guest 指令 |
+|---|---|---|---|
+| asmjit 现在生成的 | ~150 | 597 | — |
+| C，状态全在全局量 | 107 | 414 | 2.88 ns |
+| C，状态进局部变量 | 101 | 350 | 2.74 ns（只快 **1.05x**） |
+
+编译器确实把 `reg[]` 塞进了 `r12-r15`、`Z` 塞进了 `bpl`，但该付的一条没少：
+每条指令 4 个标志位、周期累加、预算检查、`reg[15]` 都是架构可见的语义。
+**结论：瓶颈不是"寄存器没进寄存器"，是"标志位算得太贵"。** 所以先做了下面第 1 项，
+而不是上一节说的"寄存器分配"。
+
+##### 1. 用宿主机原生标志位直接 `SETcc`
+
+`arm-new.h` 的 `setAddFlags()` / `setSubFlags()` 和 x86 的 SF/ZF/CF/OF 是同一套公式：
+
+```
+N = SF        Z = ZF        V = OF        C = CF (ADD) / !CF (SUB，ARM 的 C 是"无借位")
+```
+
+`emitAlu()` 里的 `add/sub r8d, r10d` 刚做完，宿主标志寄存器里就躺着答案。原来
+`emitFlagsAdd/Sub()` 却把四个标志从操作数重算一遍（V 要两次 xor + and + shr，
+C 要 64 位加法 + shr，每个标志再配一次寄存器到内存的搬运）。现在改成最多四条
+`SETcc m8`，**一条 ADD 从 102 字节降到约 70 字节**，`emitNZ()` 也从 5 条降到 2 条。
+
+两个例外保留原路径：`ADC/SBC/RSC` 的结果由两条 x86 加减拼成，第二条指令的
+OF/CF 不是三元 guest 运算的标志；逻辑类指令的 C 来自移位器而不是 ALU。
+`SETcc` 不修改标志，四条之间可以任意排。`addFetch()` / `checkBudget()` 会破坏
+宿主标志，所以 `SETcc` 必须在它们之前——`emitAlu()` 的顺序天然满足。
+
+##### 2. EWRAM/IWRAM 的字/半字/字节读内联
+
+`CPUReadMemoryWrapped()` 在 `case 2/3` 里就是 `READ32LE(&workRAM[address &
+0x3FFFC])`，前面却要走一整个 helper（Lua 钩子检查 + 大 switch）。现在生成代码先判
+region 是 2 还是 3，命中就查 `memoryMap[region]` 直接取数，否则回退 helper。半字读
+也在这条快路径上（`addr & mask & ~1`；奇地址的轮换见 3.2.1.19）。ROM 的字/字节读
+在 3.2.1.19 补进同一条路径；半字读因为 RTC（`0x080000C4/C6/C8`）仍走 helper。
+
+这一步踩了两个坑，都是 `-jitverify` 的随机地址抓出来的（端到端录像看不出来）：
+
+- **区域判断不能用 `JIT_CODE_WRITE` 的 `(addr & 0x0E000000)`**：那个掩码会把
+  `0x12xxxxxx` / `0x13xxxxxx` 当成 EWRAM/IWRAM，但 `CPUReadMemoryWrapped()` 按完整的
+  `addr >> 24` 分派，这些镜像其实落到 `unreadable`（返回 open bus）。必须严格判
+  region==2 或 3。
+- **非对齐字读要循环右移**：`CPUReadMemoryWrapped()` 结尾有
+  `_rotr(value, (address & 3) * 8)`，快路径必须补一条 `ror eax, cl`。
+
+另外 `jitActive()` 现在会在**任何** Lua 内存钩子（READ/WRITE/EXEC 及其 _SUB 变体）
+装上的时候整体停用 JIT，否则快路径会绕过钩子的观测点。
+
+##### 3. 块链接（block chaining）
+
+`JITX_DONE` 出口里嵌一个 `JitChainSlot`（在 `JitCodeEntry` 里，不在代码页上），
+初值 0 表示"回 epilogue"；`jitExecute()` 第一次从这个出口回来时，如果发现后继块
+已经有机器码，就把后继的 `chainEntry`（prologue 之后那条指令的地址）写进槽里。
+之后这条出口直接 `jmp rax` 跳过去，`rbx/r12/r13/r14` 和栈帧全程保持活跃，
+一次原生调用跑完一整条链，dispatcher 只看最后一条出口。
+
+安全约束：
+
+- **只链接 ROM 后继**（`0x08..0x0D`）。EWRAM/IWRAM 页会被写操作顶版本号，链接进
+  去就得做逐页校验；ROM 只读，省掉了。
+- 只链接整块都被编译的块（`insnCount == block.count`），保证 `runBlock()` 的
+  IR 尾巴逻辑不会被跳过。
+- 链头有预算守卫 `cmp r12d, r13d / jge chainBail`：只含分支的块本身没有逐指令
+  预算检查，没有它两块的死循环会在生成代码里永远转下去。
+- 栈帧形状（`usesMem` 决定要不要 push rdi/rsi）必须在链上一致，`frameKind` 不同就不链。
+- `BX`、写 PC 的 ALU、`Thumb BL` 低半（目标来自 LR，编译期未知）都不参与链接。
+- 代码槽被复用前只拆与该槽相关的链接。`VBA_JIT_NOCHAIN=1` 可以整体关掉做 A/B。
+
+**中间踩过一坑值得记**：最初 "任何编译都清空所有链接" 会把刚建好的热循环拆掉；
+改成"只拆相关链接"却用线性扫描，600 帧累计扫了 **2946 万**次，比链接省下的还多，
+实测反而慢 2–9%。现在每个代码槽挂一条双向链表、每个槽位记住自己的节点，
+拆链是 O(该槽相关的链接数)。
+
+##### 实测（`-synchronize 0 -frameskip 9 soundOff=1`，600 帧，多轮取最快）
+
+| ROM | 优化前 | 1+2 之后 | 再加块链接 |
+|---|---|---|---|
+| mario | 0.89x | 0.97x | **0.98x** |
+| sonic | 0.99x | 1.04x | **1.04x** |
+| aos | 0.95x | 0.99x | **0.97x** |
+
+块链接的**净收益只有 0.3–1.4%**（在噪声量级）。它确实把 dispatcher 的入块次数
+降了约 29%（200 帧：306 万 → 219 万），说明链是连上了，但每块真正的大头在块体
+（标志位、周期、预算、helper），prologue/epilogue 那 20 条指令摊下来没想象中重。
+代码保留（等价性全绿、三个 ROM 都不是负收益），但要清楚它买到的不是加速，
+是"链足够长以后（比如将来做 superblock/trace）才有用的基础设施"。
+
+**验证矩阵**：`-jitverify 20000` × 三 ROM（单条 + 块级 0 差异）、
+`VBA_JIT_SHADOW=1` × 三 ROM（无 mismatch）、`-hashtrace` × 三 ROM × 1200 帧
+（逐帧哈希完全一致）。快速路径的两个 bug 都是块级差分先报出来的，端到端录像和
+影子对比当时都是绿的——这三层缺一不可。
+
+##### 关于找热区的工具（MSVC）
+
+本机 `/Zi` + `/DEBUG` 生成 45 MB PDB，`/GL` + `/LTCG` 也在，所以 VS 的
+**Performance Profiler → CPU Usage**（ETW 采样）可以直接用 "Attach to process"
+附加到已跑起来的 exe，不需要 MSBuild；`Instrumentation` 插桩会淹没纳秒级路径，别用。
+本机 Insiders 没装命令行 `VSPerfCmd`，系统级采样用 Windows Performance Recorder
+（`wpr -start CPU -filemode` / `wpr -stop hot.etl` + WPA）。PGO 也可用
+（`/FASTGENPROFILE`，`pgomgr /summary` 能看粗粒度函数计数）。
+
+**关键限制**：asmjit 生成的代码在 `VirtualAlloc` 出来的 RWX 匿名页上，没有模块名
+也没有 PDB，profiler 里只会显示成 `Unknown`/裸地址；而 1 ms 的 ETW 采样对"每块
+几十纳秒"根本没有分辨率。看 JIT 内部还是得靠 `VBA_JIT_ASM` 导字节、
+`__rdtsc` 埋点（jit.log 的 `compileTicks`）、VTune/AMD uProf 的 PEBS/IBS 硬件采样，
+以及最省事的端到端 A/B。
+
+**下一步**：真正还值钱的是把块做大（superblock / trace），让 20 条进出开销和
+编译成本摊到几百条指令上；其次才是标志位的惰性求值（只在条件指令真的读标志时
+才计算，一串 ALU 里绝大多数标志会被后一条覆盖）。
+
+#### 3.2.1.19 第二轮快路径收尾与现状（2026-11-04 晚）
+
+3.2.1.18 落地后，又按文档做了一轮“只减开销、不改语义”的清理，并补上审查发现的
+必修项。优化点（6 项，主体在 `src/gba/jit/JitEmit.cpp` 的 `emitLoadStore()` /
+`emitChainExit()`）：
+
+| # | 改动 |
+|---|---|
+| 1 | EWRAM/IWRAM **半字读**进快路径（`addr & mask & ~1`，奇地址按 helper 轮换） |
+| 2 | 区域判断复用寄存器：一次 `mov r8d, edi / shr 24`，`cmp r8d,2 / jb` + `cmp r8d,3 / jbe`，`r8` 直接当 `memoryMap` 下标 |
+| 3 | 对齐字读跳过轮换：`test edi,3 / jz done`，只有非对齐地址才付 `mov ecx/and/shl/ror` |
+| 4 | `mov ecx, edi`（helper 的第一参数）移进 `slow` 分支 |
+| 5 | `emitChainExit()` 的两条 `outPc/outStatus` 存储移到“未链接”分支，链命中时直接 `jmp rax` |
+| 6 | ROM 镜像（region 8..12）的**字/字节读**、palette/VRAM/OAM（region 5..7）的全部读进快路径：都是 `memoryMap[region]` 的纯索引读；ROM 半字读仍走 helper |
+
+第 6 项抓出一个藏了很久的 `memoryMap[]` 空洞：初始化只写了 8/9/10/12，**11 号
+（`0x0B000000`）一直是 `&dummyAddress` + mask 0**。解释器的 switch 直接读 `rom`，
+所以行为一直是对的；但快路径按 `memoryMap[11]` 取数会读到 0，`-jitverify` 立刻在
+aos/mario/sonic 上报了 36 + 35 + 24 = 95 个块差异。补上 `memoryMap[11]`（V7/V8
+各一行）后全绿。ROM 的 `0x08020000` 是取指重定向，不是数据读补丁；EEPROM（13）、
+SRAM/Flash（14）、IO（4）和 BIOS/open bus 仍然走 helper。
+
+palette/VRAM/OAM（5/6/7）的三个 helper 分支同样是 `READ16/32LE(&buf[address & mask])`，
+没有任何副作用，所以一并内联；`memoryMap[5..7]` 早就初始化好了，掩码也和
+`& ~3` / `& ~1` 对得上。**只有 IO（4）例外**：`CPUReadMemoryWrapped()` 里它要看
+`ioReadable[]`、还可能清 `systemCounters.lagged`，不能当纯读。
+
+**半字 ROM 读是唯一不能内联的 ROM 路径。** `CPUReadHalfWordWrapped()` 在
+`case 8..12` 里先判 `address == 0x80000C4/C6/C8`，命中就调 `rtcRead()`；而
+`rtcEnabled` 是 `RTC.cpp` 的 file-static，JIT 代码看不到。让生成代码再复刻一遍
+这个判断，等于把 RTC 状态机的一部分搬进机器码；不值得。所以 region 判断按读宽度
+分支：字/字节 `2..3, 5..7, 8..12`，半字 `2..3, 5..7`，其余进 helper。三个测试 ROM
+里没有半字访问那三个 RTC 地址（内联版本也全绿），但这是语义正确性问题，不是
+性能问题。
+
+审查必修项（5 项）：
+
+1. `checkedDisplacements()` 补上 `&memoryMap[0].address` / `&memoryMap[0].mask`
+   ——快路径用 `dispOf()` 直接寻址这两个字段，必须一起做 ±2 GB 检查；
+2. 修正 3.7 的 Lua 钩子表（任何 READ/WRITE 钩子装上都会整体停用 JIT）；
+3. 删除工作区里的临时探针文件（未入库）；
+4. 删除 `JitLink::slot`（只写不读的死字段）；
+5. 修正 `compile()` 里 `count = 0;` 的缩进。
+
+**半字奇地址：“V7 对奇地址只清 bit 0、不轮换”的说法是错的（本轮已改）。**
+`CPUReadHalfWordWrapped()` 结尾是
+
+```c
+if (address & 1)
+    value = (value >> 8) | (value << 24);
+```
+
+`value` 是 `u32`，所以这不是 16 位字节交换：低字节被送到 **bit 24-31**，
+bit 8-15 是 0。对零扩展的半字，正确的机器码是 `ror eax, 8`，不是 `ror ax, 8`。
+有符号版本 `CPUReadHalfWordSignedWrapped()` 再取 `(s8)value`，即**高字节**符号
+扩展；`LDRSH` 最后再 `(s16)` 一次，所以快路径是 `shr eax, 8; movsx eax, al`。
+
+漏掉这一步时，`-jitverify 20000` 在 `aos.gba` 上报了两个块：
+
+```
+BLOCK MISMATCH 0803AA68  count=4  reg
+    r4 interp=00000002 block=00000200
+BLOCK MISMATCH 0803B87C  count=4  reg
+    r4 interp=00000002 block=00000200
+```
+
+两条都是 `ldrsh r4, [r1, #35]!`（奇地址）。端到端 `-hashtrace` 当时是绿的
+（6000 帧三 ROM 逐帧一致），因为没撞上“奇偏移的 LDRSH”；块级差分先抓到——
+和 3.2.1.18 的结论一致：三层验证缺一不可。
+
+**`win32/VBA_Latest.vcxproj` 的 `%$(...)` 是必修项。** 工程里有 116 行写成
+`%$(PreprocessorDefinitions)` / `%$(AdditionalIncludeDirectories)`，多了一个
+`%`。MSBuild 把它展开成 `%<值>`，`JitEmit.cpp` 的 `USE_GBA_CORE_V7` 就变成
+`%USE_GBA_CORE_V7`，`#ifdef` 判假，x64 后端编成空实现。现象是
+`jit: 0 native instructions`（哈希仍然逐帧一致，因为全部退回解释器），
+Win32/ARM64 和 V8 配置都看不出来。改成 `%(...)` 后恢复。这 116 行是纯机械
+替换，但**没有它 x64 JIT 根本不会跑**。
+
+**现状验证（2026-11-04 晚，x64 V7Release）**：
+
+| ROM | `-jitverify 20000` 单条（arm / thumb） | 块级（arm / thumb） |
+|---|---|---|
+| aos | 20000 / 20000，0 failed | 20000（53 331 insn）/ 20000（151 584 insn），0 failed |
+| mario | 20000 / 20000，0 failed | 20000（43 583 insn）/ 20000（393 700 insn），0 failed |
+| sonic | 20000 / 20000，0 failed | 20000（48 055 insn）/ 20000（209 537 insn），0 failed |
+
+`-hashtrace` × 三 ROM × 6000 帧（`-jit` vs `-nojit`，`-synchronize 0`）：
+
+| ROM | 结果 |
+|---|---|
+| aos | IDENTICAL，SHA-256 `C2C5394CC828E69A66B1CD35E65D6A573446E21C14D6FB92F9295EB395313A89` |
+| mario | IDENTICAL，SHA-256 `7D7198DA3564458DDF2851CE7D03E2EBF9ABC2A5479E3ACF6A1F780AFDA33F65` |
+| sonic | IDENTICAL，SHA-256 `8DC581838BC91E16905D1B878C6A85E1117B36DAA60BC6D26D83BB3C69A18A22` |
+
+sonic 6000 帧的 `jit.log`（173 407 次成功装链，说明链式出口不是死代码；原日志
+一行，这里按宽度折开）：
+
+```
+jit: 6093242 blocks decoded, 29827265 runs, 23734023 cache hits, 8274455 page
+invalidations, 8977394 IR instructions, 0 bad, 304727 native blocks, 304727
+compiles, 5182101 code hits, 198719870 native instructions, 173407 chain links,
+3365 ms compiling
+```
+
+**已知口径问题（未改）**：`JitStats.chainLinks` 只增不减，链式执行不计
+`blocksRun`，所以 `runs` 会低估实际执行的块数。这是统计口径，不是执行错误。
+下一步仍然是 3.2.1.18 末尾的两项：superblock/trace 和标志位惰性求值。

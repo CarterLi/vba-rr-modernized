@@ -142,12 +142,12 @@ void jitReportStats()
 	const char *line =
 		"jit: %u blocks decoded, %u runs, %u cache hits, %u page invalidations, "
 		"%llu IR instructions, %u bad, %u native blocks, %u compiles, %u code hits, "
-		"%llu native instructions, %llu ms compiling\n";
+		"%llu native instructions, %u chain links, %llu ms compiling\n";
 
 	fprintf(stderr, line, jitStats.blocksDecoded, jitStats.blocksRun, jitStats.cacheHits,
 			jitStats.pageInvalidations, (unsigned long long)jitStats.insns, jitStats.badInsns,
 			jitStats.nativeBlocks, jitStats.nativeCompiles, jitStats.codeHits,
-			(unsigned long long)jitStats.nativeInsns,
+			(unsigned long long)jitStats.nativeInsns, jitStats.chainLinks,
 			(unsigned long long)(jitStats.compileTicks / 3000000));
 
 	if (FILE *log = fopen("jit.log", "w"))
@@ -155,8 +155,8 @@ void jitReportStats()
 		fprintf(log, line, jitStats.blocksDecoded, jitStats.blocksRun, jitStats.cacheHits,
 				jitStats.pageInvalidations, (unsigned long long)jitStats.insns,
 				jitStats.badInsns, jitStats.nativeBlocks, jitStats.nativeCompiles,
-				jitStats.codeHits, (unsigned long long)jitStats.nativeInsns,
-				(unsigned long long)(jitStats.compileTicks / 3000000));
+			jitStats.codeHits, (unsigned long long)jitStats.nativeInsns,
+			jitStats.chainLinks, (unsigned long long)(jitStats.compileTicks / 3000000));
 		fclose(log);
 	}
 }
@@ -236,6 +236,10 @@ struct JitHotEntry
 
 JitHotEntry jitHot[512];
 
+// Defined below, after the code-cache helpers they use; nativeFor() needs it
+// before releasing an entry whose code might be the target of a link.
+void unlinkCodeSlot(u16 s);
+
 const JitCompiledBlock *nativeFor(const JitBlock *block, u32 tag, u16 *slotOut, u32 *stampOut)
 {
 	const u32	   hash	 = hashBlock(block);
@@ -270,6 +274,8 @@ const JitCompiledBlock *nativeFor(const JitBlock *block, u32 tag, u16 *slotOut, 
 		}
 	}
 
+	// Any link may point into the code we are about to free.
+	unlinkCodeSlot((u16)(ce - jitCodeCache));
 	jitReleaseBlock(&ce->code);
 	ce->tag	  = 0xFFFFFFFFu;
 	ce->stamp = 0;
@@ -284,12 +290,213 @@ const JitCompiledBlock *nativeFor(const JitBlock *block, u32 tag, u16 *slotOut, 
 	ce->tag	  = tag;
 	ce->hash  = hash;
 	ce->stamp = jitCodeStamp++;
+	ce->code.selfSlot = (u16)(ce - jitCodeCache);
 	jitStats.nativeBlocks++;
 	jitStats.nativeCompiles++;
 
 	*slotOut  = (u16)(ce - jitCodeCache);
 	*stampOut = ce->stamp;
 	return &ce->code;
+}
+
+// ---------------------------------------------------------------------------
+// Block linking
+//
+// A compiled block whose JITX_DONE exit leads to an already-compiled successor
+// jumps straight into that successor's chain entry (just past its prologue),
+// keeping rbx/r12/r13/r14 and the stack frame live across the whole chain.
+// One native call then covers many guest blocks; the dispatcher only sees the
+// final exit.
+//
+// The link is a plain 8-byte pointer in the source's JitChainSlot - no code is
+// patched.  Links are only made to ROM addresses (0x08..0x0D): EWRAM/IWRAM
+// pages get version-bumped on writes, and a link into stale code would be very
+// hard to unwind cheaply.  ROM is read-only, so no per-link version check and
+// no per-page unlink bookkeeping are needed.
+//
+// Unlinking has to be O(links touching the released slot), not O(all links).
+// The first version walked every live link on each compile - 29 million
+// iterations over 600 frames - and cost more than the chaining saved.  Each
+// code entry now heads a doubly linked list of the links that point into it,
+// and each chain slot remembers its own node, so both directions are O(1).
+// ---------------------------------------------------------------------------
+
+#define JIT_MAX_LINKS 8192
+#define JIT_LINK_NONE 0xFFFF
+
+struct JitLink
+{
+	u16	 srcSlot;
+	u16	 srcIndex;
+	u16	 tgtSlot;
+	u16	 prev;		// neighbours in tgtSlot's list
+	u16	 next;
+	u16	 freeNext;
+	bool used;
+};
+
+JitLink jitLinks[JIT_MAX_LINKS];
+u16		jitLinkHead[JIT_CODE_ENTRIES];
+u16		jitLinkFree = JIT_LINK_NONE;
+bool	jitLinksReady = false;
+// A/B switch, resolved once at startup so the hot path stays a byte test.
+bool jitChainDisabled = getenv("VBA_JIT_NOCHAIN") != nullptr;
+
+void linksReset()
+{
+	for (int i = 0; i < JIT_CODE_ENTRIES; i++)
+	{
+		jitLinkHead[i] = JIT_LINK_NONE;
+		for (int k = 0; k < JIT_MAX_CHAIN; k++)
+		{
+			jitCodeCache[i].code.chain[k].target	= 0;
+			jitCodeCache[i].code.chain[k].linkIndex = JIT_LINK_NONE;
+		}
+	}
+	for (int i = 0; i < JIT_MAX_LINKS; i++)
+	{
+		jitLinks[i].used	  = false;
+		jitLinks[i].freeNext = (u16)(i + 1);
+	}
+	jitLinks[JIT_MAX_LINKS - 1].freeNext = JIT_LINK_NONE;
+	jitLinkFree	 = 0;
+	jitLinksReady = true;
+}
+
+inline void linksInit()
+{
+	if (!jitLinksReady)
+		linksReset();
+}
+
+u16 linkAlloc()
+{
+	if (jitLinkFree == JIT_LINK_NONE)
+		return JIT_LINK_NONE;
+	const u16 n = jitLinkFree;
+	jitLinkFree = jitLinks[n].freeNext;
+	jitLinks[n].used = true;
+	return n;
+}
+
+void linkFree(u16 n)
+{
+	jitLinks[n].used = false;
+	jitLinks[n].freeNext = jitLinkFree;
+	jitLinkFree = n;
+}
+
+// Detach node n from its target list, clear the source slot and free the node.
+void removeLink(u16 n)
+{
+	JitLink *l = &jitLinks[n];
+	if (l->prev != JIT_LINK_NONE)
+		jitLinks[l->prev].next = l->next;
+	else
+		jitLinkHead[l->tgtSlot] = l->next;
+	if (l->next != JIT_LINK_NONE)
+		jitLinks[l->next].prev = l->prev;
+
+	JitChainSlot *s = &jitCodeCache[l->srcSlot].code.chain[l->srcIndex];
+	if (s->linkIndex == n)
+	{
+		s->linkIndex = JIT_LINK_NONE;
+		s->target	 = 0;
+	}
+	linkFree(n);
+}
+
+bool registerLink(u16 srcSlot, int k, u16 tgtSlot)
+{
+	linksInit();
+	const u16 n = linkAlloc();
+	if (n == JIT_LINK_NONE)
+		return false;
+
+	JitLink *l = &jitLinks[n];
+	l->srcSlot	= srcSlot;
+	l->srcIndex = (u16)k;
+	l->tgtSlot	= tgtSlot;
+	l->prev		= JIT_LINK_NONE;
+	l->next		= jitLinkHead[tgtSlot];
+	if (l->next != JIT_LINK_NONE)
+		jitLinks[l->next].prev = n;
+	jitLinkHead[tgtSlot] = n;
+	jitCodeCache[srcSlot].code.chain[k].linkIndex = n;
+	return true;
+}
+
+// Drop the links that touch code entry `s` - as a target (its code is about to
+// be freed) or as a source (its slots are about to be reused).
+void unlinkCodeSlot(u16 s)
+{
+	linksInit();
+	u16 n = jitLinkHead[s];
+	while (n != JIT_LINK_NONE)
+	{
+		const u16 next = jitLinks[n].next;
+		removeLink(n);
+		n = next;
+	}
+	jitLinkHead[s] = JIT_LINK_NONE;
+
+	JitCompiledBlock *cb = &jitCodeCache[s].code;
+	for (int k = 0; k < JIT_MAX_CHAIN; k++)
+	{
+		if (cb->chain[k].target == 0)
+			continue;
+		const u16 idx = cb->chain[k].linkIndex;
+		if (idx != JIT_LINK_NONE && jitLinks[idx].used)
+			removeLink(idx);
+		cb->chain[k].target	= 0;
+		cb->chain[k].linkIndex = JIT_LINK_NONE;
+	}
+}
+
+// Called from runBlock() right after a native call returned JITX_DONE.
+void tryLink(const JitCompiledBlock *code, const JitBlock *b, u32 nextPc)
+{
+	if (jitChainDisabled || !code || code->selfSlot == 0xFFFF || code->chainCount == 0)
+		return;
+	if (code->insnCount != b->count)	// an IR tail has to run in the runner
+		return;
+
+	const u32 region = nextPc >> 24;
+	if (region < 0x08 || region > 0x0D)	// ROM only
+		return;
+
+	const u32 tag = (nextPc & 0xFFFFFFFEu) | (b->thumb ? 1u : 0u);
+	int		  k	  = -1;
+	for (int i = 0; i < code->chainCount; i++)
+	{
+		if (code->chain[i].tag == tag)
+		{
+			k = i;
+			break;
+		}
+	}
+	if (k < 0 || code->chain[k].target != 0)
+		return;
+
+	JitCacheEntry *succ = &jitCache[cacheIndex(nextPc)];
+	const int	  page = pageIndex(nextPc);
+	const u16	  ver  = (page >= 0) ? jitPageVersion[page] : 0;
+	if (succ->tag != tag || succ->version != ver || succ->codeStamp == 0)
+		return;
+	if (jitCodeCache[succ->codeSlot].stamp != succ->codeStamp)
+		return;
+
+	JitCompiledBlock *tgt = &jitCodeCache[succ->codeSlot].code;
+	if (!tgt->fn || !tgt->chainEntry || tgt->frameKind != code->frameKind)
+		return;
+	if (tgt->insnCount != succ->block.count)
+		return;
+
+	JitCompiledBlock *src = const_cast<JitCompiledBlock *>(code);
+	if (!registerLink(src->selfSlot, k, succ->codeSlot))
+		return;
+	src->chain[k].target = (u64)(uintptr_t)tgt->chainEntry;
+	jitStats.chainLinks++;
 }
 
 JitCacheEntry *getEntry(u32 pc, bool thumb, const JitCompiledBlock **codeOut)
@@ -535,6 +742,14 @@ int runBlock(const JitCompiledBlock *code, const JitBlock *b, s32 limit, bool *n
 		r.status = 0;
 
 		total = code->fn(limit, &r);
+
+#ifdef USE_GBA_CORE_V7
+		// Lazy linking: the first time this block reaches a given successor we
+		// come back here, so patch the exit for the next visit.  Skip it while
+		// the shadow checker is running - it wants the two paths independent.
+		if ((r.status & JITX_DONE) && jitShadowMode != 1)
+			tryLink(code, b, r.nextPc);
+#endif
 
 		if (r.status & JITX_NEED_INTERP)
 		{
@@ -788,11 +1003,14 @@ inline bool jitActive()
 {
 	if (!jitEnabled || systemDebug != 0)
 		return false;
-	// A Lua EXEC hook has to see every instruction, and it can be installed
-	// while the emulator is running, so test it per call rather than deciding
-	// at block-compile time.
-	if (luaMemHookActive[LUAMEMHOOK_EXEC] != 0)
-		return false;
+	// Lua memory hooks have to see every read/write.  The generated fast path
+	// for EWRAM/IWRAM reads bypasses CPURead*/CPUWrite* entirely, so while any
+	// hook is installed the whole JIT stands down and the inline interpreter
+	// (which calls the hook-aware helpers) takes over.  Tested per call because
+	// scripts can install hooks at any time.
+	for (int i = 0; i < LUAMEMHOOK_COUNT; i++)
+		if (luaMemHookActive[i] != 0)
+			return false;
 	return true;
 }
 
@@ -829,6 +1047,7 @@ void jitSetEnabled(bool on)
 
 void jitResetCache()
 {
+	linksReset();
 	for (int i = 0; i < JIT_CACHE_BLOCKS; i++)
 	{
 		jitCache[i].tag		  = 0xFFFFFFFFu;
@@ -843,6 +1062,7 @@ void jitResetCache()
 		jitCodeCache[i].tag	  = 0xFFFFFFFFu;
 		jitCodeCache[i].hash  = 0;
 		jitCodeCache[i].stamp = 0;
+		jitCodeCache[i].code.selfSlot = 0xFFFF;
 	}
 
 	// The version counters are deliberately *not* reset: they only ever have

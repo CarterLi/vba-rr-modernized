@@ -3408,6 +3408,8 @@ void CPUReset()
 	memoryMap[9].mask		= 0x1FFFFFF;
 	memoryMap[10].address	= rom;
 	memoryMap[10].mask		= 0x1FFFFFF;
+	memoryMap[11].address	= rom;
+	memoryMap[11].mask		= 0x1FFFFFF;
 	memoryMap[12].address	= rom;
 	memoryMap[12].mask		= 0x1FFFFFF;
 	memoryMap[14].address	= flashSaveMemory;

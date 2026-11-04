@@ -64,11 +64,32 @@ enum JitExitStatus
 
 typedef int (*JitNativeFn)(s32 budget, JitExecResult *out);
 
+// A chainable exit carries an indirect jump through one of these slots.  The
+// slot lives in JitCodeEntry (not in the executable page), so linking is a
+// plain 8-byte store and unlinking is a single zero - no self-modifying code.
+// 0 means "return to the dispatcher"; anything else is the absolute address of
+// a successor's chain entry.  Only ROM->ROM links are created, because ROM
+// pages are never invalidated; see documentation/jit-recompiler.md 3.2.1.18.
+#define JIT_MAX_CHAIN 4
+
+struct JitChainSlot
+{
+	u64 target;
+	u32 tag;			// (nextPc | thumb) that this exit leads to
+	u16 linkIndex;		// node in the link pool, 0xFFFF when unlinked
+	u16 reserved;
+};
+
 struct JitCompiledBlock
 {
-	JitNativeFn fn;				// null when the backend refused the block
-	u16			insnCount;		// JitInsn entries the native code covers (>= 1)
-	u16			reserved;
+	JitNativeFn  fn;						// null when the backend refused the block
+	u8			*chainEntry;				// address just past the prologue
+	JitChainSlot chain[JIT_MAX_CHAIN];	// 0 = linked to nothing yet
+	u16			 insnCount;				// JitInsn entries the native code covers (>= 1)
+	u16			 chainCount;			// slots in use
+	u16			 selfSlot;				// owner's index in jitCodeCache, 0xFFFF = scratch
+	u8			 frameKind;				// usesMem; must match across a chain
+	u8			 reserved2;
 };
 
 // True when this build has a machine-code backend for the current core.
