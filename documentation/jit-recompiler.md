@@ -2211,10 +2211,12 @@ disp32 在编译期由真实链接地址算出来；`checkedDisplacements()` 开
 2. `jitCodeCache[16384]`：**机器码缓存，键 = 地址 + 解码指令的哈希**。重新解码出同样的
    指令就复用已有机器码，页失效/缓存碰撞都不再触发编译（`hashBlock()` 按字段算，不能用
    裸 `memcmp`——`JitInsn` 有一个未初始化的 padding 字节）；
-3. `jitHot[512]`：**首次命中不编译**（`JIT_COMPILE_AFTER = 2`）。一次都不重复执行的块
-   走 IR 解释器（~100 ns），比给它编译（10 µs）便宜 100 倍。
+3. `jitHot[512]`：**命中 8 次才编译**（`JIT_COMPILE_AFTER = 8`）。计数按 (tag, hash)
+   存在侧表里，不放在解码块条目中——页失效会重解码，热块还没到阈值就被清零；
+   512 个槽的碰撞会让两个热块互相顶掉，但实测仍比 per-entry 计数好。冷块走 IR
+   解释器（~100 ns），比给它编译（10 µs）便宜 100 倍。
 
-效果：`mario` 600 帧的编译次数 95 822 → 15 955，编译总耗时 0.76 s → 0.19 s。
+效果（阈值 2 时测得）：`mario` 600 帧的编译次数 95 822 → 15 955，编译总耗时 0.76 s → 0.19 s。
 
 **这一轮抓到的三个真 bug**（都是块级差分/端到端哈希看不见的）：
 
@@ -2503,3 +2505,72 @@ compiles, 5182101 code hits, 198719870 native instructions, 173407 chain links,
 **已知口径问题（未改）**：`JitStats.chainLinks` 只增不减，链式执行不计
 `blocksRun`，所以 `runs` 会低估实际执行的块数。这是统计口径，不是执行错误。
 下一步仍然是 3.2.1.18 末尾的两项：superblock/trace 和标志位惰性求值。
+
+#### 3.2.1.20 无限跳帧 + 纯 CPU 回归（2026-11-04 晚）
+
+**新增 `-vsync val` 命令行开关**（`src/win32/VBA.cpp`）：垂直同步原先只有菜单和
+`vba.ini` 的 `vsync` 键，无人值守测速没法从命令行关掉。用法：
+
+```
+VBA_VS_Latest_V72XR.exe -rom roms\aos.gba -play <vbm> 1 -frameskip 10 -synchronize 0 -vsync 0 -jit -quitAfter 2000
+```
+
+⚠️ **命令行覆盖会写回 ini**：`VBA::saveSettings()` 在退出时把内存里的设置写回
+（123 个字面键），所以 `-synchronize 0`、`-vsync 0`、`-frameskip 10`、`-jit`
+都会固化到 `vba.ini`。跑完基准要核对 `synchronize` / `frameSkip` /
+`gbFrameSkip` / `jit`，否则下次启动可能永久不限速，而「设置速度」菜单仍显示 100%。
+
+`-frameskip 10` 是同一批改动里的 "Skip All Frames"：`systemFramesToSkip()` 把它
+映射成 `0x7FFFFFFF`，`systemFrameDrawingRequired()` 永不触发渲染；它排在
+`fastForward` 分支**之前**，Turbo Mode 不会再把它改成 9。`-synchronize 0` 关掉节流
+与声音限速，`vba.ini` 的 `soundOff=1` 关掉音频输出，剩下的就是纯 CPU 核心。
+
+**验证矩阵**（x64 V72XR，`-frameskip 10 -synchronize 0 soundOff=1`）：
+
+| 项 | 结果 |
+|---|---|
+| `selftest`（clang，V8 / V7） | 1101 / 1207 项，0 失败 |
+| `-jitverify 20000` × mario/sonic/aos | 单条 arm/thumb、块级 arm/thumb 全 0 差异（各 ~4 s） |
+| `-hashtrace` × 三 ROM × 6000 帧，`-jit` vs `-nojit` | `ram` 列 6002 行逐帧完全一致 |
+| 加 `-vsync` 后重链的新 exe：重跑差分、`-frameskip 9` 对照 | 同上全绿 |
+
+hashtrace 是在加 `-vsync` **之前**那份构建上跑的；开关默认不启用、不碰模拟路径，
+新 exe 重跑差分与 `-frameskip 9` 对照均全绿。
+
+**`full` 列的口径**：`full` 是 `emuWriteMemState` blob（含 pix/sound/rtc/OSD）的
+crc32，文件头自己写着 "may vary with OSD timing"，3.2.1.15 起验收只比 `ram`。
+这次 aos 在无限跳帧下从第 5460 帧起有 541 行 `full` 不同，补三个对照钉死原因：
+
+| 对照 | `ram` | `full` |
+|---|---|---|
+| 无限跳帧，`-jit` 重跑两次 | 0 差异 | 0 差异（不是随机抖动） |
+| `-frameskip 9`，`-jit` vs `-nojit` | 0 差异 | 0 差异 |
+| `-frameskip 9` vs `-frameskip 10`（都 `-nojit`） | **0 差异** | 5932 行不同 |
+
+即无限跳帧**不改变任何架构状态**；差异只在「不渲染时 pix/OSD 留在什么状态」，
+JIT 与解释器在这条非架构路径上的时序不同。验收仍以 `ram` 为准。
+
+**纯 CPU 性能**（2000 帧；脚本
+`~/.workbuddy/scratch/regress-unlim-20261104/bench_turbo.py`，3 轮交替顺序、
+对照 2 轮，取最快；比 = 解释器时间 / JIT 时间）。表里「turbo」是当时额外启用
+Turbo Mode 状态的历史对照（现已不提供命令行开关），保留作参考：
+
+| ROM | 配置 | 解释器 | JIT | 比 |
+|---|---|---|---|---|
+| mario | turbo + 无限跳帧 | 3.66 s | 3.32 s | **1.10x** |
+| sonic | turbo + 无限跳帧 | 3.09 s | 2.64 s | **1.17x** |
+| aos | turbo + 无限跳帧 | 2.90 s | 2.38 s | **1.22x** |
+| mario | 仅无限跳帧 | 3.62 s | 3.27 s | 1.11x |
+| sonic | 仅无限跳帧 | 3.11 s | 2.54 s | 1.22x |
+| aos | 仅无限跳帧 | 2.96 s | 2.40 s | 1.23x |
+
+**结论**：
+
+1. 把最后一帧渲染也抽掉后，JIT 首次稳定快过解释器 **10–23%**。3.2.1.18 用
+   `-frameskip 9` 量到的 0.98 / 1.04 / 0.97x 里还含每 10 帧一次的渲染，本轮又把
+   编译阈值提到 8、扩了内联读快路径；两者叠在一起才有这个差距，别把收益全算给
+   某一项。mario 的最快/中位数差得较多（3.32 / 3.80 s），是首轮启动的抖动。
+2. Turbo Mode 在这套配置下**没有额外收益**（两组差 1–5%，噪声量级）：无限跳帧
+   分支优先于 `fastForward`，`-synchronize 0` 已经关掉它唯一会绕开的节流。所以
+   纯 CPU 基准只需要 `-frameskip 10 -synchronize 0 -vsync 0`；这两组数据保留作
+   历史对照。

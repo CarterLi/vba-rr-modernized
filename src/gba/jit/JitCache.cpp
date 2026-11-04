@@ -223,8 +223,13 @@ u32 hashBlock(const JitBlock *b)
 // Compiling costs ~10 us; running the same six instructions through the IR
 // interpreter costs ~100 ns.  Half the blocks in a game are entered a handful
 // of times and never again, so compiling on first sight is a 100x loss on them
-// - hence the second-hit threshold below.
-#define JIT_COMPILE_AFTER 2
+// - hence the threshold below.  The count lives in a side table keyed by
+// (tag, hash), not in the decoded-block entry: a page invalidation re-decodes
+// the block and would reset a per-entry count before a hot block ever reaches
+// the threshold.  A side table survives that, at the price of two hot blocks
+// sharing a slot resetting each other; 512 slots make that rare enough that
+// the per-entry version measured far worse.
+#define JIT_COMPILE_AFTER 8
 
 struct JitHotEntry
 {
