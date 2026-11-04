@@ -1,13 +1,13 @@
 // XAudio2Sound.cpp: XAudio2 (2.9) sound backend.
 //
-// XAudio2_9.dll is loaded at run time and the entry point is resolved with
-// GetProcAddress, so the executable has no import dependency on it.  On any
-// failure (no DLL, no audio device, no voices) init() returns false and
+// XAudio2_9.dll is resolved at run time by the inline XAudio2Create() that
+// <xaudio2.h> defines, so the executable has no import dependency on it.  On
+// any failure (no DLL, no audio device, no voices) init() returns false and
 // systemSoundInit() falls back to DirectSound.
 //
-// The DLL is loaded and the failures are reported exactly the way the
-// DirectSound backend does it: the name of what could not be resolved goes to
-// directXMessage(), a failing call reports its HRESULT.
+// The failures are reported the way the DirectSound backend does it: the name
+// of what could not be resolved goes to directXMessage(), a failing call
+// reports its HRESULT.
 //
 // The emulator hands us one block of soundBufferLen bytes per emulated frame.
 // Each block is copied into a round-robin pool of buffers and submitted to a
@@ -74,7 +74,6 @@ static bool pacingAgainstDevice()
 class XAudio2Sound : public ISound, public IXAudio2VoiceCallback
 {
 private:
-	HMODULE					 hXAudio2;
 	IXAudio2 *				 pXAudio2;
 	IXAudio2MasteringVoice * pMasteringVoice;
 	IXAudio2SourceVoice *	 pSourceVoice;
@@ -112,7 +111,6 @@ public:
 
 XAudio2Sound::XAudio2Sound()
 {
-	hXAudio2		 = NULL;
 	pXAudio2		 = NULL;
 	pMasteringVoice	 = NULL;
 	pSourceVoice	 = NULL;
@@ -167,12 +165,6 @@ XAudio2Sound::~XAudio2Sound()
 		pXAudio2 = NULL;
 	}
 
-	if (hXAudio2 != NULL)
-	{
-		FreeLibrary(hXAudio2);
-		hXAudio2 = NULL;
-	}
-
 	if (bufferFreed != NULL)
 	{
 		CloseHandle(bufferFreed);
@@ -225,24 +217,32 @@ bool XAudio2Sound::init()
 	wfx.nBlockAlign		= (wfx.wBitsPerSample / 8) * wfx.nChannels;
 	wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
 
-	hXAudio2 = LoadLibrary(_T("XAudio2_9.dll"));
-	if (hXAudio2 == NULL)
+	// XAudio2Create comes from <xaudio2.h>.  On a Windows 10 target that header
+	// defines it as an inline function which resolves XAudio2_9.dll itself -
+	// LoadLibraryEx with LOAD_LIBRARY_SEARCH_SYSTEM32, then the version-aware
+	// XAudio2CreateWithVersionInfo export when the system has one - and caches
+	// the module for the process.  Nothing is imported statically, so calling it
+	// keeps the "the exe still starts on an older Windows" promise, and it also
+	// keeps the DLL search out of the directory the user unpacked the emulator
+	// into.
+	//
+	// Do NOT resolve the export by hand and type it with
+	// decltype(&XAudio2Create): what that expression names depends on the
+	// header branch - the inline wrapper is a plain C++ function, i.e. __cdecl
+	// on x86 - while the exported symbol is __stdcall.  Calling the export
+	// through the __cdecl pointer made the callee pop its 12 argument bytes and
+	// the caller pop them again, which is how the 32-bit build used to die on
+	// start-up with run-time check #0 ("the value of ESP was not properly
+	// saved").  x64 has one calling convention, so it never showed there.
+	hr = XAudio2Create(&pXAudio2, 0, XAUDIO2_DEFAULT_PROCESSOR);
+	if (FAILED(hr))
 	{
-		directXMessage("XAudio2_9.dll");
-		return false;
-	}
-
-	decltype(&XAudio2Create) xaudio2Create = reinterpret_cast<decltype(&XAudio2Create)>(
-		GetProcAddress(hXAudio2, "XAudio2Create"));
-	if (xaudio2Create == NULL)
-	{
-		directXMessage("XAudio2Create");
-		return false;
-	}
-
-	if (FAILED(hr = xaudio2Create(&pXAudio2, 0, XAUDIO2_DEFAULT_PROCESSOR)))
-	{
-		systemMessage(0, "Cannot create XAudio2 %08x", hr);
+		// ERROR_MOD_NOT_FOUND means the DLL itself is missing - say so, the
+		// plain HRESULT means nothing to a user on Windows 7.
+		if ((unsigned int)hr == (unsigned int)HRESULT_FROM_WIN32(ERROR_MOD_NOT_FOUND))
+			directXMessage("XAudio2_9.dll");
+		else
+			systemMessage(0, "Cannot create XAudio2 %08x", hr);
 		pXAudio2 = NULL;
 		return false;
 	}
