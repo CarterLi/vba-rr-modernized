@@ -859,6 +859,14 @@ BOOL VBA::InitInstance()
 					if (i + 1 >= argc || argv[i + 1][0] == '-') { --i; goto invalidArgument; }
 					playMovieFileReadOnly = _ttoi(argv[++i]) != 0;
 				}
+				else if (_tcsicmp(argv[i], _T("-vsync")) == 0)
+				{
+					// Vertical sync used to be menu/ini only; benchmarks
+					// need to turn it off from the command line.
+					if (i + 1 >= argc || argv[i + 1][0] == '-')
+						goto invalidArgument;
+					vsync = _ttoi(argv[++i]) != 0;
+				}
 				else if (_tcsicmp(argv[i], _T("-hashtrace")) == 0)
 				{
 					// Per-frame state hash written to CSV, for proving that a
@@ -976,6 +984,7 @@ invalidArgument:
 					            L"-pauseAt val \t\t pause (movie) once when frame counter == val\n"
 					            L"-videoScale val \t\t sets the video size (val = 1..8 for 1X..8X)\n"
 					            L"-hideMenu \t\t hides the menu until program exit\n"
+					            L"-vsync val \t\t sets vertical sync (0 = off, 1 = on)\n"
 					            L"\n"
 					            L"-videoLog args \t does (nesvideos) video+audio logging with the given arguments\n"
 					            L"-logToFile \t tells logging to use fopen/fclose of args, if logging is enabled\n"
