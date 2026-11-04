@@ -32,6 +32,89 @@ namespace
 	unsigned int s_failed = 0;
 	bool s_ready		 = false;
 
+	// ---------------------------------------------------------------------
+	// One-shot state dump, for comparing two builds frame by frame.
+	//
+	// Driven by the environment instead of the command line so that the whole
+	// debugging aid stays inside common/ (no MFC, no argument span changes)
+	// and can be switched on for an already built exe:
+	//
+	//     set VBA_DUMP_STATE_FRAME=4200
+	//     set VBA_DUMP_STATE_PATH=D:\tmp\state.bin
+	//
+	// The frame number counts completed frames, which is exactly what
+	// systemCounters.frameCount holds at this point of the frame boundary, so
+	// the same value selects the same moment in both builds.
+	// ---------------------------------------------------------------------
+	bool s_dumpInit			 = false;
+	bool s_dumpEnabled		 = false;
+	unsigned int s_dumpFrame = 0;
+	unsigned int s_tick		 = 0;
+	char s_dumpPath[512]	 = {0};
+	char *s_dumpBuf			 = NULL;
+
+	// ---- PC trace, see HashTrace.h ----
+	FILE *s_pcFile			 = NULL;
+	bool s_pcInit			 = false;
+	bool s_pcActive			 = false;
+	unsigned int s_pcStart	 = 0;
+	unsigned int s_pcEnd	 = 1;
+	unsigned long long s_pcCount = 0;
+
+	void pcTraceInit()
+	{
+		s_pcInit = true;
+
+		const char *path  = getenv("VBA_PC_LOG");
+		const char *start = getenv("VBA_PC_START");
+		const char *end	  = getenv("VBA_PC_END");
+		if (!path || !path[0])
+			return;
+
+		s_pcStart = start ? (unsigned int)strtoul(start, NULL, 10) : 0;
+		s_pcEnd	  = end ? (unsigned int)strtoul(end, NULL, 10) : s_pcStart + 1;
+
+		s_pcFile = fopen(path, "wb");
+		if (s_pcFile)
+			setvbuf(s_pcFile, NULL, _IOFBF, 1 << 20);
+	}
+
+	void pcTraceTick(unsigned int tick)
+	{
+		if (!s_pcFile)
+			return;
+
+		if (tick == s_pcStart)
+			s_pcActive = true;
+
+		if (tick == s_pcEnd)
+		{
+			s_pcActive = false;
+			fclose(s_pcFile);
+			s_pcFile = NULL;
+		}
+	}
+
+	void stateDumpInit()
+	{
+		s_dumpInit = true;
+
+		const char *frame = getenv("VBA_DUMP_STATE_FRAME");
+		const char *path  = getenv("VBA_DUMP_STATE_PATH");
+		if (!frame || !frame[0] || !path || !path[0])
+			return;
+
+		s_dumpFrame = (unsigned int)strtoul(frame, NULL, 10);
+		strncpy(s_dumpPath, path, sizeof(s_dumpPath) - 1);
+		s_dumpPath[sizeof(s_dumpPath) - 1] = 0;
+
+		s_dumpBuf = (char *)malloc(HASH_TRACE_STATE_SIZE);
+		if (!s_dumpBuf)
+			return;
+
+		s_dumpEnabled = true;
+	}
+
 	void hashTraceAtExit()
 	{
 		hashTraceClose();
@@ -65,6 +148,64 @@ namespace
 		crc				 = crcOf(crc, ioMem, HT_IO_MEM);
 		crc				 = crcOf(crc, reg, sizeof(reg));
 		return crc;
+	}
+
+	struct StateDumpHeader
+	{
+		unsigned int magic;		// 'VDMP'
+		unsigned int version;	// 1
+		unsigned int frame;		// completed frames at the boundary
+		unsigned int ramCrc;	// same value as the ram column of -hashtrace
+		unsigned int fullCrc;	// same value as the full column of -hashtrace
+		unsigned int size;		// bytes of state that follow
+	};
+
+	void stateDumpWrite(unsigned int frame)
+	{
+		memset(s_dumpBuf, 0, HASH_TRACE_STATE_SIZE);
+
+		bool ok = false;
+		if (theEmulator.emuWriteMemState)
+			ok = theEmulator.emuWriteMemState(s_dumpBuf, HASH_TRACE_STATE_SIZE);
+
+		FILE *file = fopen(s_dumpPath, "wb");
+		if (!file)
+		{
+			systemMessage(0, "Cannot open state dump file: %s", s_dumpPath);
+			return;
+		}
+
+		StateDumpHeader header;
+		header.magic   = 0x504D4456; // 'VDMP' little endian
+		header.version = 1;
+		header.frame   = frame;
+		header.ramCrc  = ramHash();
+		header.fullCrc = (unsigned int)crc32(0L, (const Bytef *)s_dumpBuf, HASH_TRACE_STATE_SIZE);
+		header.size	   = HASH_TRACE_STATE_SIZE;
+
+		fwrite(&header, sizeof(header), 1, file);
+		fwrite(s_dumpBuf, 1, HASH_TRACE_STATE_SIZE, file);
+		fflush(file);
+		fclose(file);
+
+		// A small sidecar is easier to read than the binary header when the
+		// two dumps are compared with a text tool.
+		char sidecar[600];
+		strncpy(sidecar, s_dumpPath, sizeof(sidecar) - 1);
+		sidecar[sizeof(sidecar) - 1] = 0;
+		char *dot = strrchr(sidecar, '.');
+		if (dot)
+			strcpy(dot, ".txt");
+		else
+			strncat(sidecar, ".txt", sizeof(sidecar) - strlen(sidecar) - 1);
+
+		FILE *text = fopen(sidecar, "wb");
+		if (text)
+		{
+			fprintf(text, "frame=%u\nok=%d\nram=%08x\nfull=%08x\nsize=%u\n",
+			        frame, ok ? 1 : 0, header.ramCrc, header.fullCrc, header.size);
+			fclose(text);
+		}
 	}
 }
 
@@ -109,6 +250,22 @@ void hashTraceEnable(const char *path)
 
 void hashTraceFrameBoundary()
 {
+	// The dump and the trace share the same per-frame call point but are
+	// independent switches: s_tick counts frames even when -hashtrace is off.
+	if (!s_dumpInit)
+		stateDumpInit();
+	if (!s_pcInit)
+		pcTraceInit();
+
+	const unsigned int tick = s_tick++;
+	pcTraceTick(tick);
+
+	if (s_dumpEnabled && tick == s_dumpFrame)
+	{
+		s_dumpEnabled = false; // one shot: never overwrite a good dump
+		stateDumpWrite(tick);
+	}
+
 	if (!s_ready)
 		return;
 
@@ -155,4 +312,21 @@ void hashTraceClose()
 		free(s_buf);
 		s_buf = NULL;
 	}
+}
+
+void pcTraceRecord(unsigned int pc, int ticks, unsigned int prefetchCount,
+                   unsigned int totalTicks, int nextEvent, int prefetch)
+{
+	if (!s_pcActive || !s_pcFile)
+		return;
+
+	unsigned int record[6];
+	record[0] = pc;
+	record[1] = (unsigned int)ticks;
+	record[2] = prefetchCount;
+	record[3] = totalTicks;
+	record[4] = (unsigned int)nextEvent;
+	record[5] = (unsigned int)prefetch;
+	fwrite(record, sizeof(record), 1, s_pcFile);
+	++s_pcCount;
 }
