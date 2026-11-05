@@ -318,7 +318,6 @@ private:
 
 	// "total >= budget" -> leave the block at nextPc
 	void checkBudget(u32 nextPc);
-	void checkBudgetReg(const x86::Gp &nextPc);
 
 	// --- per-instruction building blocks ----------------------------------
 	void setPc();								// reg[15] = pc + 4/8
@@ -380,11 +379,15 @@ bool nativeSupported(const JitInsn &in, bool thumb)
 {
 	// Debug: VBA_JIT_OPS=<mask> restricts which JitOp values get compiled, so a
 	// miscompile can be bisected by instruction class without a rebuild.
-	static u32 opMask = 0;
-	if (!opMask)
+	// Parsed exactly once: `VBA_JIT_OPS=0` is a meaningful value ("refuse
+	// everything"), so 0 cannot double as the "not read yet" marker.
+	static u32	opMask	= 0;
+	static bool opMaskInited = false;
+	if (!opMaskInited)
 	{
 		const char *s = getenv("VBA_JIT_OPS");
 		opMask		  = (s && s[0]) ? (u32)strtoul(s, NULL, 0) : 0xFFFFFFFFu;
+		opMaskInited  = true;
 	}
 	if (!((opMask >> in.op) & 1))
 		return false;
@@ -654,15 +657,6 @@ void BlockEmitter::emitBudgetStubs()
 		emitExitImm(pc, JITX_BUDGET);
 		pc = saved;
 	}
-}
-
-void BlockEmitter::checkBudgetReg(const x86::Gp &nextPc)
-{
-	Label cont = a->new_label();
-	a->cmp(x86::r12d, x86::r13d);
-	a->jl(cont);
-	emitExitReg(nextPc, JITX_BUDGET);
-	a->bind(cont);
 }
 
 // ---------------------------------------------------------------------------
@@ -1795,8 +1789,7 @@ void BlockEmitter::emitBlockTransfer(const JitInsn &in)
 	}
 
 	// LDM / STM
-	const u8  baseReg = in.n;
-	u32		  addressOffset = 0;
+	const u8 baseReg = in.n;
 	a->mov(x86::esi, gr(baseReg));		// base (also the writeback source)
 
 	switch (in.sub)
@@ -1804,7 +1797,6 @@ void BlockEmitter::emitBlockTransfer(const JitInsn &in)
 	case BLOCK_IA:
 		a->mov(x86::edi, x86::esi);
 		a->and_(x86::edi, 0xFFFFFFFC);
-		addressOffset = 0;
 		a->mov(x86::edx, x86::esi);
 		a->add(x86::edx, 4 * bitsSet(list));	// new base
 		break;
@@ -1832,7 +1824,6 @@ void BlockEmitter::emitBlockTransfer(const JitInsn &in)
 	// edx = new base value, kept across the helper calls (rdx is volatile, so
 	// move it to rsi which the prologue preserved).
 	a->mov(x86::esi, x86::edx);
-	(void)addressOffset;
 
 	if (in.op == JOP_STM)
 	{
@@ -2237,18 +2228,48 @@ bool BlockEmitter::compile(u16 *outCount)
 }
 
 // Debug aid: VBA_JIT_ASM=<file> appends every compiled block's IR dump and the
-// raw machine code to that file.  Used while bringing the backend up; costs one
-// getenv() per compile and nothing at run time.
+// raw machine code to that file.  VBA_JIT_ASM_LIMIT=<n> caps how many blocks
+// are dumped (default 200, 0 = no cap).  Used while bringing the backend up;
+// costs one getenv() per compile and nothing at run time.
 void dumpCompiledBlock(const JitBlock *block, CodeHolder *code, u16 insns)
 {
 	static const char *path = getenv("VBA_JIT_ASM");
 	if (!path || !path[0])
 		return;
 
-	static int budget = 200;		// enough to inspect one hot loop
-	if (budget <= 0)
+	// The cap exists so that a long session does not produce a gigabyte of hex.
+	// It used to be a fixed 200 with no way to tell it had been hit: blocks
+	// compiled after the cap were silently absent, which reads exactly like
+	// "this block was not compiled".  The number is now settable, and the
+	// exhaustion is written into the dump once.
+	static int	limit = -1;		// -1 = not read yet, 0 = no limit
+	static int	dumped = 0;
+	static bool announced = false;
+
+	if (limit < 0)
+	{
+		const char *s = getenv("VBA_JIT_ASM_LIMIT");
+		limit		  = (s && s[0]) ? (int)strtol(s, NULL, 0) : 200;
+		if (limit < 0)
+			limit = 200;
+	}
+
+	if (limit && dumped >= limit)
+	{
+		if (!announced)
+		{
+			announced = true;
+			FILE *f	  = fopen(path, "a");
+			if (f)
+			{
+				fprintf(f, "=== dump limit %d reached; further blocks omitted "
+						   "(set VBA_JIT_ASM_LIMIT=0 for no limit)\n\n", limit);
+				fclose(f);
+			}
+		}
 		return;
-	budget--;
+	}
+	dumped++;
 
 	FILE *f = fopen(path, "a");
 	if (!f)
@@ -2258,10 +2279,15 @@ void dumpCompiledBlock(const JitBlock *block, CodeHolder *code, u16 insns)
 	text[0] = 0;
 	jitDumpBlock(block, text, (int)sizeof(text) - 1);
 
-	static u8 bytes[16384];
-	const size_t n = code->code_size();
-	if (n > sizeof(bytes))
+	// Sized to the block: an expanded LDM/STM can exceed any fixed bound, and
+	// dropping those blocks is precisely when the dump is needed most.
+	const size_t n	 = code->code_size();
+	u8			*bytes = (u8 *)malloc(n ? n : 1);
+	if (!bytes)
+	{
+		fclose(f);
 		return;
+	}
 	code->copy_flattened_data(bytes, n);
 
 	fprintf(f, "=== compiled %u of %u insns at %08X, %u bytes\n%s\n", insns, block->count,
@@ -2270,6 +2296,7 @@ void dumpCompiledBlock(const JitBlock *block, CodeHolder *code, u16 insns)
 		fprintf(f, "%02X%s", bytes[i], ((i & 15) == 15) ? "\n" : " ");
 	fprintf(f, "\n\n");
 	fclose(f);
+	free(bytes);
 }
 
 } // namespace
