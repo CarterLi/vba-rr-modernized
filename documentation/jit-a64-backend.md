@@ -1,7 +1,12 @@
 # V7 核心的 ARM64/AArch64 native JIT：已确认事实与设计约定
 
-> 状态（2026-11-05）：**尚未写代码**。本文只记录调研中已经确认的事实、选定
-> 的设计和仍待验证的点，供实现 `src/gba/jit/JitEmitA64.cpp` 时对照。
+> 状态（2026-11-05 夜）：**`src/gba/jit/JitEmitA64.cpp` 已按本文写出，
+> `VBA_Latest.vcxproj` 的三处条件已改**。源码通过 ARM64 目标的语法检查和
+> asmjit 编码器的全形态发射检查，但**尚未在 ARM64 上编译、链接或运行**。
+> 三层验证（`-jitverify` / shadow / `-hashtrace`）全部留待目标机器执行。
+>
+> 本文的调研事实来自**另一台 Windows on ARM64 机器**；当前这份工作副本在
+> 一台 x64 机器上，所以 1.2 节的"本机"指工作副本所在机器，不是目标机器。
 >
 > 目标与红线沿用 `documentation/jit-recompiler.md` 2.1（时序红线）与第三节
 > （后端移植契约）：逐 guest 指令记账周期、IRQ 落点不变、JIT 状态不入存档、
@@ -72,18 +77,35 @@
   全部编译最省事，也能保证 `a64_assembler.cpp` 依赖的 core 符号齐全。
 - x64 的 `JitEmit.cpp` 条目保持原样。
 
-工具链事实：
+工具链事实：**本文的调研与构建环境是一台 Windows on ARM64 机器**（VS 18
+Insiders、MSVC `14.52.37025`、arm64 MFC 库齐全）。当前工作副本所在的 x64
+机器是另一台，2026-11-05 在这里实测到的差异如下（只影响"能在哪里验证"，
+不影响本文的 ARM64 事实）：
 
-- 开发机是 Windows on ARM64，VS 18 Insiders，MSVC `14.52.37025`。
-- MSBuild/MSVC 不在 PATH，构建时要用绝对路径调用。
-- asmjit 需要 C++20（用了 `std::endian`），工程其余部分保持 C++17；
-  因此 `JitEmitA64.cpp` 和每个 asmjit `.cpp` 都必须单独设 `stdcpp20`。
-- 必须定义 `ASMJIT_STATIC`，否则 asmjit 的公开类会被声明成 dllimport。
-- 目标构建：
-  - `msbuild win32/VBA_Latest.sln /p:Configuration=V7Release /p:Platform=ARM64`
-  - `msbuild win32/VBA_Latest.sln /p:Configuration=Release   /p:Platform=ARM64`（V8，验证 stub）
-- 现有产物：`win32/arm64/V72XR/VBA_VS_Latest_V72XR.exe`、V82XR 同名文件；
-  测试 ROM/录像在 `win32/x64/V72XR/roms`、`win32/x64/V72XR/movies`。
+- 工作副本所在机器是 **AMD64 / x64**（`PROCESSOR_ARCHITECTURE=AMD64`，
+  i7-13700KF）。VS 18 Insiders、MSVC `14.52.37025` 在，MSBuild/MSVC 不在 PATH。
+- `bin/Hostx64/` 只有 `x64` 和 `x86` 两套，**没有 ARM64 交叉 `cl.exe`**；
+  `bin/HostArm64/arm64/` 里是原生 ARM64 工具，x64 宿主上无法执行。
+- `atlmfc/lib` 只有 `x64` / `x86`，**没有 arm64 MFC 库**。即使补上交叉编译器，
+  `V7Release|ARM64` 的完整链接也仍会像 `MSB8041` 那样失败。
+- arm64 的 C 运行时库**是齐的**：MSVC `lib/arm64`、SDK
+  `Lib/10.0.28000.0/ucrt/arm64` 与 `um/arm64` 都在，SDK 头文件也全。
+  所以"编译单个不依赖 MFC 的 TU"理论上可行，"链接整个 MFC 程序"不行。
+- Windows x64 **不会反向模拟 ARM64**：就算产出了 ARM64 exe，本机也跑不了。
+- 工程里的 ARM64 配置本身存在：`VBA_Latest.vcxproj` 的 `ProjectConfiguration`
+  有 `V72XD/V72XR/V82XD/V82XR|ARM64` 四条，`.sln` 有
+  `Debug|ARM64` / `Release|ARM64` / `V7Debug|ARM64` / `V7Release|ARM64` 四个
+  解决方案平台。缺的是工具链和库，不是配置。
+- **这份 x64 工作副本里没有 ARM64 构建痕迹**：`win32/.VS_Latest/V72XR/`
+  只有 `x64`，`win32/arm64/` 不存在。目标机器上已有的 ARM64 产物不在这个
+  工作区，所以不要拿这里的目录结构去否定目标机器的构建结果。
+- 测试 ROM / 录像在 `win32/x64/V72XR/roms` 与 `win32/x64/V72XR/movies`，
+  目标机器上要把这两个目录一起带过去。
+
+构建要求不变：asmjit 需要 C++20（`std::endian`），`JitEmitA64.cpp` 和每个
+asmjit `.cpp` 都要按文件设 `stdcpp20` 并定义 `ASMJIT_STATIC`；目标构建命令是
+`msbuild win32/VBA_Latest.sln /p:Configuration=V7Release /p:Platform=ARM64`
+和 `/p:Configuration=Release /p:Platform=ARM64`（V8，验证 stub）。
 
 ### 1.1 asmjit 在 Windows ARM64 上能不能编译（已核对源码，尚未真正构建）
 
@@ -118,6 +140,37 @@
    架构不符"的 init 失败。
 6. 剩余的未知只剩"MSVC 14.52 的 ARM64 模式实际编译 a64 后端"这一步，
    必须靠第一次构建确认（见第 9 节风险 1）。
+
+### 1.2 工作副本所在机器（x64）的可行性矩阵（2026-11-05）
+
+| 动作 | 工作副本所在机器 | 需要什么 |
+| --- | --- | --- |
+| 写 `JitEmitA64.cpp` 源码 | **可以** | 本文第 2–6 节 + `JitEmit.cpp` |
+| 语法/API 检查 | **可以**，实测通过 | `clang++ -fsyntax-only --target=aarch64-windows-msvc -std=c++20 -DASMJIT_STATIC` + MSVC/SDK 头文件（见 4.4） |
+| 实跑 asmjit A64 编码器 | **可以**，实测通过 | 编码器与宿主架构无关；在 x64 上把 `Environment` 初始化成 `Arch::kAArch64` 即可（见 4.4） |
+| MSVC 编译 ARM64 目标文件 | **不行** | 缺 `Hostx64/arm64/cl.exe`；要装 ARM64 交叉工具链 |
+| 链接 `V7Release\|ARM64` | **不行** | 缺 arm64 MFC 库；要装 ARM64 版 MFC |
+| 运行 ARM64 exe | **不行** | Windows x64 不模拟 ARM64；要真 ARM64 机器 |
+| `-jitverify` / shadow / `-hashtrace` | **不行** | 同上，见 8.1–8.3 |
+
+因此**x64 工作副本可以产出"语法与编码都检查过的源码"，不能产出"验证过的
+实现"**。项目铁律是"不在没有 HashTrace 基线的情况下合入任何 JIT 代码"
+（`jit-recompiler.md` 9.1 的合入门槛），所以这份代码要等目标 ARM64 机器跑完
+第 8 节的全部三层才能合入。
+
+**2026-11-05 夜已完成的部分**（详见 11.1）：`JitEmitA64.cpp` 全部发射逻辑、
+`ErrorHandler`、`VBA_JIT_ASM` dump、三个公共接口；`VBA_Latest.vcxproj` 的
+三处条件改动。已验证：clang `--target=aarch64-windows-msvc -fsyntax-only`
+0 错误；asmjit A64 编码器实跑 74 个指令形态共 0 发射错误、0 未绑定标签。
+**未验证**：MSVC ARM64 编译、链接、任何一条指令的运行期语义。
+
+**目标机器上的最小准备清单**：
+
+1. Windows on ARM64 + VS 18 Insiders（含 ARM64 MFC 库和 ARM64 交叉/原生工具链）。
+2. 把 `win32/x64/V72XR/roms` 与 `movies` 拷到 ARM64 产物目录。
+3. 确认 `msbuild /p:Configuration=V7Release /p:Platform=ARM64` 能出 exe
+   （这是第 9 节风险 1 的真正验证点）。
+4. 再按 8.1 → 8.2 → 8.3 的顺序验收；`jit.log` 里 `native blocks` 必须非零。
 
 ---
 
@@ -512,6 +565,14 @@ nop
 
 注意：
 
+- 🔴 **`mvn` 与 MSVC 的 ARM64 头冲突**：`arm64_neon.h`（经 `<intrin.h>` 在
+  AArch64 目标下被包含）定义了函数式宏 `#define mvn(src) neon_not(src)`。
+  写 `a.mvn(w7, w7)` 会被预处理器展开成 "too many arguments provided to
+  function-like macro invocation"。实测只有 `mvn` 一个宏与 asmjit 的方法名
+  相撞（扫过 `arm64_neon.h` 的全部函数式宏）。修法二选一：
+  - 在所有系统头之后加 `#ifdef mvn` / `#undef mvn` / `#endif`（推荐，已实测通过）；
+  - 或干脆不用 `mvn`，改写 `orn wD, wzr, wS`（实测 `errors=0`，语义等价）。
+  x64 构建不会遇到这个坑，所以 **x64 后端里看不到它**。
 - 逻辑 `and` 在 asmjit 里叫 **`and_`**（避免 C++ 关键字）。
 - `b` 由 `ASMJIT_INST_1cc`（`a64_emitter.h:45-67`）生成，除了
   `b(Label)` / `b(CondCode, Label)`，每个条件都有简写：
@@ -520,10 +581,12 @@ nop
 - `cset/csel` 的最后一个参数直接传 `CondCode` 枚举。
 - **`ret` 只有 `ret(Gp)` 一个重载**（`a64_emitter.h:248`），没有无参
   `ret()`；返回必须写 `a->ret(a64::x30)`。`br/blr` 同理都要求寄存器。
-- `mov(Gp, Imm)` 只接受能编码成单条 `MOVZ`/`MOVN`/`ORR` 位模式的立即数，
-  其它常量会让发射失败（见 4.3）。任意 32/64 位常量必须
-  `movz rd, #imm16, lsl #n` + 若干 `movk`。`mov(Gp, Gp)` 是
-  `ORR rd, wzr/xzr, rm` 的别名，不碰标志。
+- `mov(Gp, Imm)` **会自动展开成多条指令**（2026-11-05 实跑 asmjit 编码器
+  核实：`mov w3,#0x12345678` → 8 字节 2 条，`mov x19,#0x123456789ABC` →
+  12 字节 3 条，都是 `errors=0`）。早先"其它常量会让发射失败"的说法是错的。
+  但这**只对 `mov` 生效**：`add/cmp/tst/and/bic` 的立即数操作数不会展开，
+  超出编码范围会走 `ErrorHandler`（见 4.3 与 4.4）。
+  `mov(Gp, Gp)` 是 `ORR rd, wzr/xzr, rm` 的别名，不碰标志。
 - `ldr/str` 的寄存器偏移只能编码**一个** shift/extend：32 位 index 必须用
   `uxtw`/`sxtw`，缩放直接写进扩展量里——`uxtw(2)` 表示 `index * 4`，
   `uxtw(0)` 表示不缩放。**不能**"先 `lsl` 再 `uxtw(0)`"：`Shift` 只有一个
@@ -605,6 +668,173 @@ if (rt->add(&fn, &code) != asmjit::Error::kOk || !fn)
   都在同一个 section，失败通常意味着前面的发射已经出过错。
 - 错误捕获必须**无条件**开启；只有日志输出可以用
   `VBA_JIT_ASM_ERRORS` 之类的开关控制。
+
+### 4.4 已实跑的 API 与立即数核对（2026-11-05）
+
+4.1–4.3 的 API 清单不能只靠读头文件。本机写了两个探针，把本文用到的**每一种**
+调用形态和常量都过了一遍；结论如下（脚本在 `~/.workbuddy/scratch/`）：
+
+**探针 A：语法/API 检查**（`a64-api-probe.cpp`）。在 x64 宿主上让 clang 以
+AArch64 为目标解析 MSVC 头：
+
+```
+clang++ -fsyntax-only --target=aarch64-windows-msvc -std=c++20 -DASMJIT_STATIC \
+  -I third_party/asmjit \
+  -I "C:/Program Files/Microsoft Visual Studio/18/Insiders/VC/Tools/MSVC/14.52.37025/include" \
+  -I "C:/Program Files (x86)/Windows Kits/10/Include/10.0.28000.0/ucrt" \
+  -I ".../shared" -I ".../um" a64-api-probe.cpp
+```
+
+覆盖 `stp ptr_pre / ptr_post`、`movz/movk` 带 lsl、`ldrb/strb`、`ldr/str` 寄存器
+偏移（`uxtw(0/1/2)`）、`adds/subs/adcs/sbcs`、`cset(CondCode)`、`bic/orr/and_`、
+`clz/ror/mvn/undef 后的 orn`、`mul/madd/umull/smull/umaddl/smaddl`、
+`cmp/cbz/tbz/b(cc,label)/blr`、`ldp/ret(x30)`、`new_label()/bind()/finalize()`。
+
+- **加 `#undef mvn` 之前编译失败**，加了之后 0 错误（见 4.2 的宏冲突）。
+- `new_label()` 是 snake_case；`newLabel()` 不存在（实测报 C2039）。
+- MSVC `arm64_neon.h` 在 clang 下会刷 5 条 `-Wignored-attributes` 警告
+  （`__declspec(intrin_type)`），与代码无关，加 `-Wno-ignored-attributes` 即可。
+
+**探针 B：编码器实跑**（`a64-encode-probe.cpp`）。asmjit 的编码器与宿主架构
+无关，所以在 x64 上把 `Environment` 显式初始化成 AArch64，就能真的发射并让
+`ErrorHandler` 报错：
+
+```cpp
+Environment env;
+env.init(Arch::kAArch64);          // 不是 Environment::host()
+CodeHolder code; code.init(env);
+a64::Assembler a(&code);
+a.set_error_handler(&eh);          // 见 4.3
+...
+printf("%u errors, %zu bytes", eh.count, code.code_size());
+```
+
+用 MSVC x64 `cl.exe /std:c++20 /DASMJIT_STATIC` 编、链 `asmjit.lib` 后**实跑**。
+下表是原始输出（`errors` 来自 `ErrorHandler`，`size` 是 `code_size()`）：
+
+| 发射形态 | errors | size | 结论 |
+| --- | --- | --- | --- |
+| `and w3,w3,#15` / `bic w6,w6,#3` / `#1` / `orr w7,w7,#1` | 0 | 4 | 常用掩码可直接编码 |
+| `and w3,w3,#0xFFFFFF00` / `#0x00FFFFFF` | 0 | 4 | 单段掩码 |
+| `and w3,w3,#0xFFFF00FF` / `#0xFF00FFFF` | 0 | 4 | **两段掩码也能编码**（旧笔记写反了） |
+| `and w3,w3,#0xFF<<(0/8/16/24)` 四个 | 0 | 4 | MSR 字段掩码 |
+| `and w3,w3,#0x0F000000` | 0 | 4 | IO 区域掩码 |
+| `mov w3,#0x04000000` | 0 | 4 | 单条 `movz #0x400,lsl#16` |
+| `mov w3,#0x040000BA` | 0 | 8 | `mov` 自动展开 2 条 |
+| `mov w3,#0x12345678` | 0 | 8 | `mov` 自动展开 2 条 |
+| `mov x19,#0x123456789ABC` | 0 | 12 | `mov` 自动展开 3 条 |
+| `mov w3,#0xFFFFFFFE / #0xFFFFFFFC / #0x80000000` | 0 | 4 | 常用常量 |
+| `add w3,w3,#4095` / `#4096` | 0 | 4 | 12 位 + 可选 lsl#12 |
+| **`add w3,w3,#0x04000000`** | **1** | 0 | **ADD 立即数不展开** |
+| **`cmp w3,#0x04000000`** | **1** | 0 | **CMP 立即数不展开** |
+| `tst w3,#0x04000000` | 0 | 4 | 逻辑立即数可编码（但语义是位测试，不是比较） |
+| `orn w7,wzr,w7` | 0 | 4 | `mvn` 的等价替代 |
+| `ldr x9,[x27,w8,uxtw 0/3]` | 0 | 4 | 64 位访问可用缩放 3 |
+| `ldr w4,[x26,w3,uxtw 2]` | 0 | 4 | wait 表用缩放 2 |
+| **`ldr w4,[x26,w3,uxtw 3]`** | **1** | 0 | **32 位访问不能用缩放 3** |
+| `ldrh w11,[x9,w10,uxtw 1]` | 0 | 4 | 半字缩放 1 |
+| `strb w3,[x25,#1]` / `ldr w5,[x19,#176]` | 0 | 4 | 小立即数偏移 |
+| `movz x19,#imm,lsl#48` / `movk x19,#imm,lsl#32` | 0 | 4 | 绝对地址装入 |
+| `b.al label` / `cbz` / `tbz` / `blr` / `ret(x30)` | 0 | 4 | 分支与调用 |
+| `and w4,w23,#0x0F000000; cmp w4,#0x04000000` | **1** | 4 | **IO 检查不能直接这么写** |
+| `and ...; mov w5,#0x04000000; cmp w4,w5` | 0 | 12 | 正确写法，3 条 |
+
+**落地规则**（从这张表直接得出的）：
+
+1. 任意常量用 `a.mov(wDst, Imm(v))` 装，别自己数 `movz/movk`；但**地址装入**
+   仍建议显式 `movz/movk`（2.5），因为要把 64 位地址写进 `x` 寄存器，而且
+   要能预测序言长度。
+2. `add/sub/cmp/cmn` 的立即数**只接受 12 位（可带 lsl#12）**；区域常量、
+   大掩码一律先 `mov` 到 scratch 再用寄存器形式。
+3. `and_/orr/bic/tst` 的立即数是 A64 位掩码，能表达的范围比直觉大；
+   但**不要依赖"看起来像两段"就判定不能编码**，用 4.3 的 ErrorHandler 兜底
+   （发射失败 → 整个块回退 IR，安全）。
+4. `ldr/str` 的 `uxtw(n)` 里 `n` 必须等于 `log2(访问宽度)`：64 位 → 3，
+   32 位 → 2，半字 → 1，字节 → 0。写错会在发射期报错，不是运行期。
+
+### 4.5 `BlockEmitter` 骨架（照 `JitEmit.cpp:256-367` 改）
+
+后端只需要一个发射器类；它与宿主 ISA 无关的部分原样保留，只有 `a` 的类型和
+寄存器访问 helper 换掉。
+
+```cpp
+struct Carry { enum Kind { kKeep, kConst, kGlobal } kind; u32 value; };
+
+class BlockEmitter {
+public:
+    BlockEmitter(a64::Assembler *a, const JitBlock *b, JitCompiledBlock *out);
+    bool compile(u16 *outCount);
+    u32  chainEntryOffsetOf() const { return chainEntryOffset; }
+    int  chainSlotsUsed()    const { return nChain; }
+    bool usesMemoryFrame()   const { return usesMem; }   // A64 恒 false
+
+private:
+    a64::Assembler   *a;
+    const JitBlock   *b;
+    JitCompiledBlock *outBlock;
+    bool  thumb;  u32 pc;  bool usesMem;
+    Label epilogue, chainBail;
+    u16   count;  u32 chainEntryOffset;  int nChain;
+
+    // 桩不能内联发射：正常路径不能"落进" NEED_INTERP / BUDGET 里。
+    // 数组按 JIT_MAX_INSNS*2 开，因为一条指令最多同时需要两个标签。
+    Label needLabel[JIT_MAX_INSNS * 2];  u32 needPc[JIT_MAX_INSNS * 2];  int needCount;
+    Label budgetLabel[JIT_MAX_INSNS * 2];u32 budgetPc[JIT_MAX_INSNS * 2];int budgetCount;
+    bool  traceDone;
+
+    Mem gr(int r, int size = 4) { return a64::ptr(a64::x19, r * 4, size); }
+    int  step() const { return thumb ? 2 : 4; }
+
+    void emitPrologue(); void emitEpilogue();
+    void emitExitImm(u32 nextPc, u32 status);
+    void emitExitReg(const Gp &nextPc, u32 status);
+    void emitChainExit(u32 nextPc);
+    void queueNeedInterp(const Label &, bool used);
+    void emitNeedInterpStubs(); void emitBudgetStubs(); void emitChainBail();
+    void checkBudget(u32 nextPc);           // 不要实现寄存器版本
+
+    void setPc(); void addFetch(u8); void addConst(int);
+    void addWait(const Gp &addr, const int32_t *table);
+    void emitCondSkip(u8 cond, const Label &skip);
+    void emitIoRangeCheck(u32 size, const Label &ni);
+    void emitOperand2(const JitInsn &, const Gp &, Carry *);
+    void emitOffset(const JitInsn &, const Gp &);  void writeCarry(const Carry &);
+    void emitNZ(const Gp &, u8 mask);  void emitFlagsNative(bool, u8);
+    void emitFlagsLogical(const Gp &, const Carry &, u8);
+    void emitFlagsAdd(...); void emitFlagsSub(...);   // A64 用 cset，形式可简化
+
+    void emitAlu / emitMul / emitLoadStore / emitBlockTransfer / emitSwp /
+         emitBranch / emitBx / emitMrs / emitMsr;
+    void emitOne(const JitInsn &); void emitBody(const JitInsn &); void emitTrace();
+};
+```
+
+`compile()` 的**顺序不能改**（`JitEmit.cpp:2170-2228`）：
+
+1. 扫最长可编译前缀 `n`（逐条 `nativeSupported`），同时把 `touchesMemory()`
+   记进 `usesMem`；`n == 0` 直接 false。
+2. 重置 `epilogue` / `chainBail` 两个 Label，`needCount/budgetCount/nChain` 归零。
+3. `emitPrologue()`。
+4. **`chainEntryOffset = (u32)a->offset()`** —— 必须正好在序言最后一条之后。
+5. `cmp w20,w21; b.ge chainBail`（链式入口的预算守卫）。
+6. 循环：`pc = guestPc + i*step()` → `needsPcBefore(in)` 时 `setPc()` → `emitOne(in)`。
+7. `emitChainExit(guestPc + n*step())`（前缀跑完的落点）。
+8. `emitEpilogue()`。
+9. 依次绑定 `need` 桩 / `budget` 桩 / `chainBail` —— **都在尾声之后**。
+10. `*outCount = n`。
+
+三个容易写错的地方：
+
+- `emitOne()` 的条件分支（`JitEmit.cpp:2118-2142`）：`cond != 0xE && op != JOP_BRANCH`
+  时建 `skip` / `after` 两个标签 → `emitCondSkip(cond, skip)` → `emitBody` →
+  `b after` → `bind skip` → **`addFetch(in.fetchCycles)` + `checkBudget(pc+step())`**
+  （条件为假也要付 fetch 周期）→ `bind after`。少掉这个 `addFetch` 会让条件为假的
+  指令少算周期，几帧后 IRQ 落点就漂。
+- `emitBody()` 里对 `JOP_STORE/STM/PUSH/SWP` **不**在开头调 `emitTrace()`，因为
+  它们可能先因 IO 范围检查回退；trace 必须放在守卫**之后**。其余指令在开头调用，
+  `traceDone` 每个 `emitOne` 重置，保证一条指令只 trace 一次。
+- 所有可能运行时 bail 的标签都必须 `queueNeedInterp(ni, true)` 登记；
+  漏一个会在 `finalize()` 或标签绑定时留下未绑定跳转，直接跳进垃圾。
 
 ---
 
@@ -939,8 +1169,11 @@ STORE：
 
 1. 建 `needInterp` 标签，`emitIoRangeCheck(size, ni)`，再 `emitTrace()`。
    - `emitIoRangeCheck`：`(addr & 0x0F000000) == 0x04000000` 即 IO；
-     `size > 1` 时再检查 `addr + size - 1`。`0x04000000` 不是 A64 的
-     12 位 add 立即数，必须用 `movz w4,#0x0400,lsl #16` 装常量再 `cmp`。
+     `size > 1` 时再检查 `addr + size - 1`。实测（4.4）：
+     `and w4,w23,#0x0F000000` 能编码，但 `cmp w4,#0x04000000` **不能**
+     （`errors=1`）；`mov w5,#0x04000000` 能编码（单条 `movz`，4 字节）。
+     所以写法是 `and w4,w23,#0x0F000000; mov w5,#0x04000000; cmp w4,w5;
+     b.eq ni`（3 条，12 字节）。不要用 `add`/`cmp` 的立即数形式。
    - 指令末尾必须 `queueNeedInterp(ni, true)`，否则桩不会被发射，
      `b.eq ni` 会跳到缓冲区里的随机位置。桩的内容是
      `nextPc = 本条指令的 pc`、`status = JITX_NEED_INTERP`。
@@ -1232,11 +1465,13 @@ addFetch; checkBudget(pc+step())
 要点：
 
 - `armMode` 的地址偏移从 `x25` 用运行时指针差算，不硬编码。
-- `keep` 对 byte 0/3 是 `0xFFFFFF00`/`0x00FFFFFF`（单段连续 1，可为逻辑立即数），
-  对 byte 1/2 是 `0xFFFF00FF`/`0xFF00FFFF`（两段，**不是** A64 逻辑立即数）。
-  统一用 `emitMovImm32(w5, keep); and w3,w3,w5` 最稳。
-- `0xFF << (byte*8)` 都是单段 8 个 1，可作为逻辑立即数；不确定时同样用
-  `emitMovImm32` + `and`。
+- 四个 `keep`（`0xFFFFFF00` / `0xFFFF00FF` / `0xFF00FFFF` / `0x00FFFFFF`）
+  **全部是合法的 A64 逻辑立即数**，2026-11-05 用 asmjit 编码器逐个实跑，
+  `and w3,w3,#keep` 都是 `errors=0 size=4`。早先"byte 1/2 的两段掩码不是
+  逻辑立即数、必须用 movz/movk"的说法**是错的**。
+  `0xFF << (byte*8)` 四个字段掩码同样都能直接编码。
+  实现上仍然可以统一用 `emitMovImm32(w5, keep); and w3,w3,w5` 以求稳，
+  但那会多一条指令，不是必须的。
 
 ### 5.14 跟踪
 
@@ -1293,8 +1528,9 @@ addFetch; checkBudget(pc+step())
   （前驱已经花完预算时，后继在**自己**的第一条指令前停下。）
 - `checkBudget(nextPc)`：`cmp w20,w21; b.ge stub`，stub 统一在尾声后生成
   `nextPc/status=JITX_BUDGET`。
-- `checkBudgetReg(nextPcGp)`：x64 里声明并实现但**目前没有任何调用点**
-  （`JitEmit.cpp:321/659`）；A64 可以照抄保留，也可以直接省略。
+- `checkBudgetReg(nextPcGp)`：x64 里曾有这个声明和实现，但**从来没有调用点**，
+  2026-11-05 已删除。**A64 不要实现它**，所有预算检查都走
+  `checkBudget(constant nextPc)`。
 - NEED_INTERP 桩：只在指令可能运行时 bail 时建（IO store、ARM 大移位计数）；
   统一在尾声后生成 `nextPc=当前指令; status=JITX_NEED_INTERP`，
   保证正常路径不会落入桩里。
@@ -1434,8 +1670,53 @@ VBA_VS_Latest_V72XR.exe -rom roms\<x>.gba -play movies\<x>.vbm \
 ### 8.6 性能（可选）
 
 x64 在 `-frameskip 10 -synchronize 0` 下对解释器是 1.10–1.23x
-（3.2.1.20）。A64 先正确，再比较；验收目标至少不低于 x64 的 70%
+（`jit-recompiler.md` 6.5）。A64 先正确，再比较；验收目标至少不低于 x64 的 70%
 （`jit-recompiler.md` Phase 4 的口径）。
+
+### 8.7 ARM64 机器上的完整验证脚本（模板）
+
+在目标机器上按这个顺序跑；每行都对应本文的一层验收。
+
+```powershell
+$msbuild = "C:\Program Files\Microsoft Visual Studio\18\Insiders\MSBuild\Current\Bin\MSBuild.exe"
+$sln     = "C:\Users\zhang\vba-rerecording\win32\VBA_Latest.sln"
+& $msbuild $sln /p:Configuration=V7Release /p:Platform=ARM64 /m
+& $msbuild $sln /p:Configuration=Release   /p:Platform=ARM64 /m   # V8：验证 stub
+
+$dir = "...\win32\arm64\V72XR"
+Copy-Item "...\win32\x64\V72XR\roms\*"   (Join-Path $dir "roms")   -Force
+Copy-Item "...\win32\x64\V72XR\movies\*" (Join-Path $dir "movies") -Force
+Set-Location $dir
+Copy-Item vba.ini vba.ini.baseline        # 见下面的红字
+
+# 第 1 层：单条 + 块级差分，报告写 jitverify.log（GUI 没有 stdout）
+& .\VBA_VS_Latest_V72XR.exe -rom roms\aos.gba -jitverify 20000
+Get-Content jitverify.log
+
+# 第 2 层：影子对比
+$env:VBA_JIT_SHADOW = "1"
+& .\VBA_VS_Latest_V72XR.exe -rom roms\aos.gba -jit
+Get-Content jit-shadow.txt           # 必须没有 "shadow mismatch"
+Remove-Item Env:VBA_JIT_SHADOW
+
+# 第 3 层：端到端，两边显式传开关
+foreach ($m in @("nojit","jit")) {
+  & .\VBA_VS_Latest_V72XR.exe -rom roms\aos.gba -play movies\aos.vbm 0 `
+      -frameskip 10 -synchronize 0 -vsync 0 -quitAfter 6000 `
+      "-$m" -hashtrace "$m.csv"
+}
+```
+
+🔴 **命令行覆盖会写回 `vba.ini`**：`VBA::saveSettings()` 在退出时把内存设置
+写回（123 个字面键），所以 `-synchronize 0` / `-vsync 0` / `-frameskip 10` /
+`-jit` 全都会固化。跑完必须 `Copy-Item vba.ini.baseline vba.ini` 还原，并核对
+`synchronize` / `frameSkip` / `gbFrameSkip` / `jit`，否则下次启动可能永久不限速，
+而「设置速度」菜单仍显示 100%。这是既有行为，不要改成 run-only。
+
+**验收判据**：`jitverify.log` 里 `0 mismatches / 0 block mismatches`；
+`jit-shadow.txt` 无 mismatch；两份 CSV 的 `ram` 列逐帧一致（`full` 列不算，
+见 `jit-recompiler.md` 9.6）；`jit.log` 里 `native blocks / compiles /
+native instructions` 非零且 `bad = 0`；有块链接时 `chain links > 0`。
 
 ---
 
@@ -1475,6 +1756,19 @@ x64 在 `-frameskip 10 -synchronize 0` 下对解释器是 1.10–1.23x
     如果将来支持大端宿主，这个后端需要重新审视。
 12. **`frameKind`**：A64 固定为 0；如果以后改成按需保存寄存器，必须恢复
     "同帧形状才能链接"的约束。
+13. 🔴 **当前工作副本在 x64 机器上，没有 ARM64 交叉编译器和 MFC 库**
+    （1.2 节；目标机器是另一台 ARM64）。因此第 8 节的验证计划只能在
+    目标机器执行。别把"源码写完了 / 语法检查过了"当成"后端能用"。
+14. 🔴 **`mvn` 宏冲突**（4.2 节）：ARM64 目标下 MSVC 的 `arm64_neon.h` 会
+    破坏 `a.mvn(...)`。第一次编译就会撞上，必须预先 `#undef mvn` 或改用
+    `orn`。这是本机 x64 编译检查**发现不了**的类别（x64 目标不包含那个头）。
+15. **立即数编码的实测结论与早期笔记冲突**（4.4 节）：`mov` 会自动展开，
+    四个 `keep` 掩码都能直接编码，而 `cmp #0x04000000` 不能。实现时以
+    4.4 的实测表为准，不要用旧笔记里的"必须 movz/movk"一刀切。
+16. **`uxtw` 缩放值必须等于 log2(访问宽度)**：实测 `ldr w4,[x26,w3,uxtw 3]`
+    直接 `errors=1`，而同形的 `ldr x9,...,uxtw 3` 可以。wait 表用 2、
+    memoryMap 的 `address`（8 字节）用 3 或先 `lsl #4` 再用 0，半字用 1、
+    字节用 0。
 
 ---
 
@@ -1579,3 +1873,179 @@ x64 在 `-frameskip 10 -synchronize 0` 下对解释器是 1.10–1.23x
   `copy_flattened_data()`。
 - `third_party/asmjit/asmjit/core/emitter.h`：`set_error_handler()`。
 - `third_party/asmjit/asmjit/core/error_handler.h`：`ErrorHandler`。
+
+---
+
+## 11. 实施路线（分批，每批都有可判定的验收）
+
+不要一次写完 2000 行再调试。下面每一批都能独立判断"对/不对"，且失败时只会
+回退到 IR 解释器，不会破坏现有行为。
+
+### 11.1 当前落地状态（2026-11-05 夜）
+
+| 项 | 状态 |
+| --- | --- |
+| `src/gba/jit/JitEmitA64.cpp` | **已写出**（约 2200 行）：全部 `emit*`、固定 96 字节帧、四种退出状态、NEED_INTERP/BUDGET/chainBail 桩、条件码、六张 wait 表、内联读快路径、`jitShiftReg`、`ErrorHandler`、`VBA_JIT_ASM` dump、三个公共接口、V8/非 ARM64 stub |
+| `win32/VBA_Latest.vcxproj` | **已改**：`JitEmit.cpp` 的 stub 条目改为仅 Win32；新增 `JitEmitA64.cpp`（仅 ARM64，`stdcpp20` + `ASMJIT_STATIC` + asmjit include）；57 条 asmjit `.cpp` 条件扩为 `x64 Or ARM64` |
+| clang `--target=aarch64-windows-msvc -fsyntax-only` | **通过**，0 错误（含 `#undef mvn`、`WIN32`、`USE_GBA_CORE_V7`） |
+| asmjit A64 编码器全形态发射 | **通过**：`~/.workbuddy/scratch/a64-emit-harness.cpp`，74 个块的 `BlockEmitter::compile()` 全部 `errors=0 / finalize=0 / code_size>0`，覆盖 16 个 ALU、12 种移位、6 种乘法、3 种宽度的读写、4 种 LDM/STM 模式、PUSH/POP/POP{pc}、SWP、各类分支、BX、MRS/MSR 和多指令混合块 |
+| MSVC ARM64 编译 / 链接 / 运行 | **未做**，需目标机器 |
+| `-jitverify` / shadow / `-hashtrace` | **未做**，需目标机器 |
+
+复现静态检查（在 x64 工作副本上）：
+
+```
+# 语法/API
+clang++ -fsyntax-only --target=aarch64-windows-msvc -std=c++20 -DASMJIT_STATIC \
+  -DUSE_GBA_CORE_V7 -DUSE_GB_CORE_V7 -DWIN32 -D_CRT_SECURE_NO_WARNINGS \
+  -I third_party/asmjit -I src -I src/gba -I src/gba/V7 \
+  -I <MSVC>/include -I <SDK>/Include/10.0.28000.0/{ucrt,shared,um} \
+  src/gba/jit/JitEmitA64.cpp
+
+# 发射检查（把 A64 编码器在 x64 宿主上跑起来）
+cl /std:c++20 /EHsc /DASMJIT_STATIC /DUSE_GBA_CORE_V7 /DWIN32 \
+   /I src /I src/gba /I src/gba/jit /I third_party/asmjit \
+   ~/.workbuddy/scratch/a64-emit-harness.cpp asmjit.lib
+a64-emit-harness.exe        # 期望 "ALL OK (0 failures)"
+```
+
+harness 通过 `VBA_JIT_A64_FORCE` / `VBA_JIT_A64_EMITTER_ONLY` 让后端在 x64
+宿主上也进入发射路径，并用一组桩定义替换模拟器全局；它**只验证编码**，
+不执行生成的代码，所以不能替代第 8 节的任何一层。
+
+> ⚠️ 实现时对本文伪代码做的两处偏离，都是 A64 原生能力带来的简化：
+> ① `ADC/SBC/RSC` 用单条 `adcs/sbcs` 产生完整 NZCV，因此**不需要**
+> `emitFlagsAdd/Sub()` 那套从操作数重算 V/C 的路径，所有算术类统一走
+> `emitFlagsNative()`；② `mov(Gp,Imm)` 由 asmjit 自动展开，只有
+> `add/sub/cmp` 的大立即数才需要 `addImm()` 先装寄存器。这两条已由
+> 发射检查覆盖，但仍需目标机器上的 `-jitverify` 确认语义。
+
+| 批 | 内容 | 验收（本机可做的用 ✓ 标出） |
+| --- | --- | --- |
+| **0 骨架** | 改 `vcxproj` 的三处条件（§1）；新建 `JitEmitA64.cpp`，只放三个接口 + 空实现（`jitNativeAvailable()` 返回 false） | ✓ clang `-fsyntax-only --target=aarch64-windows-msvc` 0 错误；ARM64 机器：`V7Release\|ARM64` 与 `Release\|ARM64` 都能链接，`jit.log` 里 native 计数仍为 0 |
+| **1 只发出口** | `emitPrologue/Epilogue`、`emitExitImm`、`chainBail`、`dumpCompiledBlock`；`compile()` 编译长度为 1 的块，但**只发一个 `JITX_DONE` 出口**，不执行任何 guest 指令 | 验证 ABI、96 字节帧、`JitExecResult` 写入、`runBlock()` 的 `armNextPC/reg[15]` 修正；`-jitverify` 会报周期差异（预期），但 `-hashtrace` 应仍与解释器一致，因为周期由 IR 尾巴补跑。这一步专抓帧/出口错 |
+| **2 最小语义** | `JOP_ALU` 的 `MOV/ADD/SUB/CMP` + `setPc/addFetch/checkBudget` + `emitCondSkip` + `emitFlags*`；其余 op 一律截断前缀 | `-jitverify 20000` 的 arm/thumb 单条 pass 对 ALU 0 差异；`VBA_JIT_OPS` 按位二分定位 |
+| **3 控制流** | `JOP_BRANCH` / `JOP_BX` / `emitChainExit` / 链接 | 块级差分 0 差异；`jit.log` 的 `chain links > 0`；用 `VBA_JIT_NOCHAIN=1` 做 A/B 确认哈希不变 |
+| **4 访存** | `JOP_LOAD/STORE` + `emitIoRangeCheck` + NEED_INTERP 桩 + 内联快路径（6.4 的规则）+ slow helper | 块级差分（它覆盖 STR/STM/PUSH/POP/SWP）；特别验证非对齐字读、半字奇地址有符号读、`memoryMap[11]` 空洞 |
+| **5 剩余 op** | `JOP_MUL` / `LDM/STM/PUSH/POP` / `SWP` / `MRS/MSR` / `emitOperand2` 全移位形态 + `jitShiftReg` | 全量 `-jitverify 20000` 四趟 0 差异；`selftest` 双模式 1101/1207 项 |
+| **6 工具与端到端** | `VBA_JIT_ASM` / `SHADOW` / `OPS` / `ASM_LIMIT` / `NOCHAIN` / `PCTRACE`；`VBA_JIT_ASM_ERRORS` | `VBA_JIT_SHADOW=1` 无 mismatch；三 ROM × 6000 帧 `ram` 逐帧一致；dump 出来的字节用 `llvm-objdump -d --triple=aarch64 --binary=<arch>` 反汇编核对 |
+
+**每批开始前先做三个"静态检查"**（本机就能跑）：
+
+1. `clang++ -fsyntax-only --target=aarch64-windows-msvc ... JitEmitA64.cpp`
+   —— 抓类型、API、宏冲突。
+2. 用 4.4 的编码探针把这一批新用到的常量/寻址形态加进表，确认 `errors=0`。
+3. `git diff --stat` 看有没有把 CRLF 文件整篇改成 LF（本项目踩过）。
+
+**不要做的事**：不要在 x64 机器上把 `VBA_JIT_X64` 的定义放宽来"借用" x64
+后端做 A64 验证——两个 ABI 不同，得到的信息没有价值；不要在没有 ARM64
+`-hashtrace` 基线之前合入（2.1 的红线）。
+
+---
+
+## 12. 参考表
+
+### 12.1 IR 枚举（`src/gba/jit/JitIr.h`，实际值，别重抄成猜测）
+
+```
+JitOp:        END=0 ALU=1 MUL=2 LOAD=3 STORE=4 LDM=5 STM=6 PUSH=7 POP=8
+              SWP=9 BRANCH=10 BX=11 MRS=12 MSR=13 SWI=14 UNDEF=15
+JitAluOp:     AND=0 EOR=1 SUB=2 RSB=3 ADD=4 ADC=5 SBC=6 RSC=7
+              TST=8 TEQ=9 CMP=10 CMN=11 ORR=12 MOV=13 BIC=14 MVN=15
+              compareOnly = (sub >= TST && sub <= CMN)
+JitMulOp:     MUL=0 MLA=1 UMULL=2 UMLAL=3 SMULL=4 SMLAL=5
+JitShift:     NONE=0 LSL_IMM=1 LSR_IMM=2 ASR_IMM=3 ROR_IMM=4
+              LSL_REG=5 LSR_REG=6 ASR_REG=7 ROR_REG=8 ROR_REG_T=9
+              IMM_ROT=10 ROR_REG_V7=11
+JitMemSize:   WORD=0 BYTE=1 HALF=2
+JitBlockMode: IA=0 IB=1 DA=2 DB=3
+JitFlags:     WRITEBACK=1<<0 PRE=1<<1 UP=1<<2 SIGNED=1<<3 LINK=1<<4
+              IMM=1<<5 PC_ALIGN4=1<<6 CLEAR_PREFETCH=1<<7 USER=1<<8
+              DATA32=1<<9 QUICK=1<<10
+JitFlagMask:  N=1 Z=2 C=4 V=8  NZ=3 NZC=7 ALL=15
+```
+
+- `JitInsn` 有 15 字节字段、按 4 对齐成 **16 字节**（`static_assert` 在头文件里）。
+  `hashBlock()` 必须按字段算哈希，**不能 `memcmp`**：有一个未初始化的 padding 字节。
+- `JIT_MAX_INSNS = 64`，`JIT_PAGE_SIZE = 1024`。
+- `JIT_NEED_INTERP = -2`（IR 解释器的负返回值契约；`0` 是合法周期数，
+  见 `jit-recompiler.md` 10.1 第 4 条）。
+
+### 12.2 helper ABI
+
+后端自己声明这些符号（不要 include `GBA.h` / `V7/GBACpu.h`，它们会带入
+`UPDATE_REG` 和 handler 宏）：
+
+| 符号 | 签名 | 参数/返回 |
+| --- | --- | --- |
+| `CPUReadMemory` | `u32 (u32)` | `w0` 地址 → `w0` |
+| `CPUReadHalfWord` | `u32 (u32)` | **返回 u32，不是 u16**；奇地址是 32 位旋转结果，不能无条件 `uxth` |
+| `CPUReadHalfWordSigned` | `u16 (u32)` | 值已是 `(s8)` 扩到 16 位，慢路径末尾要 `sxth` |
+| `CPUReadByte` | `u8 (u32)` | `w0` 低字节有效 |
+| `CPUWriteMemory` | `void (u32,u32)` | `w0` 地址、`w1` 值 |
+| `CPUWriteHalfWord` | `void (u32,u16)` | `w1` 用 `ldrh` 装箱 |
+| `CPUWriteByte` | `void (u32,u8)` | `w1` 用 `ldrb` 装箱 |
+| `CPUUpdateCPSR` | `void ()` | 仅 MRS CPSR 前调用 |
+| `CPUReadMemoryQuick` | 经 `GBAinline.h` inline | 包一层本地 `jitReadQuick(u32)` 才好取地址 |
+| `jitTracePc` | `void (u32)` | `JIT_PC_TRACE` 专用 |
+| `jitShiftReg` | `u32 (u32 v, u32 raw, u32 carryIn, u32 kind)` | 隐式第二返回值放 `gJitShiftCarry`，A64 文件必须自带一份 |
+
+调用形态统一是 `movz/movk x16, fn; blr x16`（2.4）。`x16/x17` 是 IP 寄存器，
+helper 可以破坏；`x19–x28` 跨调用保活，所以地址/写回值放 `x23/x24`。
+
+### 12.3 调试开关（全部由环境变量读，进程内只读一次）
+
+| 变量 | 位置 | 作用 |
+| --- | --- | --- |
+| `VBA_JIT_ASM=<file>` | 后端 | 追加导出每块的 IR + 机器码字节 |
+| `VBA_JIT_ASM_LIMIT=<n>` | 后端 | 上面那个的块数上限，默认 200，`0` 不限；到限写一行提示 |
+| `VBA_JIT_OPS=<mask>` | `nativeSupported()` | 按 `1 << JitOp` 关掉某类指令的编译，二分用；`0` 是合法值 |
+| `VBA_JIT_SHADOW=1` | `JitCache.cpp` | 逐块 native vs IR 对比，输出到 `jit-shadow.txt` |
+| `VBA_JIT_NOCHAIN=1` | `JitCache.cpp` | 关掉块链接做 A/B |
+| `VBA_JIT_PCTRACE=<file>` | `JitCache.cpp` + 后端 | 逐条 `(pc,lr,sp,ticks)` 轨迹，需 `JIT_PC_TRACE=1` 重编 |
+| `VBA_JIT_PCTRACE_SKIP=<n>` | `JitCache.cpp` | 轨迹窗口起点，跳过前 n 条 |
+| `VBA_JIT_ASM_ERRORS=1` | **A64 新增** | 4.3 的 `ErrorHandler` 打日志到 stderr；错误捕获本身无条件开启 |
+
+`VBA_JIT_ASM` 的字节是**裸机器码**不是目标文件：在 ARM64 机器上用
+`llvm-objdump -d --triple=aarch64 -b binary -m aarch64 <file>`（或先把字节
+转成 `.bin` 再喂给它）反汇编；MSVC 的 `dumpbin /disasm` 在 x64 宿主上看不了
+AArch64。
+
+### 12.4 运行时结构（`JitEmit.h`，已核实）
+
+```
+JitExecResult { u32 nextPc; u32 status; }                 // 8 字节
+JitChainSlot  { u64 target; u32 tag; u16 linkIndex; u16 reserved; } // 16 字节
+JitCompiledBlock { JitNativeFn fn; u8 *chainEntry; JitChainSlot chain[4];
+                   u16 insnCount, chainCount, selfSlot; u8 frameKind, reserved2; }
+```
+
+- 状态位是 `JITX_NEED_INTERP=1 / KEEP_PC=2 / BUDGET=4 / DONE=8`，每次写完整
+  32 位字。`KEEP_PC` 目前没有发射点（写 PC 的非分支指令在编译期就被截断）。
+- `JIT_MAX_CHAIN=4`，超出就退回"直接写 out 并返回"，不是错误。
+- `frameKind`：x64 表示"要不要保存 rdi/rsi"，**A64 恒 0**（固定帧，2.3）。
+
+### 12.5 文件地图
+
+| 文件 | 用途 |
+| --- | --- |
+| `src/gba/jit/JitEmitA64.cpp` | **待写**：A64 后端全部实现 |
+| `src/gba/jit/JitEmit.cpp` | x64 蓝本（约 2400 行），§10 有函数索引 |
+| `src/gba/jit/JitEmit.h` | 公共 ABI 与运行时结构 |
+| `src/gba/jit/JitIr.h` | IR 定义、枚举、`JitBlock` |
+| `src/gba/jit/JitCache.cpp` | 块缓存、编译缓存、链接、影子、`jitExecute()` |
+| `src/gba/jit/JitDecode*.cpp` | 两核共用的解码器 |
+| `src/gba/jit/JitInterp.cpp` | V7 逐指令语义与周期规范 |
+| `src/gba/jit/JitVerify.cpp` | 差分验证器 |
+| `src/gba/jit/selftest.cpp` | 宿主侧解码自测（clang 直接编） |
+| `src/gba/V7/arm-new.h` / `thumb.h` | V7 权威语义与周期 |
+| `src/gba/V7/GBAMemory.cpp` | `memoryMap`、读写包装、奇地址旋转 |
+| `src/gba/V7/GBA.cpp` | 六张 wait 表与顺序 |
+| `src/gba/GBAGlobals.h/.cpp` | `reg[]`、N/C/Z/V、`armState`、`armNextPC`、`armMode` |
+| `src/gba/GBAinline.h` | `MemoryMap` 布局、`CPUReadMemoryQuick` |
+| `third_party/asmjit/asmjit/arm/a64_emitter.h` | A64 指令 API 与 `b_*` 简写 |
+| `third_party/asmjit/asmjit/arm/a64_operand.h` | `Gp`/`Mem`/`Shift`/regs |
+| `third_party/asmjit/asmjit/core/arch_commons.h` | `CondCode`、`Shift` |
+| `third_party/asmjit/asmjit/core/{emitter,error_handler,code_holder,assembler}.h` | 错误处理、代码摊平、`offset()` |
+| `documentation/jit-recompiler.md` | 设计思路与后端移植契约（本文的上位文档） |
+| `documentation/jit-emit-sample.c` | x64 生成代码的教学样本，可照着做 A64 版 |
