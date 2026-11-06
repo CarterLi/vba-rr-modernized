@@ -103,7 +103,7 @@ const a64::Gp XOUT   = a64::x22;   // JitExecResult*
 const a64::Gp WADDR  = a64::w23;   // memory address
 const a64::Gp WWB    = a64::w24;   // writeback value
 const a64::Gp XFLAGS = a64::x25;   // &N_FLAG
-const a64::Gp XWAIT  = a64::x26;   // &memoryWait[0]
+const a64::Gp XWAIT  = a64::x26;   // address of the fetch wait table
 const a64::Gp XMAP   = a64::x27;   // &memoryMap[0].address
 const a64::Gp XCARRY = a64::x28;   // &gJitShiftCarry
 
@@ -119,11 +119,6 @@ inline int32_t offFlags(const void *p)
 	return (int32_t)((intptr_t)p - (intptr_t)&N_FLAG);
 }
 
-inline int32_t offWait(const void *p)
-{
-	return (int32_t)((intptr_t)p - (intptr_t)&memoryWait[0]);
-}
-
 inline a64::Mem fmem(const void *p)
 {
 	return a64::ptr(XFLAGS, offFlags(p));
@@ -132,11 +127,6 @@ inline a64::Mem fmem(const void *p)
 inline a64::Mem gr(int r)
 {
 	return a64::ptr(XREG, r * 4);
-}
-
-inline a64::Mem wmem(const void *p)
-{
-	return a64::ptr(XWAIT, offWait(p));
 }
 
 struct Offsets
@@ -153,35 +143,19 @@ bool checkedOffsets()
 		return gOffsets.ok;
 	gOffsets.checked = true;
 
-	// ldrb/strb accept an unscaled 12-bit unsigned offset; ldr w accepts a
-	// scaled one (multiple of four).  Only the globals the emitted code
-	// actually addresses from XFLAGS are checked: armNextPC/holdState live in
-	// a different translation unit and are owned by the block runner, so
-	// requiring them to be within 4 KB would disable the backend for no
-	// reason.
-	const void *flags[] = { &N_FLAG, &C_FLAG, &Z_FLAG, &V_FLAG,
-							&armState, &armMode };
+	// ldrb/strb accept an unscaled 12-bit unsigned offset.  Only the four flag
+	// bytes are addressed from XFLAGS; armState, armMode and the wait tables
+	// are initialised to non-zero values, so the linker puts them in .data,
+	// possibly far away - they get an absolute address instead (see
+	// emitBx/emitMsr/addWait, and XWAIT for the fetch table).
+	const void *flags[] = { &N_FLAG, &C_FLAG, &Z_FLAG, &V_FLAG };
 	for (size_t i = 0; i < sizeof(flags) / sizeof(flags[0]); i++)
 	{
 		const int32_t d = offFlags(flags[i]);
-		if (d < 0 || d > 4095 || (flags[i] == &armMode && (d & 3)))
+		if (d < 0 || d > 4095)
 			return gOffsets.ok = false;
 	}
 
-	const int32 *tables[] = { memoryWait, memoryWait32, memoryWaitSeq,
-							  memoryWaitSeq32, memoryWaitFetch, memoryWaitFetch32 };
-	for (size_t t = 0; t < sizeof(tables) / sizeof(tables[0]); t++)
-	{
-		const int32_t base = offWait(&tables[t][0]);
-		if (base < 0 || (base & 3) || base / 4 > 4095)
-			return gOffsets.ok = false;
-		for (int i = 0; i < 16; i++)
-		{
-			const int32_t d = offWait(&tables[t][i]);
-			if (d < 0 || d > 16380 || (d & 3))
-				return gOffsets.ok = false;
-		}
-	}
 	return gOffsets.ok = true;
 }
 
@@ -550,7 +524,8 @@ void BlockEmitter::emitPrologue()
 
 	emitMovImm64(a, XREG,   (uint64_t)(uintptr_t)&reg[0]);
 	emitMovImm64(a, XFLAGS, (uint64_t)(uintptr_t)&N_FLAG);
-	emitMovImm64(a, XWAIT,  (uint64_t)(uintptr_t)&memoryWait[0]);
+	emitMovImm64(a, XWAIT,  (uint64_t)(uintptr_t)(thumb ? memoryWaitFetch
+															: memoryWaitFetch32));
 	emitMovImm64(a, XMAP,   (uint64_t)(uintptr_t)&memoryMap[0].address);
 	emitMovImm64(a, XCARRY, (uint64_t)(uintptr_t)&gJitShiftCarry);
 }
@@ -678,8 +653,7 @@ void BlockEmitter::addFetch(u8 fetchCycles)
 	if (thumb)
 		addConst(fetchCycles);
 	const int i = (int)((pc >> 24) & 15);
-	const int32 *table = thumb ? memoryWaitFetch : memoryWaitFetch32;
-	a->ldr(a64::w4, wmem(&table[i]));
+	a->ldr(a64::w4, a64::ptr(XWAIT, i * 4));
 	a->add(WCYC, WCYC, a64::w4);
 }
 
@@ -687,10 +661,11 @@ void BlockEmitter::addWait(const a64::Gp &addr, const int32 *table)
 {
 	a->lsr(a64::w3, addr.w(), Imm(24));
 	a->and_(a64::w3, a64::w3, Imm(15));
-	const int32_t base = offWait(&table[0]);
-	if (base)
-		addImm(a, a64::w3, base / 4);
-	a->ldr(a64::w4, a64::ptr(XWAIT, a64::w3, a64::uxtw(2)));
+	// The wait tables are spread over .data and are not guaranteed to sit
+	// within one 12-bit displacement of each other in every link, so use the
+	// table's absolute address rather than XWAIT-relative offsets.
+	emitMovImm64(a, a64::x5, (uint64_t)(uintptr_t)table);
+	a->ldr(a64::w4, a64::ptr(a64::x5, a64::w3, a64::uxtw(2)));
 	a->add(WCYC, WCYC, a64::w4);
 }
 
@@ -756,7 +731,7 @@ void BlockEmitter::emitCondSkip(u8 cond, const Label &skip)
 		Label ok = a->new_label();
 		a->ldrb(a64::w3, fmem(&C_FLAG));
 		a->cmp(a64::w3, Imm(0));
-		a->b(a64::CondCode::kNE, ok);
+		a->b(a64::CondCode::kEQ, ok);
 		a->ldrb(a64::w3, fmem(&Z_FLAG));
 		a->cmp(a64::w3, Imm(0));
 		a->b(a64::CondCode::kEQ, skip);
@@ -1218,6 +1193,7 @@ void BlockEmitter::emitMul(const JitInsn &in)
 			a->smull(a64::x6, a64::w5, a64::w10);
 		else
 			a->umull(a64::x6, a64::w5, a64::w10);
+		a->mov(a64::x8, a64::x6);       // full result for the Z flag
 		a->str(a64::w6, gr(lo));
 		a->lsr(a64::x6, a64::x6, Imm(32));
 		a->str(a64::w6, gr(in.d));
@@ -1234,6 +1210,7 @@ void BlockEmitter::emitMul(const JitInsn &in)
 			a->smaddl(a64::x6, a64::w5, a64::w10, a64::x8);
 		else
 			a->umaddl(a64::x6, a64::w5, a64::w10, a64::x8);
+		a->mov(a64::x8, a64::x6);       // full result for the Z flag
 		a->str(a64::w6, gr(lo));
 		a->lsr(a64::x6, a64::x6, Imm(32));
 		a->str(a64::w6, gr(in.d));
@@ -1250,13 +1227,17 @@ void BlockEmitter::emitMul(const JitInsn &in)
 		}
 		if (mask & JITF_Z)
 		{
-			a->ldr(a64::w7, gr(in.d));
+			// A long multiply has to test the 64-bit result itself.  Reading
+			// the two destination registers back is wrong when RdLo == RdHi:
+			// the high word is written last, so both halves then look zero
+			// while the product need not be.
 			if (isLong)
+				a->cmp(a64::x8, Imm(0));
+			else
 			{
-				a->ldr(a64::w8, gr(lo));
-				a->orr(a64::w7, a64::w7, a64::w8);
+				a->ldr(a64::w7, gr(in.d));
+				a->cmp(a64::w7, Imm(0));
 			}
-			a->cmp(a64::w7, Imm(0));
 			a->cset(a64::w8, a64::CondCode::kEQ);
 			a->strb(a64::w8, fmem(&Z_FLAG));
 		}
@@ -1436,7 +1417,7 @@ void BlockEmitter::emitLoadStore(const JitInsn &in)
 			}
 			else if (in.sub == MEM_HALF)
 			{
-				a->ldrh(a64::w11, a64::ptr(a64::x9, a64::w10, a64::uxtw(1)));
+				a->ldrh(a64::w11, a64::ptr(a64::x9, a64::w10, a64::uxtw(0)));
 				// CPUReadHalfWordWrapped() ends with (v>>8)|(v<<24) on odd
 				// addresses: on a zero-extended halfword that is ror w,8,
 				// NOT a 16-bit byte swap.  The signed form then keeps (s8),
@@ -1841,7 +1822,10 @@ void BlockEmitter::emitBx(const JitInsn &in)
 	a->ldr(a64::w3, gr(in.m));
 	a->and_(a64::w4, a64::w3, Imm(1));
 	a->eor(a64::w4, a64::w4, Imm(1));
-	a->strb(a64::w4, fmem(&armState));
+	// armState lives in .data (initialised to true), out of XFLAGS' 12-bit
+	// reach, so load its absolute address into a scratch register.
+	emitMovImm64(a, a64::x5, (uint64_t)(uintptr_t)&armState);
+	a->strb(a64::w4, a64::ptr(a64::x5));
 
 	Label arm = a->new_label();
 	Label done = a->new_label();
@@ -1888,7 +1872,8 @@ void BlockEmitter::emitMsr(const JitInsn &in)
 		a->ldr(a64::w4, gr(in.m));
 
 	Label skip = a->new_label();
-	a->ldr(a64::w3, a64::ptr(XFLAGS, offFlags(&armMode)));
+	emitMovImm64(a, a64::x5, (uint64_t)(uintptr_t)&armMode);
+	a->ldr(a64::w3, a64::ptr(a64::x5));
 	a->cmp(a64::w3, Imm(0x10));
 	a->b(a64::CondCode::kLE, skip);
 	a->cmp(a64::w3, Imm(0x1F));

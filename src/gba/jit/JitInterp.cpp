@@ -500,6 +500,12 @@ static int doMul(const JitInsn *in, bool thumb, u32 pc, u32 *nextPc, int base)
 {
 	const u32 rs = reg[in->m].I;
 
+	// The full 64-bit result of the long forms.  N/Z have to come from this,
+	// not from the destination registers: RdLo == RdHi is an unpredictable
+	// encoding that V7 still executes, and its second write would otherwise
+	// leave both halves holding the high word.
+	u64 mulRes = 0;
+
 	switch (in->sub)
 	{
 	case MUL_MUL:
@@ -517,6 +523,7 @@ static int doMul(const JitInsn *in, bool thumb, u32 pc, u32 *nextPc, int base)
 		const u64 a	= (in->sub == MUL_SMULL) ? (u64)(s64)(s32)reg[in->n].I : (u64)reg[in->n].I;
 		const u64 b	= (in->sub == MUL_SMULL) ? (u64)(s64)(s32)rs : (u64)rs;
 		const u64 r = a * b;
+		mulRes = r;
 		reg[in->imm & 0x0F].I = (u32)r;
 		reg[in->d].I			  = (u32)(r >> 32);
 		break;
@@ -528,6 +535,7 @@ static int doMul(const JitInsn *in, bool thumb, u32 pc, u32 *nextPc, int base)
 		const u64 a	  = (in->sub == MUL_SMLAL) ? (u64)(s64)(s32)reg[in->n].I : (u64)reg[in->n].I;
 		const u64 b	  = (in->sub == MUL_SMLAL) ? (u64)(s64)(s32)rs : (u64)rs;
 		const u64 r	  = acc + a * b;
+		mulRes = r;
 		reg[in->imm & 0x0F].I = (u32)r;
 		reg[in->d].I		  = (u32)(r >> 32);
 		break;
@@ -540,8 +548,8 @@ static int doMul(const JitInsn *in, bool thumb, u32 pc, u32 *nextPc, int base)
 		if (in->sub >= MUL_UMULL)
 		{
 			// N is bit 31 of the high word, Z is the whole 64-bit result.
-			if (mask & JITF_N) N_FLAG = (reg[in->d].I & 0x80000000) != 0;
-			if (mask & JITF_Z) Z_FLAG = (reg[in->d].I == 0) && (reg[in->imm & 0x0F].I == 0);
+			if (mask & JITF_N) N_FLAG = ((u32)(mulRes >> 32) & 0x80000000) != 0;
+			if (mask & JITF_Z) Z_FLAG = (mulRes == 0);
 		}
 		else
 		{
@@ -1451,6 +1459,11 @@ static int doMul(const JitInsn *in, bool thumb, u32 pc, u32 *nextPc)
 	// from the destination's old value; ARM's takes it from Rs.
 	const u32 magSrc = thumb ? reg[in->d].I : rs;
 
+	// Kept separately from the destination registers: with RdLo == RdHi (an
+	// unpredictable encoding that the reference core still executes) the
+	// second write leaves both halves holding the high word.
+	u64 mulRes = 0;
+
 	switch (in->sub)
 	{
 	case MUL_MUL:
@@ -1465,6 +1478,7 @@ static int doMul(const JitInsn *in, bool thumb, u32 pc, u32 *nextPc)
 		const u64 a   = (in->sub == MUL_SMULL) ? (u64)(s64)(s32)reg[in->n].I : (u64)reg[in->n].I;
 		const u64 b   = (in->sub == MUL_SMULL) ? (u64)(s64)(s32)rs : (u64)rs;
 		const u64 res = a * b;
+		mulRes = res;
 		reg[in->imm & 0x0F].I = (u32)res;
 		reg[in->d].I			  = (u32)(res >> 32);
 		break;
@@ -1476,6 +1490,7 @@ static int doMul(const JitInsn *in, bool thumb, u32 pc, u32 *nextPc)
 		const u64 a   = (in->sub == MUL_SMLAL) ? (u64)(s64)(s32)reg[in->n].I : (u64)reg[in->n].I;
 		const u64 b   = (in->sub == MUL_SMLAL) ? (u64)(s64)(s32)rs : (u64)rs;
 		const u64 res = acc + a * b;
+		mulRes = res;
 		reg[in->imm & 0x0F].I = (u32)res;
 		reg[in->d].I		  = (u32)(res >> 32);
 		break;
@@ -1487,8 +1502,8 @@ static int doMul(const JitInsn *in, bool thumb, u32 pc, u32 *nextPc)
 	{
 		if (in->sub >= MUL_UMULL)
 		{
-			if (mask & JITF_N) N_FLAG = (reg[in->d].I & 0x80000000) != 0;
-			if (mask & JITF_Z) Z_FLAG = (reg[in->d].I == 0) && (reg[in->imm & 0x0F].I == 0);
+			if (mask & JITF_N) N_FLAG = ((u32)(mulRes >> 32) & 0x80000000) != 0;
+			if (mask & JITF_Z) Z_FLAG = (mulRes == 0);
 		}
 		else
 		{

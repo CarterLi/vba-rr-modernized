@@ -1311,6 +1311,7 @@ void BlockEmitter::emitMul(const JitInsn &in)
 			a->mov(x86::ecx, x86::r10d);
 		}
 		a->imul(x86::rax, x86::rcx);
+		a->mov(x86::r11, x86::rax);		// full result for the Z flag
 		a->mov(gr(lo), x86::eax);
 		a->shr(x86::rax, 32);
 		a->mov(gr(in.d), x86::eax);
@@ -1334,6 +1335,7 @@ void BlockEmitter::emitMul(const JitInsn &in)
 		a->mov(x86::edx, gr(lo));
 		a->or_(x86::rcx, x86::rdx);
 		a->add(x86::rax, x86::rcx);
+		a->mov(x86::r11, x86::rax);		// full result for the Z flag
 		a->mov(gr(lo), x86::eax);
 		a->shr(x86::rax, 32);
 		a->mov(gr(in.d), x86::eax);
@@ -1353,8 +1355,9 @@ void BlockEmitter::emitMul(const JitInsn &in)
 			}
 			if (mask & JITF_Z)
 			{
-				a->mov(x86::eax, gr(in.d));
-				a->or_(x86::eax, gr(lo));
+				// Test the saved 64-bit product: re-reading hi/lo would see
+				// the high word twice when RdLo == RdHi.
+				a->test(x86::r11, x86::r11);
 				a->setz(x86::al);
 				a->mov(gmem(&Z_FLAG, 1), x86::al);
 			}

@@ -69,7 +69,7 @@ struct JitStats
 	u32 nativeCompiles;		// asmjit compilations (the expensive part)
 	u32 codeHits;			// re-decodes that reused an existing compilation
 	u32 chainLinks;			// exits patched to jump straight to a successor
-	u64 compileTicks;		// rdtsc ticks spent inside jitCompileBlock
+	u64 compileUs;			// microseconds spent inside jitCompileBlock
 };
 
 // True on every platform and for both cores.  Win32 (x86) still has no

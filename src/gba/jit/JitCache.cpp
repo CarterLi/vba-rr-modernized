@@ -1,7 +1,7 @@
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <intrin.h>
 
 #include "JitCache.h"
 #include "JitEmit.h"
@@ -37,6 +37,18 @@ extern u32 mastercode;
 #endif
 
 namespace {
+
+// --- compile-time accounting -----------------------------------------------
+// __rdtsc only exists on x86/x64; MSVC does not declare it for ARM64 even
+// though that build has its own native backend.  steady_clock is available on
+// every target, and microseconds are fine grained enough for a single block
+// compilation (milliseconds would round most of them to zero).
+u64 jitNowMicros()
+{
+	return (u64)std::chrono::duration_cast<std::chrono::microseconds>(
+			   std::chrono::steady_clock::now().time_since_epoch())
+		.count();
+}
 
 // --- debug PC trace --------------------------------------------------------
 // Both this file and the interpreter loops call jitTracePc(); the file is only
@@ -148,7 +160,7 @@ void jitReportStats()
 			jitStats.pageInvalidations, (unsigned long long)jitStats.insns, jitStats.badInsns,
 			jitStats.nativeBlocks, jitStats.nativeCompiles, jitStats.codeHits,
 			(unsigned long long)jitStats.nativeInsns, jitStats.chainLinks,
-			(unsigned long long)(jitStats.compileTicks / 3000000));
+			(unsigned long long)(jitStats.compileUs / 1000));
 
 	if (FILE *log = fopen("jit.log", "w"))
 	{
@@ -156,7 +168,7 @@ void jitReportStats()
 				jitStats.pageInvalidations, (unsigned long long)jitStats.insns,
 				jitStats.badInsns, jitStats.nativeBlocks, jitStats.nativeCompiles,
 			jitStats.codeHits, (unsigned long long)jitStats.nativeInsns,
-			jitStats.chainLinks, (unsigned long long)(jitStats.compileTicks / 3000000));
+			jitStats.chainLinks, (unsigned long long)(jitStats.compileUs / 1000));
 		fclose(log);
 	}
 }
@@ -556,9 +568,9 @@ JitCacheEntry *getEntry(u32 pc, bool thumb, const JitCompiledBlock **codeOut)
 
 	if (jitNativeAvailable())
 	{
-		const u64 t0 = __rdtsc();
+		const u64 t0 = jitNowMicros();
 		*codeOut	 = nativeFor(&e->block, tag, &e->codeSlot, &e->codeStamp);
-		jitStats.compileTicks += __rdtsc() - t0;
+		jitStats.compileUs += jitNowMicros() - t0;
 	}
 #endif
 	return e;

@@ -980,7 +980,7 @@ Windows Performance Recorder（`-start CPU` / `-stop` 出一份 ETL，再用 WPA
 
 **关键限制**：asmjit 生成的代码在 `VirtualAlloc` 出来的 RWX 匿名页上，没有模块名也没有 PDB，
 profiler 里只会显示成 `Unknown`/裸地址；而 1 ms 的 ETW 采样对"每块几十纳秒"根本没有分辨率。
-看 JIT 内部还是得靠 `VBA_JIT_ASM` 导字节、`__rdtsc` 埋点（`jit.log` 的 `compileTicks`）、
+看 JIT 内部还是得靠 `VBA_JIT_ASM` 导字节、`std::chrono` 埋点（`jit.log` 的 `compileUs`）、
 VTune/AMD uProf 的 PEBS/IBS 硬件采样，以及最省事的端到端 A/B。
 
 ---
