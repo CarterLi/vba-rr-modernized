@@ -68,6 +68,13 @@ struct RecordParams
 	int	 profile;		 // profile value of the chosen codec, 0 = auto
 	int	 frameRate;		 // FRAMERATE_NATIVE or a target in fps
 	bool async;			 // hand the frames to a worker thread to encode
+
+	// Frame interpolation is on, so the emulator hands over two pictures per
+	// emulated frame and the stream runs at twice its rate.  Chosen from the
+	// interpolation setting when the dialog opens, never from the frame rate
+	// box: dropping half of the pictures again would defeat the point.
+	// See documentation/frame-interpolation.md.
+	bool interpolated;
 };
 
 // One interface for the two writers: the Media Foundation one the recording
@@ -96,6 +103,11 @@ public:
 
 	virtual void Pause(bool pause) = 0;
 	virtual bool IsPaused()		   = 0;
+
+	// True when the file is written at twice the emulator's rate and the
+	// caller therefore has to hand over two pictures per emulated frame.  The
+	// legacy AVI writer never asks for this.
+	virtual bool wantsInterpolatedFrames() const { return false; }
 };
 
 #endif // VBA_WIN32_VIDEOWRITER_H

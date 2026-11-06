@@ -36,6 +36,8 @@ public:
 	virtual void Pause(bool pause);
 	virtual bool IsPaused();
 
+	virtual bool wantsInterpolatedFrames() const;
+
 private:
 	struct Impl;
 	Impl *m_impl;

@@ -39,7 +39,7 @@ LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
 // resources and may be missing strings, controls or whole dialogs.  An
 // unchanged vba.rc keeps the value, so the version changes only when the
 // English resources do.
-#define VBA_L10N_VERSION "2836d851cfa2dbcdc53dd8dc80a5c6932d8050edf0cf88d7a3c1d8935e8363ae"
+#define VBA_L10N_VERSION "e81295a7b6d293bb7c4f7d4e9b6b799773736c9232f028a01fa3646c7beeeac5"
 
 // The About box shows the application icon; its dialog template lives here,
 // so the icon has to be here too or the control comes up empty.
@@ -1610,6 +1610,13 @@ BEGIN
 #else
             MENUITEM "垂直同步(&S)（D3D11）", ID_OPTIONS_VIDEO_VSYNC
 #endif
+            MENUITEM SEPARATOR
+            POPUP "帧插值(&F)"
+            BEGIN
+                MENUITEM "关闭(&O)",                        ID_OPTIONS_VIDEO_INTERPOLATION_OFF
+                MENUITEM "仅滚屏(&S)",                ID_OPTIONS_VIDEO_INTERPOLATION_SCROLL
+                MENUITEM "滚屏 + 精灵(&O)",           ID_OPTIONS_VIDEO_INTERPOLATION_ALL
+            END
             MENUITEM SEPARATOR
             POPUP "窗口尺寸(&W)"
             BEGIN

@@ -972,6 +972,30 @@ void MainWnd::OnUpdateOptionsVideoTexturefilter(CCmdUI*pCmdUI)
 	setRadioCheck(pCmdUI, currentTextureFilter() == filter);
 }
 
+void MainWnd::OnOptionsVideoInterpolation(UINT nID)
+{
+	const int mode = (int)(nID - ID_OPTIONS_VIDEO_INTERPOLATION_OFF);
+
+	// Off is always available; the other two need a renderer that presents the
+	// extra frame.  A renderer that cannot do it is left unselectable rather
+	// than silently ignored.
+	if (theApp.display == NULL || (mode != 0 && !theApp.display->supportsInterpolation()))
+		return;
+
+	// Takes effect on the next frame: systemFrame() in WinSystem.cpp picks it
+	// up, and drops the captured lines when the answer changes.
+	theApp.frameInterpolation = mode;
+}
+
+void MainWnd::OnUpdateOptionsVideoInterpolation(CCmdUI*pCmdUI)
+{
+	const int mode = (int)(pCmdUI->m_nID - ID_OPTIONS_VIDEO_INTERPOLATION_OFF);
+
+	pCmdUI->Enable(theApp.display != NULL &&
+	               (mode == 0 || theApp.display->supportsInterpolation()));
+	setRadioCheck(pCmdUI, theApp.frameInterpolation == mode);
+}
+
 #if VBA_ENABLE_OPENGL
 void MainWnd::OnOptionsVideoRenderoptionsGltriangle()
 {

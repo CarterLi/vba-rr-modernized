@@ -94,6 +94,50 @@ extern int gfxBG3X;
 extern int gfxBG3Y;
 extern int gfxLastVCOUNT;
 
+// Cached display state, derived from DISPCNT / BLDMOD when the game writes
+// those; the interpolation replay has to recompute them for every line.
+extern bool8 fxOn;
+extern bool8 windowOn;
+
+// The line renderer the core picked for the current mode and effects.  It is
+// defined in GBA.cpp and normally only called from there.
+extern void (*renderLine)();
+
+// --- frame interpolation ----------------------------------------------------
+//
+// A frame cannot be drawn again on demand: renderLine() runs once per scanline
+// while the CPU is emulating, and what it draws depends on the registers at
+// that instant.  So every line's state is copied into a ring as it is drawn,
+// and an intermediate frame is produced by replaying renderLine() over the two
+// rings interpolated.  Only position-like fields are interpolated: layer base
+// addresses, tile data and OAM contents come from the newer frame, which is
+// why a game that swaps tiles or palettes needs no special case.
+//
+// See documentation/frame-interpolation.md.
+struct GfxLineState
+{
+	u16 dispcnt;                                     // 0x00
+	u16 bldmod, colev, coly, mosaic;                 // 0x50 / 0x54 / 0x52 / 0x4C
+	u16 win0h, win1h, win0v, win1v, winin, winout;   // 0x40..0x4A
+	u16 bgcnt[4];                                    // 0x08..0x0E
+	u16 bghofs[4], bgvofs[4];                        // 0x10..0x1E
+	u16 bgpa[2][4];                                  // BG2PA..BG3PD
+	s32 bgx[2], bgy[2];                              // gfxBG2X/Y, gfxBG3X/Y
+	u16 vcount;                                      // gfxDrawSprites() tests it
+	u8	changed;                                     // bit0 BG2, bit1 BG3
+};
+
+#define GFX_INTERP_LINES 160
+
+// 0 = off (nothing is captured), 1 = scroll only, 2 = scroll and objects.
+// Written by the port before a frame, read by the capture; emulation itself
+// never looks at it.
+extern int gfxInterpolationMode;
+
+void gfxCaptureLineState();
+void gfxResetLineStates();
+bool gfxReplayInterpolatedFrame(u8 *dst, int t);
+
 static inline void gfxClearArray(u32 *array)
 {
 	for (int i = 0; i < 240; i++)

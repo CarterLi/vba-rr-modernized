@@ -417,3 +417,6 @@ Start/Stop Audio/Video &File Recording...	开始/停止音视频文件录制(&F)
 &Pause/Resume File Recording	暂停/继续文件录制(&P)
 VBM &Editor...	VBM 编辑器(&E)...
 Load Cheats from &Database...	从金手指数据库加载(&D)...
+&Frame Interpolation	帧插值(&F)
+&Scroll Only	仅滚屏(&S)
+Scroll + &Objects	滚屏 + 精灵(&O)

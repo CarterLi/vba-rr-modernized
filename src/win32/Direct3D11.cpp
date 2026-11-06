@@ -420,6 +420,10 @@ public:
 		return filter >= 0 && filter <= 2 && (filter != 2 || pMipTexture != NULL);
 	};
 
+	// The frame goes through a texture, so an extra one costs nothing but a
+	// second upload and a second present.
+	virtual bool supportsInterpolation() { return true; };
+
 private:
 	bool createDevice();
 	bool createSwapChain();
@@ -2058,7 +2062,9 @@ void Direct3D11Display::render()
 		calculateVertices();
 	}
 
-	u8 *data = pix;
+	// The interpolated frame and the real one have the same layout, so the only
+	// thing that changes between the two presents is which buffer is uploaded.
+	u8 *data = pixToPresent ? pixToPresent : pix;
 	int dataPitch = theApp.filterWidth * (systemColorDepth / 8) + (systemColorDepth == 24 ? 0 : 4);
 
 	if (textMethod != 0) // do not draw Lua HUD to a video dump
@@ -2328,7 +2334,10 @@ void Direct3D11Display::render()
 	// sync interval of one (a block of a whole vblank per frame) starves the
 	// audio buffer and is heard as crackling.
 	bool fastForward = speedup || theApp.frameSearchSkipping;
-	pSwapChain->Present(theApp.vsync && !fastForward ? 1 : 0, 0);
+	// Two blocking presents per frame starve the sound buffer (see above), so
+	// frame interpolation asks for no synchronisation at all and paces itself.
+	const bool sync = theApp.vsync && !fastForward && !systemInterpolationActive();
+	pSwapChain->Present(sync ? 1 : 0, 0);
 }
 
 void Direct3D11Display::resize(int w, int h)

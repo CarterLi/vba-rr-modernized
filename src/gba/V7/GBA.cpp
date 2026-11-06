@@ -3969,6 +3969,10 @@ updateLoop:
 					{
 						if (systemFrameDrawingRequired())
 						{
+							// Remember what this line saw, for the interpolated
+							// frames the display layer builds (see GBAGfx.cpp).
+							gfxCaptureLineState();
+
 							(*renderLine)();
 
 							CPUDrawPixLine();

@@ -1734,6 +1734,10 @@ public:
 	{
 		return filter >= 0 && filter <= 2 && (filter != 2 || glGenerateMipmap != NULL);
 	};
+
+	// The frame goes through a texture, so an extra one costs nothing but a
+	// second upload and a second swap.
+	virtual bool supportsInterpolation() { return true; };
 };
 
 OpenGL33Display::OpenGL33Display()
@@ -2317,7 +2321,9 @@ void OpenGL33Display::uploadFrame()
 	frameTextureIndex = (frameTextureIndex + 1) % FRAME_TEXTURE_COUNT;
 	frameTexture      = frameTextures[frameTextureIndex];
 
-	u8 *data = pix;
+	// The interpolated frame and the real one have the same layout, so only the
+	// buffer changes between the two swaps.
+	u8 *data = pixToPresent ? pixToPresent : pix;
 	int dataPitch = theApp.filterWidth * 4 + 4;
 
 	if (textMethod != 0) // do not draw Lua HUD to a video dump
@@ -2951,7 +2957,9 @@ void OpenGL33Display::render()
 		// stutter of a 59.73 Hz emulator on a 60 Hz display into a tear.
 		bool fastForward = speedup || theApp.frameSearchSkipping;
 		int interval = 0;
-		if (theApp.vsync && !fastForward)
+		// Frame interpolation presents twice per frame; two blocking swaps
+		// would starve the sound buffer, so it paces itself and asks for none.
+		if (theApp.vsync && !fastForward && !systemInterpolationActive())
 			interval = swapTear ? -1 : 1;
 
 		if (interval != swapInterval)

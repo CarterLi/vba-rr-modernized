@@ -47,6 +47,12 @@ public:
 	// out with.  False here: the backends without a sampler of their own do
 	// not filter the frame at all.
 	virtual bool filterAvailable(int filter) { return false; };
+
+	// Whether this backend presents the extra, interpolated frame that the
+	// frame interpolation menu asks for.  The ones that simply blit the frame
+	// buffer with GDI or DirectDraw cannot, so the menu greys its items out
+	// there.  See documentation/frame-interpolation.md.
+	virtual bool supportsInterpolation() { return false; };
 };
 
 #endif // VBA_WIN32_DISASSEMBLE_H

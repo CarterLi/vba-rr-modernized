@@ -557,6 +557,7 @@ VBA::VBA() : emulator(::theEmulator)
 	upscaler				= UPSCALER_OFF;
 	upscalerSharpness		= 50;
 	upscalerMaxScale		= 0;
+	frameInterpolation		= 0;
 	glFilter				= 0;
 	glType					= 0;
 #if VBA_ENABLE_WGPU
@@ -881,6 +882,17 @@ BOOL VBA::InitInstance()
 						goto invalidArgument;
 					vsync = _ttoi(argv[++i]) != 0;
 				}
+				else if (_tcsicmp(argv[i], _T("-interp")) == 0)
+				{
+					// Frame interpolation: 0 off, 1 scroll only, 2 scroll and
+					// objects.  Same switch is under Options > Video and in
+					// vba.ini; see documentation/frame-interpolation.md.
+					if (i + 1 >= argc || argv[i + 1][0] == '-')
+						goto invalidArgument;
+					frameInterpolation = _ttoi(argv[++i]);
+					if (frameInterpolation < 0 || frameInterpolation > 2)
+						goto invalidArgument;
+				}
 				else if (_tcsicmp(argv[i], _T("-jit")) == 0)
 				{
 					// Turn the recompiler on for this run.  Off by default
@@ -1016,6 +1028,7 @@ invalidArgument:
 					            L"-videoScale val \t\t sets the video size (val = 1..8 for 1X..8X)\n"
 					            L"-hideMenu \t\t hides the menu until program exit\n"
 					            L"-vsync val \t\t sets vertical sync (0 = off, 1 = on)\n"
+					            L"-interp val \t\t sets frame interpolation (0 = off, 1 = scroll, 2 = scroll and objects)\n"
 					            L"-jit \t\t\t use the CPU recompiler instead of the interpreter\n"
 					            L"-nojit \t\t\t force the interpreter for this run\n"
 					            L"\n"
@@ -2661,6 +2674,9 @@ void VBA::loadSettings()
 	upscalerMaxScale = regQueryDwordValue(_T("upscalerMaxScale"), 0);
 	if (upscalerMaxScale < 0 || upscalerMaxScale > 8)
 		upscalerMaxScale = 0;
+	frameInterpolation = regQueryDwordValue(_T("frameInterpolation"), 0);
+	if (frameInterpolation < 0 || frameInterpolation > 2)
+		frameInterpolation = 0;
 	glFilter = regQueryDwordValue(_T("glFilter"), 0);
 	if (glFilter < 0 || glFilter > 2)
 		glFilter = 0;
@@ -2932,6 +2948,7 @@ void VBA::loadSettings()
 		recordParams.profile		 = VIDEO_PROFILE_AUTO;
 		recordParams.frameRate		 = FRAMERATE_DEFAULT;
 		recordParams.async			 = true;
+		recordParams.interpolated	 = false;
 
 		const CString videoText = regQueryStringValue(_T("recordVideoCodec"), _T(""));
 		if (!videoText.IsEmpty())
@@ -3075,6 +3092,7 @@ void VBA::saveSettings()
 	regSetDwordValue(_T("upscaler"), upscaler);
 	regSetDwordValue(_T("upscalerSharpness"), upscalerSharpness);
 	regSetDwordValue(_T("upscalerMaxScale"), upscalerMaxScale);
+	regSetDwordValue(_T("frameInterpolation"), frameInterpolation);
 	regSetDwordValue(_T("glFilter"), glFilter);
 	regSetDwordValue(_T("glType"), glType);
 

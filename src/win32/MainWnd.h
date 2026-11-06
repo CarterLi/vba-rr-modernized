@@ -337,6 +337,8 @@ protected:
 #endif
 	afx_msg void OnOptionsVideoTexturefilter(UINT nID);
 	afx_msg void OnUpdateOptionsVideoTexturefilter(CCmdUI*pCmdUI);
+	afx_msg void OnOptionsVideoInterpolation(UINT nID);
+	afx_msg void OnUpdateOptionsVideoInterpolation(CCmdUI*pCmdUI);
 #if VBA_ENABLE_OPENGL
 	afx_msg void OnOptionsVideoRenderoptionsGltriangle();
 	afx_msg void OnUpdateOptionsVideoRenderoptionsGltriangle(CCmdUI*pCmdUI);

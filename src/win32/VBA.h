@@ -443,6 +443,17 @@ public:
 	//    DO NOT EDIT what you see in these blocks of generated code !
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
+
+public:
+	// Frame interpolation: 0 off, 1 scroll only, 2 scroll and objects.  Only
+	// the renderers that answer supportsInterpolation() present it, and it
+	// stops while frames are skipped or stepped.  See
+	// documentation/frame-interpolation.md.
+	//
+	// Deliberately the last member: anything added before the ones above moves
+	// their offsets, and a translation unit that was not rebuilt keeps using
+	// the old ones.
+	int frameInterpolation;
 };
 
 extern VBA theApp;

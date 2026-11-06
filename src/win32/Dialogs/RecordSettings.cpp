@@ -83,6 +83,12 @@ CRecordSettings::CRecordSettings(CWnd *parent, const RecordParams &current)
 	m_params			  = current;
 	m_params.videoBitrate = clampInt(m_params.videoBitrate, VIDEO_BITRATE_MIN, VIDEO_BITRATE_MAX);
 	m_params.audioBitrate = clampInt(m_params.audioBitrate, AUDIO_BITRATE_MIN, AUDIO_BITRATE_MAX);
+	m_params.interpolated = false;
+
+	// Asked once, when the dialog opens, and never again: the rate is fixed
+	// when the file is created, so a menu toggle in the middle of a recording
+	// must not change what this recording writes.
+	m_interpolated		  = systemInterpolationSupported();
 }
 
 void CRecordSettings::DoDataExchange(CDataExchange *pDX)
@@ -136,9 +142,12 @@ BOOL CRecordSettings::OnInitDialog()
 	m_audioSpin.SetRange32(AUDIO_BITRATE_MIN, AUDIO_BITRATE_MAX);
 	m_audioSpin.SetPos(m_params.audioBitrate);
 
-	for (int i = 0; i < 5; ++i)
-		if (kFrameRates[i] == m_params.frameRate)
-			m_frameRateBox.SetCurSel(i);
+	if (!m_interpolated)
+	{
+		for (int i = 0; i < 5; ++i)
+			if (kFrameRates[i] == m_params.frameRate)
+				m_frameRateBox.SetCurSel(i);
+	}
 
 	CheckDlgButton(IDC_ENC_ASYNC, m_params.async ? BST_CHECKED : BST_UNCHECKED);
 
@@ -306,6 +315,18 @@ void CRecordSettings::fillFrameRates()
 	const CString autoText = winResLoadString(IDS_RECORD_AUTO);
 
 	m_frameRateBox.AddString(autoText);
+
+	// Interpolation already doubled the picture count.  A target below that
+	// would drop every other picture again - and would keep whichever half
+	// the phase happened to land on - so there is nothing to choose and the
+	// summary line says what the rate is.
+	if (m_interpolated)
+	{
+		m_frameRateBox.SetCurSel(0);
+		m_frameRateBox.EnableWindow(FALSE);
+		return;
+	}
+
 	m_frameRateBox.AddString(_T("60"));
 	m_frameRateBox.AddString(_T("30"));
 	m_frameRateBox.AddString(_T("20"));
@@ -528,7 +549,8 @@ void CRecordSettings::updateSummary()
 	enableItem(IDC_ENC_VIDEO_PRESET, hasVideo);
 	// Only H.264 has a profile worth choosing; see VideoWriter.h.
 	enableItem(IDC_ENC_PROFILE, hasVideo && videoEncoders::isH264(video));
-	enableItem(IDC_ENC_FRAMERATE, hasVideo);
+	// Interpolation fixes the rate, see fillFrameRates().
+	enableItem(IDC_ENC_FRAMERATE, hasVideo && !m_interpolated);
 
 	updatePresetBoxes();
 
@@ -560,8 +582,9 @@ void CRecordSettings::updateSummary()
 			const int videoBitrate = (int)GetDlgItemInt(IDC_ENC_VIDEO_BITRATE, NULL, FALSE);
 
 			// The rate actually written: a target below the emulator's own
-			// rate drops frames, so the summary has to say so.
-			double	  fps  = systemGetFrameRate();
+			// rate drops frames, so the summary has to say so.  Interpolation
+			// adds a picture per frame, so that rate is doubled.
+			double	  fps  = systemGetFrameRate() * (m_interpolated ? 2.0 : 1.0);
 			const int rate = currentFrameRate();
 			const int step = videoEncoders::videoFrameStep(fps, rate);
 			if (step > 1)
@@ -671,6 +694,7 @@ void CRecordSettings::OnOk()
 	m_params.audioBitrate  = clampInt((int)GetDlgItemInt(IDC_ENC_AUDIO_BITRATE, NULL, FALSE),
 	                                 AUDIO_BITRATE_MIN, AUDIO_BITRATE_MAX);
 	m_params.frameRate	   = currentFrameRate();
+	m_params.interpolated  = m_interpolated;
 	m_params.async		   = IsDlgButtonChecked(IDC_ENC_ASYNC) == BST_CHECKED;
 	m_params.profile	   = videoEncoders::isNullGuid(video) ? VIDEO_PROFILE_AUTO : currentProfile();
 

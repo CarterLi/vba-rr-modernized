@@ -67,6 +67,10 @@ private:
 
 	RecordParams m_params;
 
+	// Frame interpolation is on for this recording, so the file is written at
+	// twice the emulator's rate and the frame rate box has nothing to choose.
+	bool m_interpolated;
+
 	CListCtrl		m_list;
 	CComboBox		m_audioBox;
 	CComboBox		m_videoPreset;

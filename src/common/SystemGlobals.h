@@ -61,6 +61,11 @@ extern int emulating;
 
 extern u8 *bios;
 extern u8 *pix;
+// The buffer the display backends upload.  NULL means `pix`; the frame
+// interpolation code points it at its own buffer for the extra frame it
+// presents, so nothing that reads `pix` (recording, screenshots, hashes) ever
+// sees an interpolated picture.  See documentation/frame-interpolation.md.
+extern u8 *pixToPresent;
 extern u8 osd[];
 
 extern u16 joypadButtons[4];

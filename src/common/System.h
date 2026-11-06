@@ -78,6 +78,16 @@ extern int  systemFramesToSkip();
 extern void systemCleanUp();
 extern void systemReset();
 extern bool systemFrameDrawingRequired();
+// Whether the port is presenting an extra, interpolated frame between the
+// emulator's own ones.  The renderers use it to stop waiting for the vertical
+// blank: two blocking presents per frame starve the sound buffer.  See
+// documentation/frame-interpolation.md.
+extern bool systemInterpolationActive();
+// Whether the feature is switched on and the renderer can present it at all.
+// Unlike the above this ignores the transient reasons for stopping it (frame
+// skip, pause, a frame step), which is what the recording dialog asks about
+// when it decides the rate to write at.
+extern bool systemInterpolationSupported();
 extern void systemFrameBoundaryWork();
 extern bool systemIsEmulating();
 extern void systemGbBorderOn();

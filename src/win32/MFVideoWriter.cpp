@@ -214,7 +214,11 @@ MFVideoWriter::Impl::~Impl()
 
 bool MFVideoWriter::Impl::createWriter()
 {
-	fpsNumerator   = systemGetFrameRateDividend();
+	// An interpolated recording carries two pictures per emulated frame, so
+	// the stream runs at twice the emulator's rate.  The ratio stays integral
+	// (524288/4389), which is what keeps the timestamps from drifting against
+	// the sound.  See documentation/frame-interpolation.md.
+	fpsNumerator   = systemGetFrameRateDividend() * (params.interpolated ? 2 : 1);
 	fpsDenominator = systemGetFrameRateDivisor();
 	if (fpsNumerator == 0)
 		fpsNumerator = 60;
@@ -967,4 +971,9 @@ void MFVideoWriter::Pause(bool pause)
 bool MFVideoWriter::IsPaused()
 {
 	return m_impl->paused;
+}
+
+bool MFVideoWriter::wantsInterpolatedFrames() const
+{
+	return m_impl->params.interpolated;
 }

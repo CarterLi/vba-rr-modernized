@@ -42,6 +42,10 @@ int	 systemVerbose			 = 0;
 int	 systemFrameSkip		 = 0;
 int	 systemSaveUpdateCounter = SYSTEM_SAVE_NOT_UPDATED;
 
+// The buffer the display backends upload; NULL means `pix`.  The interpolation
+// code points it at its own buffer for the extra frame it presents.
+u8 *pixToPresent = NULL;
+
 // static_assertion that BUTTON_REGULAR_RECORDING_MASK should be an u16 constant
 namespace { const void * const s_STATIC_ASSERTION_(static_cast<void *>(BUTTON_REGULAR_RECORDING_MASK & 0xFFFF0000)); }
 
@@ -284,14 +288,17 @@ struct ScaleAxisMap
 	}
 };
 
-// Renders the current frame at outWidth x outHeight with the active pixel filter
-// applied and scaled up to the window magnification.  The raw frame carries the
+// Renders a frame at outWidth x outHeight with the active pixel filter applied
+// and scaled up to the window magnification.  The raw frame carries the
 // emulator's border padding and is 16 or 32 bpp, so it is converted to 24-bit
 // BGR in a single pass (nearest neighbour, matching what the GDI renderer
 // shows).  AVI frames are bottom-up DIB rows, screenshots are top-down.  The
 // buffer is cached and stays valid until the next call, or NULL when there is
 // nothing to render.
-static u8 *systemRenderScaledFrame(int outWidth, int outHeight, bool bottomUp)
+//
+// `source` has the layout of `pix` - 241 pixels per row with one blank row on
+// top - which is what lets the interpolated frame go through the same path.
+static u8 *systemRenderScaledFrame(int outWidth, int outHeight, bool bottomUp, const u8 *source)
 {
 	const int depth = systemColorDepth / 8;
 
@@ -320,11 +327,14 @@ static u8 *systemRenderScaledFrame(int outWidth, int outHeight, bool bottomUp)
 
 	// Row 0 of the raw buffer is the filter's over-read border; the LCD image
 	// starts one row in (this matches how the renderers call the filters).
-	const u8 *frame		= pix + srcPitch;
+	const u8 *frame		= source + srcPitch;
 	int		  framePitch = srcPitch;
 	if (theApp.filterFunction && filtered)
 	{
-		(*theApp.filterFunction)(pix + srcPitch, srcPitch, (u8 *)theApp.delta,
+		// The filters only read their source, but the port's signature is not
+		// const: the same one is used by the renderers, where the buffer is
+		// writable.
+		(*theApp.filterFunction)((u8 *)(source + srcPitch), srcPitch, (u8 *)theApp.delta,
 		                         filtered, filtPitch, theApp.filterWidth, theApp.filterHeight);
 		frame	   = filtered;
 		framePitch = filtPitch;
@@ -399,13 +409,26 @@ static u8 *systemRenderScaledFrame(int outWidth, int outHeight, bool bottomUp)
 	return scaled;
 }
 
-static void systemRecordScaledAviFrame()
+// Hands one frame to the recorder.  `frame` has the layout of `pix`, which is
+// what lets the interpolated picture go through the same path.
+static void systemWriteAviFrame(const u8 *frame, int width, int height)
 {
-	u8 *frame = systemRenderScaledFrame(theApp.aviRecorder->videoWidth(),
-	                                    theApp.aviRecorder->videoHeight(),
-	                                    true);
-	if (frame != NULL)
-		theApp.aviRecorder->AddFrame(frame);
+	if (theApp.captureScaled && (systemColorDepth == 16 || systemColorDepth == 32))
+	{
+		u8 *scaled = systemRenderScaledFrame(theApp.aviRecorder->videoWidth(),
+		                                     theApp.aviRecorder->videoHeight(),
+		                                     true, frame);
+		if (scaled != NULL)
+			theApp.aviRecorder->AddFrame(scaled);
+	}
+	else
+	{
+		assert(
+			width <= BMP_BUFFER_MAX_WIDTH && height <= BMP_BUFFER_MAX_HEIGHT
+			&& systemColorDepth <= BMP_BUFFER_MAX_DEPTH * 8);
+		utilWriteBMP(bmpBuffer, width, height, systemColorDepth, frame);
+		theApp.aviRecorder->AddFrame(bmpBuffer);
+	}
 }
 
 // Writes a screenshot rendered the way an AVI frame is: with the active pixel
@@ -422,14 +445,16 @@ bool winWriteFilteredScreenshot(const CString &fileName)
 		height = theApp.rect.bottom - theApp.rect.top;
 	}
 
-	const u8 *frame = systemRenderScaledFrame(width, height, false);
+	const u8 *frame = systemRenderScaledFrame(width, height, false, pix);
 	if (frame == NULL)
 		return false;
 
 	return utilWriteImageBGR(winAnsiFromWide(fileName), width, height, frame, width * 3);
 }
 
-static void systemRecordAviFrame(int width, int height)
+// `extraFrame` is the interpolated picture to write in front of the real one,
+// or NULL when the file is written at the emulator's own rate.
+static void systemRecordAviFrame(int width, int height, const u8 *extraFrame)
 {
 	extern u32 linearSoundFrameCount;
 	extern u32 linearFrameCount;
@@ -487,19 +512,13 @@ static void systemRecordAviFrame(int width, int height)
 			if (theApp.aviRecorder != NULL && !theApp.aviRecorder->IsPaused() &&
 			    theApp.aviRecorder->videoWidth() > 0)
 			{
-				if (theApp.captureScaled &&
-				    (systemColorDepth == 16 || systemColorDepth == 32))
-				{
-					systemRecordScaledAviFrame();
-				}
-				else
-				{
-					assert(
-						width <= BMP_BUFFER_MAX_WIDTH && height <= BMP_BUFFER_MAX_HEIGHT
-						&& systemColorDepth <= BMP_BUFFER_MAX_DEPTH * 8);
-					utilWriteBMP(bmpBuffer, width, height, systemColorDepth, pix);
-					theApp.aviRecorder->AddFrame(bmpBuffer);
-				}
+				// A file written at twice the emulator's rate takes the
+				// interpolated picture first, so the pair covers the half
+				// frame before this one and then this one.
+				if (extraFrame != NULL)
+					systemWriteAviFrame(extraFrame, width, height);
+
+				systemWriteAviFrame(pix, width, height);
 			}
 		}
 
@@ -514,6 +533,156 @@ static void systemRecordAviFrame(int width, int height)
 		firstFrameLogged = true;
 	}
 	while (linearFrameCount < linearSoundFrameCount); // compensate for frames lost due to frame skip being nonzero, etc.
+}
+
+// --- frame interpolation ----------------------------------------------------
+//
+// The game shows 59.7275 pictures a second.  An extra one is drawn between two
+// of them by replaying the display over an interpolation of the state each
+// scanline saw - see GBAGfx.cpp for that part and
+// documentation/frame-interpolation.md for the reasoning.  The result goes
+// into its own buffer and is presented before the real frame, so nothing that
+// reads `pix` (recording, screenshots, `-hashtrace`) ever sees it.
+
+static u8 *interpolationPix = NULL;
+
+// From src/gba/GBAGfx.cpp: the ring of per-scanline display state, and the
+// switch that makes the core fill it at all.
+extern int	gfxInterpolationMode;
+extern void gfxResetLineStates();
+extern bool gfxReplayInterpolatedFrame(u8 *dst, int t);
+
+// Whether this frame gets an interpolated one in front of it.  Everything is
+// computed per frame on purpose: a menu toggle, a frame skip setting or a
+// single frame step has to take effect on the next frame, and the ring in
+// GBAGfx.cpp is only meaningful while every frame is drawn.
+bool systemInterpolationSupported()
+{
+	if (theApp.frameInterpolation == 0 || theApp.display == NULL)
+		return false;
+	return theApp.display->supportsInterpolation();
+}
+
+bool systemInterpolationActive()
+{
+	if (!systemInterpolationSupported())
+		return false;
+	if (systemCartridgeType != IMAGE_GBA)
+		return false;
+	if (speedup || theApp.frameSearchSkipping || theApp.paused)
+		return false;
+
+	// Skipping frames and interpolating them are opposites: a skipped frame is
+	// never drawn, so there is nothing to interpolate towards.
+	if (systemFramesToSkip() != 0)
+		return false;
+
+	// Frame advance: the user is inspecting single frames, not motion.
+	if (theApp.winPauseNextFrame)
+		return false;
+
+	return true;
+}
+
+// Keeps GBAGfx.cpp's ring on the same frames this file interpolates.  Leaving
+// the ring alone when the feature is off keeps the capture cost at zero, and
+// dropping it whenever the answer changes means the frames on either side of a
+// pause, a frame step or a renderer switch are never interpolated together.
+static void systemInterpolationSync()
+{
+	static int lastMode = -1;
+
+	const int mode = systemInterpolationActive() ? theApp.frameInterpolation : 0;
+	if (mode != lastMode)
+	{
+		gfxInterpolationMode = mode;
+		gfxResetLineStates();
+		// Says why the picture suddenly has no extra frame in it: 0 is "off or
+		// not possible right now", 1 scroll only, 2 scroll and objects.
+		winlog(_T("frame interpolation: mode %d -> %d\n"), lastMode, mode);
+		lastMode = mode;
+	}
+}
+
+// Builds the frame between the last two drawn ones.  False when the core could
+// not produce one, in which case the caller presents the real frame alone.
+static bool systemBuildInterpolatedFrame()
+{
+	if (!systemInterpolationActive())
+		return false;
+
+	if (interpolationPix == NULL)
+		interpolationPix = (u8 *)PIX_CALLOC(4 * 241 * 162);
+
+	if (!gfxReplayInterpolatedFrame(interpolationPix, 128))
+		return false;
+
+	// The on screen display is painted into the frame buffer in the "in game"
+	// text mode, so the extra frame needs it too - otherwise every message
+	// blinks at the doubled rate.  The message timing runs on the wall clock,
+	// so drawing it a second time costs nothing and changes no state.
+	const int pitch = theApp.filterWidth * (systemColorDepth / 8) + (systemColorDepth == 24 ? 0 : 4);
+	if (textMethod == 0)
+	{
+		int copyX, copyY;
+		systemGetLCDResolution(copyX, copyY);
+		DrawTextMessages(&interpolationPix[pitch], pitch, 0, copyY);
+	}
+
+	// One-shot diagnostic, about two seconds in: says whether the replay
+	// produced a frame of its own or handed back a copy of the real one, which
+	// is the first thing to know when the feature seems to do nothing.  It
+	// costs a single 240x160 compare per run.
+	static int built = 0;
+	const bool sample = (built == 120 || built == 300 || built == 600 || built == 900);
+	if (sample && systemColorDepth == 32)
+	{
+		int diff = 0;
+		const u32 *r = (const u32 *)(pix + pitch);
+		const u32 *i = (const u32 *)(interpolationPix + pitch);
+		for (int y = 0; y < 160; y++)
+			for (int x = 0; x < 240; x++)
+				if (r[y * 241 + x] != i[y * 241 + x])
+					diff++;
+		winlog(_T("frame interpolation: %d of %d pixels differ from the real frame\n"), diff, 240 * 160);
+	}
+	built++;
+
+	return true;
+}
+
+// Waits out the second half of the frame period: systemFrame() stops at the
+// half way mark, the interpolated frame goes out, and this puts the real frame
+// on the other half - back to back the second one would overwrite the first
+// before the monitor ever scanned it out.
+static void systemInterpolationPace()
+{
+	if (!synchronize || !systemInterpolationActive())
+		return;
+
+	const int target = (int)(100000 / (systemGetFrameRate() * theApp.throttle));
+	const int half   = target - target / 2;
+	if (half <= 0)
+		return;
+
+	const int elapsed = (int)(systemGetClock() - theApp.throttleLastTime);
+	if (half - elapsed > 0)
+		Sleep(half - elapsed);
+
+	theApp.throttleLastTime = systemGetClock();
+}
+
+// Presents one buffer without touching the per-frame listeners, which the real
+// frame's present runs once.
+static void systemPresentBuffer(u8 *buffer)
+{
+	if (vbaShuttingDown)
+		return;
+
+	pixToPresent = buffer;
+	if (theApp.display)
+		theApp.display->render();
+	pixToPresent = NULL;
 }
 
 void systemRenderFrame()
@@ -537,13 +706,25 @@ void systemRenderFrame()
 	// is enabled, and this is its refresh clock.
 	theApp.updateStatusBar();
 
+	// Built before the recorder runs: in the file the interpolated picture
+	// comes first and the real one after it, the same order they are shown.
+	const bool interpolated = systemBuildInterpolatedFrame();
+
 	// avi dump
 	int copyX, copyY;
 	systemGetLCDResolution(copyX, copyY);
-	systemRecordAviFrame(copyX, copyY);
 
-	// interframe blending
-	if (theApp.ifbFunction)
+	// A file written at twice the emulator's rate has to take two pictures
+	// per frame even when the replay refused to build one, or the picture
+	// would run ahead of the sound.
+	const bool doubled =
+	    theApp.aviRecording && theApp.aviRecorder != NULL &&
+	    theApp.aviRecorder->wantsInterpolatedFrames();
+	systemRecordAviFrame(copyX, copyY, doubled ? (interpolated ? interpolationPix : pix) : NULL);
+
+	// Interframe blending is a temporal filter of its own, so running both would
+	// only smear the picture.  Interpolation wins when it is on.
+	if (!interpolated && theApp.ifbFunction)
 	{
 		if (systemColorDepth == 16)
 			theApp.ifbFunction(pix + theApp.filterWidth * 2 + 4, theApp.filterWidth * 2 + 4,
@@ -551,6 +732,17 @@ void systemRenderFrame()
 		else
 			theApp.ifbFunction(pix + theApp.filterWidth * 4 + 4, theApp.filterWidth * 4 + 4,
 			                   theApp.filterWidth, theApp.filterHeight);
+	}
+
+	if (interpolated)
+	{
+		systemPresentBuffer(interpolationPix);
+		systemInterpolationPace();
+
+		// The speed display counts pictures, not emulated frames, so it shows
+		// the doubled rate while interpolation is on.  Nothing else reads
+		// this counter.
+		++theApp.renderedFrames;
 	}
 
 	systemRedrawScreen();
@@ -562,6 +754,9 @@ void systemRedrawScreen()
 {
 	if (vbaShuttingDown)
 		return;
+
+	// The real frame; systemPresentBuffer() already handed its buffer back.
+	pixToPresent = NULL;
 
 	if (theApp.display)
 		theApp.display->render();
@@ -840,6 +1035,12 @@ int systemGetThrottle()
 
 void systemFrame()
 {
+	// Decides, for the frame that is about to be emulated, whether the display
+	// layer wants an interpolated frame in front of it.  It has to be asked
+	// here because GBAGfx.cpp captures the scanline state while the frame is
+	// drawn, before the frame boundary below is reached.
+	systemInterpolationSync();
+
 	if (theApp.altAviRecordMethod && theApp.aviRecording)
 	{
 		if (theApp.aviRecorder)
@@ -903,6 +1104,12 @@ void systemFrame()
 				diff = 0;
 
 			int target = (int)(100000 / (systemGetFrameRate() * theApp.throttle));
+			// With an interpolated frame in front of every real one the period
+			// is split in two: this wait covers the first half, and
+			// systemInterpolationPace() covers the second one after presenting
+			// the interpolated frame.
+			if (systemInterpolationActive())
+				target /= 2;
 			int d	   = (target - diff);
 
 			if (d > 1000) // added to avoid 500-day waits for vba to start emulating.

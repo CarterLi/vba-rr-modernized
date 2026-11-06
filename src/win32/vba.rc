@@ -2203,6 +2203,13 @@ BEGIN
             MENUITEM "V&Sync (D3D11)", ID_OPTIONS_VIDEO_VSYNC
 #endif
             MENUITEM SEPARATOR
+            POPUP "&Frame Interpolation"
+            BEGIN
+                MENUITEM "&Off",                        ID_OPTIONS_VIDEO_INTERPOLATION_OFF
+                MENUITEM "&Scroll Only",                ID_OPTIONS_VIDEO_INTERPOLATION_SCROLL
+                MENUITEM "Scroll + &Objects",           ID_OPTIONS_VIDEO_INTERPOLATION_ALL
+            END
+            MENUITEM SEPARATOR
             POPUP "&Window Size"
             BEGIN
                 MENUITEM "&1x",                     ID_OPTIONS_VIDEO_X1
